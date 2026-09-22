@@ -10,10 +10,15 @@ const execFileAsync = promisify(execFile)
 const DEFAULT_BOOT_TIMEOUT_MS = 180_000
 const POLL_INTERVAL_MS = 2_000
 
+/** 한 번 실행하고 stdout을 받는 자리. spawn과 같은 이유로 주입 가능하게 둔다. */
+export type ExecFileFn = (command: string, args: string[]) => Promise<{ stdout: string }>
+
 export interface AvdControllerDeps {
   adb: AdbClient
   emulatorPath: string
   spawn: SpawnFn
+  /** 기본값은 node:child_process의 execFile. 테스트에서 주입한다. */
+  execFile?: ExecFileFn
   /** 기본값은 `emulator -list-avds` 실행. 테스트에서 주입한다. */
   listAvdNames?: () => Promise<string[]>
   sleep?: (ms: number) => Promise<void>
@@ -32,6 +37,7 @@ export function createAvdController(deps: AvdControllerDeps): AvdController {
     adb,
     emulatorPath,
     spawn,
+    execFile: runEmulator = (command, args) => execFileAsync(command, args),
     sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
     now = () => Date.now()
   } = deps
@@ -39,7 +45,23 @@ export function createAvdController(deps: AvdControllerDeps): AvdController {
   const listAvdNames =
     deps.listAvdNames ??
     (async () => {
-      const { stdout } = await execFileAsync(emulatorPath, ['-list-avds'])
+      let stdout: string
+      try {
+        stdout = (await runEmulator(emulatorPath, ['-list-avds'])).stdout
+      } catch (thrown) {
+        // 이 층에서 타입 없는 실패를 위로 올리지 않는다. 위층은 raw Error를 구조화된
+        // 툴 에러로 바꿀 방법이 없다.
+        if ((thrown as NodeJS.ErrnoException).code === 'ENOENT') {
+          throw deviceError('sdk_not_found', `emulator 바이너리를 실행할 수 없다: ${emulatorPath}`, 'Android SDK의 emulator 패키지가 설치돼 있는지 확인해라', {
+            emulatorPath
+          })
+        }
+        throw deviceError('command_failed', 'emulator -list-avds가 실패했다', '에러 메시지를 확인하고 Android SDK 설치 상태를 점검해라', {
+          emulatorPath,
+          error: (thrown as Error).message
+        })
+      }
+
       return stdout
         .split('\n')
         .map((line) => line.trim())
@@ -87,6 +109,17 @@ export function createAvdController(deps: AvdControllerDeps): AvdController {
     // serial만 "방금 부팅된 기기"로 인정한다 — 그렇지 않으면 이미 떠 있던 인스턴스를
     // 이번 spawn이 성공한 것처럼 돌려주게 된다.
     const before = await runningAvdBySerial()
+
+    // 같은 이름의 AVD가 이미 떠 있으면 emulator 바이너리가 두 번째 인스턴스를 거부하므로
+    // 새 serial은 끝내 나타나지 않는다. 스냅샷만 보면 아는 사실을 타임아웃까지 기다렸다
+    // device_unresponsive로 말하면, "이미 떠 있다"와 "끝내 안 떴다"가 구분되지 않는다.
+    const alreadyRunning = [...before.entries()].find(([, avdName]) => avdName === name)
+    if (alreadyRunning) {
+      throw deviceError('command_failed', `${name}은 이미 실행 중이다`, '그 기기를 그대로 쓰려면 device_select로 고르고, 다시 부팅하려면 device_shutdown 후 시도해라', {
+        avd: name,
+        serial: alreadyRunning[0]
+      })
+    }
 
     const child = spawn(emulatorPath, ['-avd', name])
     // 에뮬레이터는 부팅 중 stdout/stderr에 상당한 로그(그래픽 백엔드·가속 경고 등)를
