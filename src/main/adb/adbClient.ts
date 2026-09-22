@@ -204,7 +204,7 @@ export function createAdbClient(adbPath: string, spawnFn: SpawnFn = nodeSpawn as
 
       child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
         closeCode = code
-        closeSignal = signal
+        closeSignal = signal ?? null
         tryFinish()
       })
     })
