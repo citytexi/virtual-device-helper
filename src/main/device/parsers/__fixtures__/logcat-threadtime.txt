@@ -1,0 +1,202 @@
+--------- beginning of main
+09-22 13:58:32.303 32757 31001 I NearbyConnections: Unable to record lost endpoint due to null currentDiscoveryPhase
+09-22 13:58:32.303 32757 31001 I NearbyConnections: ClientProxy(48524364) reporting onEndpointLost(CBBO)
+09-22 13:58:32.304 32757 31012 I NearbySharing: NearbySharing Internal event EndpointLost(endpointId=AZUT)
+09-22 13:58:32.306 32757 31001 I NearbySharing: NearbySharing Internal event EndpointLost(endpointId=JXCB)
+09-22 13:58:32.310 32757 30916 I NearbySharing: NearbySharing Internal event EndpointLost(endpointId=71HA)
+09-22 13:58:32.312 32757 31001 I NearbySharing: NearbySharing Internal event EndpointLost(endpointId=CBBO)
+09-22 13:58:32.486  1191  1261 I SensorsHub: LightSeamless_Sensor : event = 190, time = 810458624832096
+--------- beginning of system
+09-22 13:58:32.488  1598  1621 D RefreshRateModeManager: updateFlickerRefreshRateVotes: brt=11, lux=190.0
+09-22 13:58:32.736  9825 10031 I ScanController: onScanResult to scannerId: 2- eventType=0x1b, addressType=0, address=XX:XX:XX:XX:83:41, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-49, periodicAdvInt=0x0
+09-22 13:58:32.737  9825 10031 E BluetoothRemoteDevices: Remote class is UNCATEGORIZED
+09-22 13:58:32.745 29672 29710 I [+0900]oneconnect[1.8.47.24_01][BEACON_MANAGER_CONTROL_SERVICE]: BeaconManagerControlService.reserveStopService - Setting timer to stop service in 180000ms
+09-22 13:58:32.747 29672 29710 I [+0900]oneconnect[1.8.47.24_01][BEACON_MANAGER_CONTROL_SERVICE]: TvOcfParser.onReceive - TV Popup Onboarding is skipped - ($)
+09-22 13:58:32.928  1598  2191 D WifiStaIfaceHidlImpl: getCachedScanData is not implemented by HIDL
+09-22 13:58:32.945  1598  3486 D SemWifiUsabilityStatsMonitor: onWifiUsabilityStats - seqNum 54149, isSameBssidAndFreq true
+09-22 13:58:32.955  1250  1347 I SurfaceFlinger: Current= 60, Period= 60, hwcPeriod= 60
+09-22 13:58:32.991  1250  1360 D SurfaceFlinger: setDesiredMode 4633128672291735932 {mode={fps=120.00 Hz, modePtr={id=0, vsyncRate=120.00 Hz, peakRefreshRate=120.00 Hz}}, emitEvent=false, force=false}
+09-22 13:58:32.998  1250  1250 I SurfaceFlinger: StatusBar$_2513#98 voted NoVote (0.00 Hz)
+09-22 13:58:32.998  1250  1250 I SurfaceFlinger: No layers with votes - choose 120.00 Hz
+09-22 13:58:32.999  1250  1250 D SurfaceFlinger: initiateModeChange 4633128672291735932 {mode={fps=120.00 Hz, modePtr={id=0, vsyncRate=120.00 Hz, peakRefreshRate=120.00 Hz}}, emitEvent=false, force=false}
+09-22 13:58:33.000  1250  1250 I SurfaceFlinger: [4633128672291735932] ActiveConfigToHWC, ID : 2
+09-22 13:58:33.003  1189  1271 I display : Current VRR MODE is 3
+09-22 13:58:33.003  1189  1271 I display : setActiveConfigWithConstraints:: HFR match - config: 2, base: 2, try: 1
+09-22 13:58:33.003  1189  1271 I display : setActiveConfigWithConstraints::update 1080x2340@120hs
+09-22 13:58:33.014  1250  1347 I SurfaceFlinger: Current= 60, Period= 120, hwcPeriod= 120
+09-22 13:58:33.015  1250  1250 I SurfaceFlinger: finalizeDisplayModeChange 4633128672291735932
+09-22 13:58:33.026   581   581 D io_stats: !@   8,0 r 17177010 390819742 w 5113852 68359308 d 876949 139028260 f 437263 614290 iot 10851900 0 th 0 0 0 pt 0 inp 0 0 260086.545
+09-22 13:58:33.026   581   581 D io_stats: !@ Read_top(KB): gpsd(1393) 4
+09-22 13:58:33.026   581   581 D io_stats: !@ Write_top(KB): kworker/u16:0(27390) 24
+09-22 13:58:33.048  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x10, addressType=1, address=XX:XX:XX:XX:6D:78, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-83, periodicAdvInt=0x0
+09-22 13:58:33.053 32757 30916 I NearbyConnections: Found BleAdvertisement [ 0x23 0x4d 0x31 0x32 0x5a 0x11 0x32 0xd1 0x76 0x3b 0xd9 0x0c 0xe4 0xc5 0x4e 0xcc 0x41 0xd5 0x0a 0x30 0x7e 0x1f 0xfc ] (with EndpointId M12Z and EndpointInfo [ 0x32 0xd1 0x76 0x3b 0xd9 0x0c 0xe4 0xc5 0x4e 0xcc 0x41 0xd5 0x0a 0x30 0x7e 0x1f 0xfc ])
+09-22 13:58:33.054 32757 30916 I NearbyConnections: Unable to record discovered endpoint due to null currentDiscoveryPhase
+09-22 13:58:33.055 32757 30916 I NearbyConnections: ClientProxy(48524364 0p:com.google.android.gms.nearby.sharing) reporting onEndpointFound(M12Z)
+09-22 13:58:33.056 32757 30916 I NearbyConnections: ClientProxy(48524364) reporting onEndpointDistanceChanged(M12Z, UNKNOWN)
+09-22 13:58:33.058 32757 31001 I NearbySharing: NearbySharing Internal event EndpointDiscovered(endpointId=M12Z)
+09-22 13:58:33.148  1598  2325 D WifiConnectivityMonitor.NetworkStatsAnalyzer: Backhaul result - RSSI:-50, CE:5, PE:5, TI:8, PTI:8, TW:0, PTW:0, Tx:4, Rx:31, TxS:2, RxS:2, RESULT:true, IC:0, ICT:5, WC:0, WCT:5, R:2, RC:0, IE:0, EC:0
+09-22 13:58:33.226  2604  3094 I TUILLThread: run: EPOLL_SKIP
+09-22 13:58:33.243  1250  1360 D SurfaceFlinger: setDesiredMode 4633128672291735932 {mode={fps=60.00 Hz, modePtr={id=1, vsyncRate=60.00 Hz, peakRefreshRate=60.00 Hz}}, emitEvent=false, force=false}
+09-22 13:58:33.247  1250  1250 I SurfaceFlinger: StatusBar$_2513#98 voted NoVote (0.00 Hz)
+09-22 13:58:33.247  1250  1250 I SurfaceFlinger: IdleFps - choose 60.00 Hz
+09-22 13:58:33.249  1250  1250 D SurfaceFlinger: initiateModeChange 4633128672291735932 {mode={fps=60.00 Hz, modePtr={id=1, vsyncRate=60.00 Hz, peakRefreshRate=60.00 Hz}}, emitEvent=false, force=false}
+09-22 13:58:33.249  1250  1250 I SurfaceFlinger: [4633128672291735932] ActiveConfigToHWC, ID : 3
+09-22 13:58:33.253  1189  1271 I display : Current VRR MODE is 3
+09-22 13:58:33.253  1189  1271 I display : setActiveConfigWithConstraints:: HFR match - config: 4, base: 3, try: 0
+09-22 13:58:33.253  1189  1271 I display : setActiveConfigWithConstraints::update 1080x2340@60phs
+09-22 13:58:33.262  1250  1347 I SurfaceFlinger: Current= 120, Period= 60, hwcPeriod= 60
+09-22 13:58:33.263  1250  1250 D SurfaceFlinger: GPIS:: requestGpisForSFSluggish
+09-22 13:58:33.263  1250  1250 I SurfaceFlinger: finalizeDisplayModeChange 4633128672291735932
+09-22 13:58:33.581  3295  3295 I adbd    : adbd service requested 'shell,v2:getprop'
+09-22 13:58:33.665  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x10, addressType=1, address=XX:XX:XX:XX:CB:AD, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-80, periodicAdvInt=0x0
+09-22 13:58:33.669 32757 30858 I NearbyConnections: Found BleAdvertisement [ 0x23 0x43 0x42 0x42 0x4f 0x11 0x32 0x59 0xca 0x82 0x43 0xd7 0x23 0xac 0xb9 0x90 0xea 0xbd 0xca 0xcb 0x2e 0x7d 0xc3 ] (with EndpointId CBBO and EndpointInfo [ 0x32 0x59 0xca 0x82 0x43 0xd7 0x23 0xac 0xb9 0x90 0xea 0xbd 0xca 0xcb 0x2e 0x7d 0xc3 ])
+09-22 13:58:33.669 32757 30858 I NearbyConnections: Unable to record discovered endpoint due to null currentDiscoveryPhase
+09-22 13:58:33.670 32757 30858 I NearbyConnections: ClientProxy(48524364 0p:com.google.android.gms.nearby.sharing) reporting onEndpointFound(CBBO)
+09-22 13:58:33.671 32757 30858 I NearbyConnections: ClientProxy(48524364) reporting onEndpointDistanceChanged(CBBO, UNKNOWN)
+09-22 13:58:33.673 32757 31001 I NearbySharing: NearbySharing Internal event EndpointDiscovered(endpointId=CBBO)
+09-22 13:58:33.795  2604  3096 I TUIThread: epol_call: EPOLL_SKIP
+09-22 13:58:33.981  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x0, addressType=1, address=XX:XX:XX:XX:D4:E7, primaryPhy=1, secondaryPhy=1, advertisingSid=0x2, txPower=127, rssi=-74, periodicAdvInt=0x0
+09-22 13:58:33.986 32757 30916 I NearbyConnections: Found BleAdvertisement [ 0x23 0x37 0x31 0x48 0x41 0x11 0x32 0x22 0xf5 0x34 0x71 0x51 0x4d 0xa1 0x2e 0xd4 0x32 0xef 0x5f 0x86 0xa7 0x6c 0xac ] (with EndpointId 71HA and EndpointInfo [ 0x32 0x22 0xf5 0x34 0x71 0x51 0x4d 0xa1 0x2e 0xd4 0x32 0xef 0x5f 0x86 0xa7 0x6c 0xac ])
+09-22 13:58:33.988 32757 30916 I NearbyConnections: Unable to record discovered endpoint due to null currentDiscoveryPhase
+09-22 13:58:33.989 32757 30916 I NearbyConnections: ClientProxy(48524364 0p:com.google.android.gms.nearby.sharing) reporting onEndpointFound(71HA)
+09-22 13:58:33.990 32757 30916 I NearbyConnections: ClientProxy(48524364) reporting onEndpointDistanceChanged(71HA, UNKNOWN)
+09-22 13:58:33.994 32757 31013 I NearbySharing: NearbySharing Internal event EndpointDiscovered(endpointId=71HA)
+09-22 13:58:34.406  1191  1261 I SensorsHub: LightSeamless_Sensor : event = 211, time = 810460545084435
+09-22 13:58:34.408  1598  1621 D RefreshRateModeManager: updateFlickerRefreshRateVotes: brt=11, lux=211.0
+09-22 13:58:34.518  1598  2292 I SemWifiServiceDetector: Service det. suspended: T / T / 29329
+09-22 13:58:34.575  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x10, addressType=1, address=XX:XX:XX:XX:61:84, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-86, periodicAdvInt=0x0
+09-22 13:58:34.584 32757 31013 I NearbyConnections: Found BleAdvertisement [ 0x23 0x46 0x59 0x4b 0x51 0x11 0x32 0x9a 0xd2 0x53 0x7a 0xe5 0xff 0x0b 0xf4 0xa1 0xfc 0x53 0xa8 0xfe 0x01 0x88 0x8c ] (with EndpointId FYKQ and EndpointInfo [ 0x32 0x9a 0xd2 0x53 0x7a 0xe5 0xff 0x0b 0xf4 0xa1 0xfc 0x53 0xa8 0xfe 0x01 0x88 0x8c ])
+09-22 13:58:34.586 32757 31013 I NearbyConnections: Unable to record discovered endpoint due to null currentDiscoveryPhase
+09-22 13:58:34.586 32757 31013 I NearbyConnections: ClientProxy(48524364 0p:com.google.android.gms.nearby.sharing) reporting onEndpointFound(FYKQ)
+09-22 13:58:34.586 32757 31013 I NearbyConnections: ClientProxy(48524364) reporting onEndpointDistanceChanged(FYKQ, UNKNOWN)
+09-22 13:58:34.590 32757 30916 I NearbySharing: NearbySharing Internal event EndpointDiscovered(endpointId=FYKQ)
+09-22 13:58:34.616  9825 10031 I ScanController: onScanResult to scannerId: 2- eventType=0x1b, addressType=0, address=XX:XX:XX:XX:88:34, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-63, periodicAdvInt=0x0
+09-22 13:58:34.619  9825 10031 E BluetoothRemoteDevices: Remote class is UNCATEGORIZED
+09-22 13:58:34.627 29672 29710 I [+0900]oneconnect[1.8.47.24_01][BEACON_MANAGER_CONTROL_SERVICE]: BeaconManagerControlService.reserveStopService - Setting timer to stop service in 180000ms
+09-22 13:58:34.630 29672 29710 I [+0900]oneconnect[1.8.47.24_01][BEACON_MANAGER_CONTROL_SERVICE]: TvOcfParser.onReceive - TV Popup Onboarding is skipped - ($)
+09-22 13:58:35.029   581   581 D io_stats: !@   8,0 r 17177010 390819742 w 5113860 68359340 d 876950 139028292 f 437263 614290 iot 10851932 0 th 0 0 0 pt 0 inp 0 0 260088.547
+09-22 13:58:35.959  1598  2191 D WifiStaIfaceHidlImpl: getCachedScanData is not implemented by HIDL
+09-22 13:58:35.971  1598  3486 D SemWifiUsabilityStatsMonitor: onWifiUsabilityStats - seqNum 54150, isSameBssidAndFreq true
+09-22 13:58:35.996  1250  1347 I SurfaceFlinger: Current= 60, Period= 60, hwcPeriod= 60
+09-22 13:58:36.014  1250  1360 D SurfaceFlinger: setDesiredMode 4633128672291735932 {mode={fps=120.00 Hz, modePtr={id=0, vsyncRate=120.00 Hz, peakRefreshRate=120.00 Hz}}, emitEvent=false, force=false}
+09-22 13:58:36.020  1250  1250 I SurfaceFlinger: SFWD update time=260089539061386
+09-22 13:58:36.022  1250  1250 I SurfaceFlinger: StatusBar$_2513#98 voted NoVote (0.00 Hz)
+09-22 13:58:36.022  1250  1250 I SurfaceFlinger: No layers with votes - choose 120.00 Hz
+09-22 13:58:36.023  1250  1250 D SurfaceFlinger: initiateModeChange 4633128672291735932 {mode={fps=120.00 Hz, modePtr={id=0, vsyncRate=120.00 Hz, peakRefreshRate=120.00 Hz}}, emitEvent=false, force=false}
+09-22 13:58:36.023  1250  1250 I SurfaceFlinger: [4633128672291735932] ActiveConfigToHWC, ID : 2
+09-22 13:58:36.026  1189  1271 I display : Current VRR MODE is 3
+09-22 13:58:36.027  1189  1271 I display : setActiveConfigWithConstraints:: HFR match - config: 2, base: 2, try: 1
+09-22 13:58:36.027  1189  1271 I display : setActiveConfigWithConstraints::update 1080x2340@120hs
+09-22 13:58:36.039  1250  1347 I SurfaceFlinger: Current= 60, Period= 120, hwcPeriod= 120
+09-22 13:58:36.041  1250  1250 I SurfaceFlinger: finalizeDisplayModeChange 4633128672291735932
+09-22 13:58:36.265  1250  1360 D SurfaceFlinger: setDesiredMode 4633128672291735932 {mode={fps=60.00 Hz, modePtr={id=1, vsyncRate=60.00 Hz, peakRefreshRate=60.00 Hz}}, emitEvent=false, force=false}
+09-22 13:58:36.268  1250  1250 I SurfaceFlinger: StatusBar$_2513#98 voted NoVote (0.00 Hz)
+09-22 13:58:36.268  1250  1250 I SurfaceFlinger: IdleFps - choose 60.00 Hz
+09-22 13:58:36.269  1250  1250 D SurfaceFlinger: initiateModeChange 4633128672291735932 {mode={fps=60.00 Hz, modePtr={id=1, vsyncRate=60.00 Hz, peakRefreshRate=60.00 Hz}}, emitEvent=false, force=false}
+09-22 13:58:36.270  1250  1250 I SurfaceFlinger: [4633128672291735932] ActiveConfigToHWC, ID : 3
+09-22 13:58:36.271  1250  1347 I SurfaceFlinger: Current= 120, Period= 60, hwcPeriod= 120
+09-22 13:58:36.272  1250  1347 I SurfaceFlinger: Current= 120, Period= 60, hwcPeriod= 120
+09-22 13:58:36.273  1189  1271 I display : Current VRR MODE is 3
+09-22 13:58:36.273  1189  1271 I display : setActiveConfigWithConstraints:: HFR match - config: 4, base: 3, try: 0
+09-22 13:58:36.273  1189  1271 I display : setActiveConfigWithConstraints::update 1080x2340@60phs
+09-22 13:58:36.288  1250  1347 I SurfaceFlinger: Current= 120, Period= 60, hwcPeriod= 60
+09-22 13:58:36.290  1250  1250 D SurfaceFlinger: GPIS:: requestGpisForSFSluggish
+09-22 13:58:36.290  1250  1250 I SurfaceFlinger: finalizeDisplayModeChange 4633128672291735932
+09-22 13:58:36.463  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x0, addressType=1, address=XX:XX:XX:XX:A0:76, primaryPhy=1, secondaryPhy=1, advertisingSid=0x2, txPower=127, rssi=-49, periodicAdvInt=0x0
+09-22 13:58:36.742  9825 10031 I ScanController: onScanResult to scannerId: 2- eventType=0x1b, addressType=0, address=XX:XX:XX:XX:83:41, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-54, periodicAdvInt=0x0
+09-22 13:58:36.744  9825 10031 E BluetoothRemoteDevices: Remote class is UNCATEGORIZED
+09-22 13:58:36.744 14936  9820 I BCMGR[11.2.06.3]: BeaconMainController] onReceive - [1 : ES packet!][2 : ST packet!][3 : ST packet!][4 : ES packet!][5 : ST packet!][6 : ST packet!][7 : ST packet!][8 : ST packet!][9 : ST packet!][10 : ST packet!]
+09-22 13:58:36.752 29672 29710 I [+0900]oneconnect[1.8.47.24_01][BEACON_MANAGER_CONTROL_SERVICE]: BeaconManagerControlService.reserveStopService - Setting timer to stop service in 180000ms
+09-22 13:58:36.755 29672 29710 I [+0900]oneconnect[1.8.47.24_01][BEACON_MANAGER_CONTROL_SERVICE]: TvOcfParser.onReceive - TV Popup Onboarding is skipped - ($)
+09-22 13:58:37.030   581   581 D io_stats: !@   8,0 r 17177010 390819742 w 5113870 68359396 d 876950 139028292 f 437263 614290 iot 10851944 0 th 0 0 0 pt 0 inp 0 0 260090.549
+09-22 13:58:37.031   581   581 D io_stats: !@ Write_top(KB): kworker/u16:3(29012) 56 gle.android.gms(32757) 32
+09-22 13:58:37.031  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x0, addressType=1, address=XX:XX:XX:XX:A0:76, primaryPhy=1, secondaryPhy=1, advertisingSid=0x2, txPower=127, rssi=-47, periodicAdvInt=0x0
+09-22 13:58:37.040  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x10, addressType=1, address=XX:XX:XX:XX:72:9E, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-80, periodicAdvInt=0x0
+09-22 13:58:37.044 32757 31001 I NearbyConnections: Found BleAdvertisement [ 0x23 0x58 0x54 0x42 0x49 0x11 0x32 0x72 0xcd 0x63 0x6e 0xab 0x3f 0x46 0x50 0x3e 0x92 0xb9 0x99 0x8c 0x60 0x35 0xac ] (with EndpointId XTBI and EndpointInfo [ 0x32 0x72 0xcd 0x63 0x6e 0xab 0x3f 0x46 0x50 0x3e 0x92 0xb9 0x99 0x8c 0x60 0x35 0xac ])
+09-22 13:58:37.046 32757 31001 I NearbyConnections: Unable to record discovered endpoint due to null currentDiscoveryPhase
+09-22 13:58:37.047 32757 31001 I NearbyConnections: ClientProxy(48524364 0p:com.google.android.gms.nearby.sharing) reporting onEndpointFound(XTBI)
+09-22 13:58:37.047 32757 31001 I NearbyConnections: ClientProxy(48524364) reporting onEndpointDistanceChanged(XTBI, UNKNOWN)
+09-22 13:58:37.049 32757 31013 I NearbySharing: NearbySharing Internal event EndpointDiscovered(endpointId=XTBI)
+09-22 13:58:37.064  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x10, addressType=1, address=XX:XX:XX:XX:48:2D, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-73, periodicAdvInt=0x0
+09-22 13:58:37.065 32757 30916 I NearbyConnections: Found BleAdvertisement [ 0x23 0x32 0x32 0x30 0x45 0x11 0x32 0x08 0xb5 0x5c 0x25 0x28 0xdd 0x07 0x26 0x29 0x01 0xb4 0xd4 0x46 0xa1 0xae 0x8b ] (with EndpointId 220E and EndpointInfo [ 0x32 0x08 0xb5 0x5c 0x25 0x28 0xdd 0x07 0x26 0x29 0x01 0xb4 0xd4 0x46 0xa1 0xae 0x8b ])
+09-22 13:58:37.065 32757 30916 I NearbyConnections: Unable to record discovered endpoint due to null currentDiscoveryPhase
+09-22 13:58:37.066 32757 30916 I NearbyConnections: ClientProxy(48524364 0p:com.google.android.gms.nearby.sharing) reporting onEndpointFound(220E)
+09-22 13:58:37.067 32757 30916 I NearbyConnections: ClientProxy(48524364) reporting onEndpointDistanceChanged(220E, UNKNOWN)
+09-22 13:58:37.069 32757 31001 I NearbySharing: NearbySharing Internal event EndpointDiscovered(endpointId=220E)
+09-22 13:58:37.074  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x10, addressType=1, address=XX:XX:XX:XX:26:83, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-67, periodicAdvInt=0x0
+09-22 13:58:37.527  1598  2292 I SemWifiServiceDetector: Service det. resumed: T / T / 29329
+09-22 13:58:37.605  1598  5111 D PowerManagerService: [api] setMasterBrightnessLimit : lowerLimit : -1  upperLimit : 761  mMasterBrightnessLimitPeriod : 200 (uid: 1000 pid: 6135)
+09-22 13:58:37.607  1598  1658 D PowerManagerService: [api] BrightnessLimitRunnable done
+09-22 13:58:38.267  9825 10031 I ScanController: onScanResult to scannerId: 2- eventType=0x1b, addressType=0, address=XX:XX:XX:XX:83:41, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-54, periodicAdvInt=0x0
+09-22 13:58:38.268  9825 10031 E BluetoothRemoteDevices: Remote class is UNCATEGORIZED
+09-22 13:58:39.012  1598  2191 D WifiStaIfaceHidlImpl: getCachedScanData is not implemented by HIDL
+09-22 13:58:39.028  1598  3486 D SemWifiUsabilityStatsMonitor: onWifiUsabilityStats - seqNum 54151, isSameBssidAndFreq true
+09-22 13:58:39.036  1250  1347 I SurfaceFlinger: Current= 60, Period= 60, hwcPeriod= 60
+09-22 13:58:39.052  1250  1360 D SurfaceFlinger: setDesiredMode 4633128672291735932 {mode={fps=120.00 Hz, modePtr={id=0, vsyncRate=120.00 Hz, peakRefreshRate=120.00 Hz}}, emitEvent=false, force=false}
+09-22 13:58:39.054  1250  1347 I SurfaceFlinger: Current= 60, Period= 120, hwcPeriod= 60
+09-22 13:58:39.055  1250  1250 I SurfaceFlinger: StatusBar$_2513#98 voted NoVote (0.00 Hz)
+09-22 13:58:39.055  1250  1250 I SurfaceFlinger: No layers with votes - choose 120.00 Hz
+09-22 13:58:39.056  1250  1250 D SurfaceFlinger: initiateModeChange 4633128672291735932 {mode={fps=120.00 Hz, modePtr={id=0, vsyncRate=120.00 Hz, peakRefreshRate=120.00 Hz}}, emitEvent=false, force=false}
+09-22 13:58:39.057  1250  1250 I SurfaceFlinger: [4633128672291735932] ActiveConfigToHWC, ID : 2
+09-22 13:58:39.060  1189  1271 I display : Current VRR MODE is 3
+09-22 13:58:39.060  1189  1271 I display : setActiveConfigWithConstraints:: HFR match - config: 2, base: 2, try: 1
+09-22 13:58:39.060  1189  1271 I display : setActiveConfigWithConstraints::update 1080x2340@120hs
+09-22 13:58:39.071  1250  1347 I SurfaceFlinger: Current= 60, Period= 120, hwcPeriod= 120
+09-22 13:58:39.079  1250  1250 I SurfaceFlinger: finalizeDisplayModeChange 4633128672291735932
+09-22 13:58:39.261  6135  7421 I SDHMS:x : SIOP:: AP:290 BAT:279 USB:278 CHG:295 PA:288 BLK:0 SUBBAT:0 LRPTHM:283 SKIN:294 SKINF:294 SKINB:290 LRP:294 LRP2:294 LRF2:294 LRB2:290 AP2:294 CHG2:293 MEM2:293 WIFI2:292 RCV2:291 SPK2:283 UPSPK:283 DNSPK:280 VAP:290 AVGCUR:-5 AVGSYS:0 POWER:-21
+09-22 13:58:39.304  1250  1360 D SurfaceFlinger: setDesiredMode 4633128672291735932 {mode={fps=60.00 Hz, modePtr={id=1, vsyncRate=60.00 Hz, peakRefreshRate=60.00 Hz}}, emitEvent=false, force=false}
+09-22 13:58:39.309  1250  1347 I SurfaceFlinger: Current= 120, Period= 60, hwcPeriod= 120
+09-22 13:58:39.309  1250  1250 I SurfaceFlinger: StatusBar$_2513#98 voted NoVote (0.00 Hz)
+09-22 13:58:39.310  1250  1250 I SurfaceFlinger: IdleFps - choose 60.00 Hz
+09-22 13:58:39.311  1250  1250 D SurfaceFlinger: initiateModeChange 4633128672291735932 {mode={fps=60.00 Hz, modePtr={id=1, vsyncRate=60.00 Hz, peakRefreshRate=60.00 Hz}}, emitEvent=false, force=false}
+09-22 13:58:39.311  1250  1250 I SurfaceFlinger: [4633128672291735932] ActiveConfigToHWC, ID : 3
+09-22 13:58:39.314  1250  1347 I SurfaceFlinger: Current= 120, Period= 60, hwcPeriod= 120
+09-22 13:58:39.317  1189  1271 I display : Current VRR MODE is 3
+09-22 13:58:39.317  1189  1271 I display : setActiveConfigWithConstraints:: HFR match - config: 4, base: 3, try: 0
+09-22 13:58:39.317  1189  1271 I display : setActiveConfigWithConstraints::update 1080x2340@60phs
+09-22 13:58:39.330  1250  1347 I SurfaceFlinger: Current= 120, Period= 60, hwcPeriod= 60
+09-22 13:58:39.332  1250  1250 D SurfaceFlinger: GPIS:: requestGpisForSFSluggish
+09-22 13:58:39.332  1250  1250 I SurfaceFlinger: finalizeDisplayModeChange 4633128672291735932
+09-22 13:58:39.789  9825 10031 I ScanController: onScanResult to scannerId: 2- eventType=0x1b, addressType=0, address=XX:XX:XX:XX:83:41, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-49, periodicAdvInt=0x0
+09-22 13:58:39.791  9825 10031 E BluetoothRemoteDevices: Remote class is UNCATEGORIZED
+09-22 13:58:39.799 29672 29710 I [+0900]oneconnect[1.8.47.24_01][BEACON_MANAGER_CONTROL_SERVICE]: BeaconManagerControlService.reserveStopService - Setting timer to stop service in 180000ms
+09-22 13:58:39.800  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x10, addressType=1, address=XX:XX:XX:XX:EE:EC, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-58, periodicAdvInt=0x0
+09-22 13:58:39.802 29672 29710 I [+0900]oneconnect[1.8.47.24_01][BEACON_MANAGER_CONTROL_SERVICE]: TvOcfParser.onReceive - TV Popup Onboarding is skipped - ($)
+09-22 13:58:40.096  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x10, addressType=1, address=XX:XX:XX:XX:E4:3B, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-90, periodicAdvInt=0x0
+09-22 13:58:40.102 32757 30916 I NearbyConnections: Found BleAdvertisement [ 0x23 0x4a 0x58 0x43 0x42 0x11 0x32 0xff 0xa4 0x73 0x38 0xf5 0xea 0x42 0x9e 0xf2 0x9a 0x50 0x1e 0x44 0x03 0xac 0xf7 ] (with EndpointId JXCB and EndpointInfo [ 0x32 0xff 0xa4 0x73 0x38 0xf5 0xea 0x42 0x9e 0xf2 0x9a 0x50 0x1e 0x44 0x03 0xac 0xf7 ])
+09-22 13:58:40.102 32757 30916 I NearbyConnections: Unable to record discovered endpoint due to null currentDiscoveryPhase
+09-22 13:58:40.103 32757 30916 I NearbyConnections: ClientProxy(48524364 0p:com.google.android.gms.nearby.sharing) reporting onEndpointFound(JXCB)
+09-22 13:58:40.105 32757 30916 I NearbyConnections: ClientProxy(48524364) reporting onEndpointDistanceChanged(JXCB, UNKNOWN)
+09-22 13:58:40.107 32757 30916 I NearbySharing: NearbySharing Internal event EndpointDiscovered(endpointId=JXCB)
+09-22 13:58:40.536  1598  2292 I SemWifiServiceDetector: Service det. suspended: T / T / 29329
+09-22 13:58:40.592  1598  1624 E Watchdog: !@Sync: 8662 heap(MB): 128 / 140 FD: 1195 Threads: 530 [2026-09-22 13:58:40.591]
+09-22 13:58:40.713  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x0, addressType=1, address=XX:XX:XX:XX:67:08, primaryPhy=1, secondaryPhy=1, advertisingSid=0x1, txPower=127, rssi=-70, periodicAdvInt=0x0
+09-22 13:58:41.057  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x0, addressType=1, address=XX:XX:XX:XX:A0:76, primaryPhy=1, secondaryPhy=1, advertisingSid=0x2, txPower=127, rssi=-49, periodicAdvInt=0x0
+09-22 13:58:41.059  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x10, addressType=1, address=XX:XX:XX:XX:26:83, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-72, periodicAdvInt=0x0
+09-22 13:58:41.127  1191  1261 I SensorsHub: LightSeamless_Sensor : event = 194, time = 810467265965948
+09-22 13:58:41.129  1598  1621 D RefreshRateModeManager: updateFlickerRefreshRateVotes: brt=11, lux=194.0
+09-22 13:58:41.342  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x10, addressType=1, address=XX:XX:XX:XX:6D:78, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-76, periodicAdvInt=0x0
+09-22 13:58:41.428  1250  1347 I SurfaceFlinger: Current= 60, Period= 60, hwcPeriod= 60
+09-22 13:58:41.434 21977 21977 I Routine@Core[5.0.03.23]: RoutineApplication: onTrimMemory: level : 40
+09-22 13:58:41.563  1191  1261 I SensorsHub: context 10 0 9 1,1,26,1,1,8,117,59,4,0, 810467708691554
+09-22 13:58:41.566  1598  2180 D CAE     : onGetSensorHubData(SensorHubParserProvider.java:92) - onGetSensorHubData Event [event buffer len :10], AP_WAKEUP
+09-22 13:58:41.567  1598  2180 I CAE     : parse(SensorHubParserProvider.java:188) - buffer size = 10
+09-22 13:58:41.567  1598  2180 I CAE     : parse(SensorHubParserProvider.java:199) - 1, 1, 26, 1, 1, 8, 117, 59, 4, 0,
+09-22 13:58:41.568  1598  2180 D CAE     : display(ContextProvider.java:375) - ================= ACTIVITY_TRACKER =================
+09-22 13:58:41.569  1598  2180 I CAE     : display(ContextProvider.java:391) - Accuracy=[0], OperationMode=[0], ActivityType=[4], TimeStamp=[1790052531515]
+09-22 13:58:41.570  1598  2177 D SemContextService: Service.updateContext() : service = Activity Tracker
+09-22 13:58:41.571  1598  1598 D SemContextManager: onSemContextChanged() : event = Activity Tracker
+09-22 13:58:41.572  1598  1598 E PocketMotionManager: activity tracker 4, 0
+09-22 13:58:41.621  1191  1261 I SensorsHub: context 14 0 13 1,1,26,4,1,8,41,46,1,1,0,0,76,13, 810467766294669
+09-22 13:58:41.623  1598  2180 D CAE     : onGetSensorHubData(SensorHubParserProvider.java:92) - onGetSensorHubData Event [event buffer len :14], AP_WAKEUP
+09-22 13:58:41.624  1598  2180 I CAE     : parse(SensorHubParserProvider.java:188) - buffer size = 14
+09-22 13:58:41.624  1598  2180 I CAE     : parse(SensorHubParserProvider.java:199) - 1, 1, 26, 4, 1, 8, 41, 46, 1, 1, 0, 0, 76, 13,
+09-22 13:58:41.625  1598  2180 W CAE     : parse(ActivityTrackerBatchRunner.java:239) - parse start
+09-22 13:58:41.626  9825 10031 I ScanController: onScanResult to scannerId: 11- eventType=0x10, addressType=1, address=XX:XX:XX:XX:26:83, primaryPhy=1, secondaryPhy=0, advertisingSid=0xff, txPower=127, rssi=-74, periodicAdvInt=0x0
+09-22 13:58:41.626  1598  2180 I CAE     : getMostActivity(ActivityTrackerBatchRunner.java:324) - size:0
+09-22 13:58:41.626  1598  2180 D CAE     : display(ContextProvider.java:375) - ================= ACTIVITY_TRACKER_BATCH =================
+09-22 13:58:41.627  1598  2180 I CAE     : display(ContextProvider.java:391) - Accuracy=[0], Duration=[19469], Count=[1], OperationMode=[2], ActivityType=[1], MostActivity=[1], TimeStamp=[1790052512046]
+09-22 13:58:41.628  1598  2177 D SemContextService: Service.updateContext() : service = Activity Batch
+09-22 13:58:41.629  1598  2180 W CAE     : parse(ActivityTrackerBatchRunner.java:310) - parse end
+09-22 13:58:41.774  9958  9958 I wpa_supplicant: Heartbeat 5810
+09-22 13:58:41.840  3295  3295 I adbd    : adbd service requested 'shell,v2,TERM=xterm-256color:export ANDROID_LOG_TAGS=''; exec logcat '-d' '-v' 'threadtime' '-t' '200''
