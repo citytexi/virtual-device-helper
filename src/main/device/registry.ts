@@ -37,6 +37,10 @@ export interface DeviceRegistry {
    * 명시적으로 고른 기기. device_select나 앱의 기기 선택으로만 채워진다.
    * 아무것도 고르지 않았으면 기기가 붙어 있어도 null이다 — 기기가 하나뿐일 때
    * 그것이 대상이 되는 판단은 resolve()가 호출 시점에 한다.
+   *
+   * 화면에 "지금 명령이 갈 기기"를 표시하는 쪽은 이 값을 그대로 쓰지 말고
+   * getActive() ?? (serials().length === 1 ? serials()[0] : null)로 파생시킨다.
+   * 파생값을 이 스냅샷에 섞으면 active_changed 이벤트 없이 값만 바뀌는 순간이 생긴다.
    */
   getActive(): string | null
   /** 같은 기기의 명령을 직렬화한다. 다른 기기끼리는 병렬로 돈다. */
