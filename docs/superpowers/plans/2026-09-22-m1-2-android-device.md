@@ -1985,6 +1985,21 @@ EOF
 - Produces: `createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry`, `DeviceRegistry`,
   `DeviceRegistryDeps`, `RegistryEvent`. M1-3의 모든 툴과 M1-4의 `ipcBridge`가 쓴다.
 
+> **M1-1에서 넘어온 항목 셋.** M1-1의 최종 리뷰가 `trackDevices`의 파서를 통째로 다시 쓰게 만들었고,
+> 그 수정이 Minor 둘을 남겼다. 이 task가 `trackDevices`를 소비하는 자리이므로 여기서 함께 정리한다.
+> 셋 다 한 줄짜리이고 기존 테스트를 깨지 않는다.
+>
+> 1. `adbClient.ts`의 `deliverError`에 `closeNotified` 가드를 더한다. 지금은 stdout이 `error`를 내면
+>    소비자가 `error → close → error` 순으로 받아, 같은 파일에 적힌 "에러 뒤에는 반드시 `onClose`가
+>    뒤따른다"는 계약을 어긴다.
+> 2. `adbClient.ts`의 `failFromStream`이 `child.kill('SIGKILL')`을 부르게 한다. 지금은 reject만 하고
+>    타이머까지 지워서 adb 자식 프로세스를 아무도 회수하지 않는다. main 프로세스가 오래 도는 앱이라
+>    좀비가 쌓인다.
+> 3. `trackDevices`는 이제 `(client, onChange, onFailure?)`다. `DeviceRegistryDeps.track`도 실패를
+>    받을 수 있게 넓히고, registry가 그 실패로 무엇을 할지 정한다 — 최소한 이벤트로 올려서
+>    M1-4의 UI가 "기기 추적이 끊겼다"를 표시할 수 있어야 한다. 조용히 삼키면 기기가 안 보이는
+>    증상만 남고 원인이 사라진다.
+
 - [ ] **Step 1: 실패 테스트를 쓴다**
 
 `src/main/device/registry.test.ts`:
