@@ -9,6 +9,12 @@ virtual-device-helper의 구조 결정을 기록한다. 기록하는 것은 **"�
 <!-- index:start -->
 | ADR | 제목 | 상태 | 날짜 | 비고 |
 |-----|------|------|------|------|
+| [0001](0001-mcp-transport-http-in-app.md) | MCP 전송은 앱 내장 Streamable HTTP | accepted | 2026-09-22 | 앱 없이는 툴도 없다. 루프백·토큰·Origin 3중 방어 |
+| [0002](0002-screen-streaming-via-scrcpy-server.md) | 화면 스트리밍은 scrcpy-server.jar 직접 통신 | accepted | 2026-09-22 | server.jar만 번들. 클라이언트는 직접 구현. M1 스파이크로 선검증 |
+| [0003](0003-no-bundled-android-sdk.md) | Android SDK를 번들하지 않고 호스트 설치분을 쓴다 | accepted | 2026-09-22 | adb 서버 데몬이 머신당 하나라 번들하면 충돌한다 |
+| [0004](0004-hybrid-mcp-tool-surface.md) | MCP 툴 표면은 저수준 전부 + 고수준 소수 | accepted | 2026-09-22 | uiautomator 덤프를 그대로 못 주므로 순수 저수준안은 불성립 |
+| [0005](0005-device-interface-abstraction.md) | 타깃 디바이스는 Device 인터페이스로 가른다 | accepted | 2026-09-22 | 구현체는 AndroidDevice 하나. iOS는 M4에서 인터페이스를 넓힌다 |
+| [0006](0006-build-stack-electron-vite.md) | 빌드 스택은 electron-vite + electron-builder + React | accepted | 2026-09-22 | 세 타깃이 한 설정·한 타입 체계를 공유 |
 <!-- index:end -->
 
 ## 언제 ADR을 쓰는가

@@ -13,6 +13,11 @@
 <!-- index:start -->
 | 계획 | 상태 | 내용 |
 |------|------|------|
+| [m1-1-foundation-and-adb](2026-09-22-m1-1-foundation-and-adb.md) | draft | Electron·TS 스캐폴딩, 공유 타입, SDK 탐색, adbClient, scrcpy 스파이크 (6 tasks) |
+| [m1-2-android-device](2026-09-22-m1-2-android-device.md) | draft | adb 출력 파서 3종, AndroidDevice, AvdController, DeviceRegistry (8 tasks) |
+| [m1-3-mcp-server](2026-09-22-m1-3-mcp-server.md) | draft | MCP 툴 20개, 응답 크기 상한, 루프백 HTTP 서버와 보안 기본값 (7 tasks) |
+| [m1-4-electron-shell-ui](2026-09-22-m1-4-electron-shell-ui.md) | draft | IPC 계약과 preload, main 조립, 기기 패널·화면 영역·활동 탭·엔드포인트 카드 (7 tasks) |
+| [m1-5-integration-verification](2026-09-22-m1-5-integration-verification.md) | draft | 실기기 통합 테스트, 완료 조건 검증, 문서 정리 (4 tasks) |
 <!-- index:end -->
 
 ## 아카이브
