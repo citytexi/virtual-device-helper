@@ -10,6 +10,38 @@ const serial = z
 
 const pkg = z.string().describe('안드로이드 패키지명. 예: com.example.app')
 
+const SETTLE_POLL_MS = 400
+const SETTLE_DEFAULT_TIMEOUT_MS = 8_000
+
+/**
+ * 첫 화면이 안정됐는지 본다. UI 덤프의 요소 구성이 연속 두 번 같으면 안정으로 본다.
+ * 고정 대기보다 빠르고, 로그 신호보다 앱에 덜 의존한다.
+ * 스펙의 열린 질문이므로 실제 앱으로 검증한 뒤 필요하면 기준을 바꾼다.
+ */
+async function waitForSettle(
+  dump: () => Promise<Array<{ resourceId: string | null; text: string | null }>>,
+  timeoutMs: number,
+  sleep: (ms: number) => Promise<void>,
+  now: () => number
+): Promise<{ settled: boolean; nodeCount: number }> {
+  const deadline = now() + timeoutMs
+  let previous = ''
+  let nodeCount = 0
+
+  while (now() < deadline) {
+    const nodes = await dump()
+    nodeCount = nodes.length
+    const fingerprint = nodes.map((node) => `${node.resourceId ?? ''}|${node.text ?? ''}`).join('\n')
+
+    if (fingerprint === previous) return { settled: true, nodeCount }
+
+    previous = fingerprint
+    await sleep(SETTLE_POLL_MS)
+  }
+
+  return { settled: false, nodeCount }
+}
+
 export function registerAppTools(server: McpServer, context: ToolContext): void {
   server.registerTool(
     'app_install',
@@ -113,6 +145,41 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
           device.grantPermission(args.pkg, args.permission)
         )
         return { pkg: args.pkg, permission: args.permission, granted: true }
+      })
+  )
+
+  server.registerTool(
+    'app_reset_and_launch',
+    {
+      description:
+        '앱을 강제 종료하고 데이터를 지운 뒤 다시 실행하고, 첫 화면이 안정될 때까지 기다린다. 매번 같은 조건에서 테스트를 시작할 때 쓴다.',
+      inputSchema: {
+        pkg,
+        settleTimeoutMs: z
+          .number()
+          .optional()
+          .describe('첫 화면이 안정되기를 기다리는 시간(밀리초). 기본 8000'),
+        serial
+      }
+    },
+    async (args) =>
+      runTool(context, 'app_reset_and_launch', args, async () => {
+        const device = context.registry.resolve(args.serial)
+
+        return context.registry.run(device.serial, async () => {
+          await device.stop(args.pkg)
+          await device.clearData(args.pkg)
+          await device.launch(args.pkg)
+
+          const settle = await waitForSettle(
+            () => device.dumpUi(),
+            args.settleTimeoutMs ?? SETTLE_DEFAULT_TIMEOUT_MS,
+            (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+            () => Date.now()
+          )
+
+          return { pkg: args.pkg, ...settle }
+        })
       })
   )
 }

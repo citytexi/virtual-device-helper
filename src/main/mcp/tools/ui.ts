@@ -8,10 +8,9 @@ const serial = z
   .optional()
   .describe('대상 기기의 serial. 생략하면 활성 기기를 쓴다. 기기가 여럿인데 생략하면 에러가 난다.')
 
-/**
- * ui_find는 Task 5에서 이 파일에 추가된다. 저수준 조작 네 개(ui_tap, ui_swipe,
- * ui_text, ui_key)만 여기서 등록한다.
- */
+/** 한 번에 돌려줄 요소 수 상한. 긴 목록 화면에서 응답이 폭발하는 것을 막는다. */
+export const UI_FIND_MAX_NODES = 60
+
 export function registerUiTools(server: McpServer, context: ToolContext): void {
   server.registerTool(
     'ui_tap',
@@ -83,6 +82,43 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
         const device = context.registry.resolve(args.serial)
         await context.registry.run(device.serial, () => device.pressKey(args.name))
         return { pressed: args.name }
+      })
+  )
+
+  server.registerTool(
+    'ui_find',
+    {
+      description:
+        '지금 화면의 요소 목록을 돌려준다. 각 요소는 누를 수 있는 중심 좌표를 가지므로 받은 x, y를 ui_tap에 그대로 넣으면 된다. 화면을 조작하기 전에 먼저 부른다.',
+      inputSchema: {
+        query: z
+          .string()
+          .optional()
+          .describe('텍스트·설명·id에 대한 부분일치 필터. 대소문자를 가리지 않는다.'),
+        serial
+      }
+    },
+    async (args) =>
+      runTool(context, 'ui_find', args, async () => {
+        const device = context.registry.resolve(args.serial)
+        const all = await context.registry.run(device.serial, () => device.dumpUi())
+
+        const needle = args.query?.toLowerCase()
+        const matched = needle
+          ? all.filter((node) =>
+              `${node.text ?? ''}\n${node.contentDesc ?? ''}\n${node.resourceId ?? ''}`
+                .toLowerCase()
+                .includes(needle)
+            )
+          : all
+
+        const kept = matched.slice(0, UI_FIND_MAX_NODES)
+
+        return {
+          nodes: kept.map((node, index) => ({ ...node, index })),
+          truncated: matched.length > kept.length,
+          droppedCount: matched.length - kept.length
+        }
       })
   )
 }
