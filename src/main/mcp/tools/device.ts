@@ -47,6 +47,10 @@ export function registerDeviceTools(server: McpServer, context: ToolContext): vo
       inputSchema: serialArg
     },
     async ({ serial }) =>
+      // 여기서만 context.registry.run(...) 직렬화 큐를 의도적으로 건너뛰고 context.avd.shutdown을
+      // 바로 부른다. device_shutdown은 device_unresponsive 에러의 복구 경로이기 때문이다.
+      // 큐에 줄을 세우면 이미 막혀 있는 명령 뒤에서 종료 명령까지 같은 타임아웃만큼 늦어져
+      // 복구 자체가 안 된다. "빠진 직렬화"로 보고 큐에 넣지 마라.
       runTool(context, 'device_shutdown', { serial }, async () => {
         const device = context.registry.resolve(serial)
         await context.avd.shutdown(device.serial)
