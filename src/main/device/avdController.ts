@@ -82,7 +82,18 @@ export function createAvdController(deps: AvdControllerDeps): AvdController {
       })
     }
 
+    // spawn하기 전에 붙어 있는 기기를 스냅샷으로 남긴다. 요청한 이름의 AVD가 이미
+    // 떠 있으면 그 serial은 스냅샷에 들어가고, 폴링에서는 이 스냅샷에 없는
+    // serial만 "방금 부팅된 기기"로 인정한다 — 그렇지 않으면 이미 떠 있던 인스턴스를
+    // 이번 spawn이 성공한 것처럼 돌려주게 된다.
+    const before = await runningAvdBySerial()
+
     const child = spawn(emulatorPath, ['-avd', name])
+    // 에뮬레이터는 부팅 중 stdout/stderr에 상당한 로그(그래픽 백엔드·가속 경고 등)를
+    // 낸다. 아무도 읽지 않으면 OS 파이프 버퍼가 차서 자식이 write에서 멈추고, 정상적으로
+    // 부팅 중인 에뮬레이터가 device_unresponsive로 오분류된다. 내용은 필요 없으니 그냥 버린다.
+    child.stdout.on('data', () => {})
+    child.stderr.on('data', () => {})
     child.unref?.()
 
     const deadline = now() + timeoutMs
@@ -91,11 +102,19 @@ export function createAvdController(deps: AvdControllerDeps): AvdController {
       await sleep(POLL_INTERVAL_MS)
 
       const running = await runningAvdBySerial()
-      const found = [...running.entries()].find(([, avdName]) => avdName === name)
+      const found = [...running.entries()].find(([serial, avdName]) => avdName === name && !before.has(serial))
       if (!found) continue
 
       const serial = found[0]
-      const booted = (await adb.exec(serial, ['shell', 'getprop', 'sys.boot_completed'])).stdout.trim()
+      let booted: string
+      try {
+        booted = (await adb.exec(serial, ['shell', 'getprop', 'sys.boot_completed'])).stdout.trim()
+      } catch {
+        // 부팅 도중에는 기기가 offline 등 중간 상태를 거치며 adb 명령이 일시적으로
+        // 실패할 수 있다. 이 한 번의 실패를 boot() 전체의 실패로 올리지 않는다 —
+        // "아직 부팅 안 됨"으로 보고 다음 폴링에서 다시 확인한다.
+        continue
+      }
       if (booted === '1') return serial
     }
 

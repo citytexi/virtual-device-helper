@@ -8,8 +8,9 @@ function result(stdout: string): ExecResult {
   return { stdout, stdoutRaw: Buffer.from(stdout), stderr: '', exitCode: 0 }
 }
 
-function fakeSpawn(): { spawn: SpawnFn; started: string[][] } {
+function fakeSpawn(): { spawn: SpawnFn; started: string[][]; children: ReturnType<SpawnFn>[] } {
   const started: string[][] = []
+  const children: ReturnType<SpawnFn>[] = []
   const spawn: SpawnFn = (_command, args) => {
     started.push(args)
     const child = new EventEmitter() as ReturnType<SpawnFn>
@@ -17,9 +18,10 @@ function fakeSpawn(): { spawn: SpawnFn; started: string[][] } {
     child.stderr = new Readable({ read() {} })
     child.unref = vi.fn() as never
     child.kill = vi.fn() as never
+    children.push(child)
     return child
   }
-  return { spawn, started }
+  return { spawn, started, children }
 }
 
 describe('AvdController.list', () => {
@@ -85,11 +87,20 @@ describe('AvdController.boot', () => {
   })
 
   it('spawns the emulator with -avd and waits until boot completes', async () => {
+    // 'devices'의 첫 호출은 spawn 전 스냅샷이다. 거기서 emulator-5554가 이미 잡히면
+    // boot()는 그걸 "기존에 떠 있던 기기"로 걸러내므로, 새로 부팅된 기기로 인정받으려면
+    // spawn 이후(두 번째 호출부터)에만 나타나야 한다.
+    let devicesCalls = 0
     let bootChecks = 0
     const adb = {
       exec: vi.fn(async (serial: string | null, args: string[]) => {
         const joined = args.join(' ')
-        if (joined.includes('devices')) return result('List of devices attached\nemulator-5554  device\n')
+        if (joined.includes('devices')) {
+          devicesCalls += 1
+          return devicesCalls === 1
+            ? result('List of devices attached\n')
+            : result('List of devices attached\nemulator-5554  device\n')
+        }
         if (joined.includes('sys.boot_completed')) {
           bootChecks += 1
           return result(bootChecks >= 2 ? '1\n' : '\n')
@@ -141,6 +152,118 @@ describe('AvdController.boot', () => {
     await expect(controller.boot('Pixel_7_API_34', 20_000)).rejects.toMatchObject({
       toolError: { kind: 'device_unresponsive' }
     })
+  })
+
+  it('drains the spawned emulator child stdout and stderr so a chatty process cannot block on write', async () => {
+    // 'devices'의 첫 호출은 spawn하기 전 스냅샷이다. 거기서부터 emulator-5554가
+    // 잡히면 boot()가 그 serial을 "이미 떠 있던 기기"로 걸러내 버려서 끝내 새
+    // serial을 못 찾고 무한정 폴링하게 된다. 그래서 spawn 이후(두 번째 호출부터)에만
+    // emulator-5554가 나타나도록 해서, 이 테스트는 오직 드레인 여부만 검증한다.
+    let devicesCalls = 0
+    const adb = {
+      exec: vi.fn(async (_serial: string | null, args: string[]) => {
+        const joined = args.join(' ')
+        if (joined.includes('devices')) {
+          devicesCalls += 1
+          return devicesCalls === 1
+            ? result('List of devices attached\n')
+            : result('List of devices attached\nemulator-5554  device\n')
+        }
+        if (joined.includes('sys.boot_completed')) return result('1\n')
+        if (joined.includes('avd')) return result('Pixel_7_API_34\nOK\n')
+        return result('')
+      }),
+      stream: vi.fn()
+    } as unknown as AdbClient
+    const { spawn, children } = fakeSpawn()
+
+    const controller = createAvdController({
+      adb,
+      emulatorPath: '/opt/sdk/emulator/emulator',
+      spawn,
+      listAvdNames: async () => ['Pixel_7_API_34'],
+      sleep: async () => {}
+    })
+
+    await controller.boot('Pixel_7_API_34')
+
+    const [child] = children
+    if (!child) throw new Error('spawn이 자식 프로세스를 만들지 않았다')
+    expect(child.stdout.listenerCount('data')).toBeGreaterThan(0)
+    expect(child.stderr.listenerCount('data')).toBeGreaterThan(0)
+  })
+
+  it('does not return the serial of an AVD that was already running before boot() was called', async () => {
+    // emulator-5554는 boot()를 부르기 전부터 이미 같은 이름의 AVD를 띄우고 있고,
+    // 부팅도 이미 끝나 있다(sys.boot_completed가 처음부터 1). 그런데도 boot()는
+    // 이 serial을 "방금 부팅에 성공한 기기"로 돌려주면 안 된다 — 실제로는 spawn한
+    // 새 인스턴스가 관찰된 적이 없기 때문이다. 실제 emulator 바이너리는 같은 AVD의
+    // 두 번째 인스턴스 실행을 거부하므로, 새 serial은 끝내 나타나지 않고
+    // device_unresponsive로 끝나는 것이 맞는 동작이다.
+    const adb = {
+      exec: vi.fn(async (serial: string | null, args: string[]) => {
+        const joined = args.join(' ')
+        if (joined.includes('devices')) return result('List of devices attached\nemulator-5554  device\n')
+        if (joined.includes('sys.boot_completed')) return result('1\n')
+        if (serial === 'emulator-5554' && joined.includes('avd')) return result('Pixel_7_API_34\nOK\n')
+        return result('')
+      }),
+      stream: vi.fn()
+    } as unknown as AdbClient
+    const { spawn } = fakeSpawn()
+
+    let now = 0
+    const controller = createAvdController({
+      adb,
+      emulatorPath: '/opt/sdk/emulator/emulator',
+      spawn,
+      listAvdNames: async () => ['Pixel_7_API_34'],
+      sleep: async () => {
+        now += 5_000
+      },
+      now: () => now
+    })
+
+    await expect(controller.boot('Pixel_7_API_34', 20_000)).rejects.toMatchObject({
+      toolError: { kind: 'device_unresponsive' }
+    })
+  })
+
+  it('treats a transient getprop failure during boot as "not booted yet", not a boot failure', async () => {
+    // 위 테스트와 같은 이유로, spawn 전 스냅샷에는 emulator-5554가 없어야 한다.
+    let devicesCalls = 0
+    let bootChecks = 0
+    const adb = {
+      exec: vi.fn(async (serial: string | null, args: string[]) => {
+        const joined = args.join(' ')
+        if (joined.includes('devices')) {
+          devicesCalls += 1
+          return devicesCalls === 1
+            ? result('List of devices attached\n')
+            : result('List of devices attached\nemulator-5554  device\n')
+        }
+        if (joined.includes('sys.boot_completed')) {
+          bootChecks += 1
+          if (bootChecks === 1) throw new Error('device offline')
+          return result(bootChecks >= 3 ? '1\n' : '\n')
+        }
+        if (serial === 'emulator-5554' && joined.includes('avd')) return result('Pixel_7_API_34\nOK\n')
+        return result('')
+      }),
+      stream: vi.fn()
+    } as unknown as AdbClient
+    const { spawn } = fakeSpawn()
+
+    const controller = createAvdController({
+      adb,
+      emulatorPath: '/opt/sdk/emulator/emulator',
+      spawn,
+      listAvdNames: async () => ['Pixel_7_API_34'],
+      sleep: async () => {}
+    })
+
+    await expect(controller.boot('Pixel_7_API_34')).resolves.toBe('emulator-5554')
+    expect(bootChecks).toBeGreaterThanOrEqual(3)
   })
 })
 
