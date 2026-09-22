@@ -7,7 +7,7 @@ scope: [main, renderer, preload, mcp, android, build]
 hosts: [macos]
 supersedes:
 superseded_by:
-related_adr: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006]
+related_adr: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007]
 related_spec:
 related_architecture:
 related_plan:
@@ -94,7 +94,7 @@ adb 미발견, 기기 끊김, 타임아웃을 여기서 타입 있는 에러로 
 interface Device {
   readonly serial: string
   info(): Promise<DeviceInfo>
-  install(apkPath: string, opts?: InstallOpts): Promise<string>
+  install(apkPath: string, opts?: InstallOpts): Promise<string | null>
   uninstall(pkg: string): Promise<void>
   launch(pkg: string, activity?: string): Promise<void>
   stop(pkg: string): Promise<void>
@@ -112,8 +112,10 @@ interface Device {
 ```
 
 `dumpUi`는 이미 요약된 `UiNode[]`를 돌려준다. 원본 XML은 이 경계를 넘지 않는다.
-`install`은 설치된 패키지명을 돌려준다. `readLogs`가 돌려주는 `LogReadResult`는 줄 배열과 함께
-잘림 여부를 담는다 — 잘림은 에러가 아니라 성공 응답의 필드다.
+`install`은 설치된 패키지명을 돌려준다. 재설치라 패키지 목록이 그대로여서 이름을 특정할 수
+없으면 `null`이다 — 빈 문자열로 말하면 호출부가 그것을 유효한 패키지명으로 착각한다.
+`readLogs`가 돌려주는 `LogReadResult`는 줄 배열과 함께 잘림 여부를 담는다 — 잘림은 에러가 아니라
+성공 응답의 필드다.
 
 ### MCP 툴
 
@@ -181,10 +183,20 @@ interface Device {
 
 모든 툴이 `serial`을 생략할 수 있고, 생략하면 활성 기기로 간다.
 
-- 기기가 하나면 자동으로 활성이 된다.
+활성 기기는 **명시적으로 고른 기기**만 가리킨다. 아무도 고르지 않았을 때 어느 기기로 갈지는
+`DeviceRegistry`의 `resolve`가 호출 시점에 정한다. 자동으로 활성 자리를 채우지 않는 이유는,
+채우고 나면 기기가 둘일 때 "활성이 정해지지 않음"이라는 상태 자체가 사라져 아래 두 번째 줄의
+후보 목록 에러에 영원히 닿지 못하기 때문이다.
+
+- `serial`을 생략했고 기기가 하나면 그 기기로 간다. 활성 자리는 비어 있어도 된다.
 - 기기가 둘 이상이고 활성이 정해지지 않았는데 `serial`을 생략하면, 후보 목록을 담은 에러를 돌려준다.
-- 활성 기기가 사라지면 활성이 해제된다. 남은 기기가 하나면 그것이 활성이 된다.
+- 활성 기기가 사라지면 활성이 해제된다. 남은 기기가 하나면 그 기기로 가지만, 활성 자리는 비어 있다.
 - `device_select`와 앱 UI의 기기 선택은 같은 상태를 바꾼다.
+
+`DeviceRegistry`의 `getActive`는 명시적 선택만 돌려주므로, 기기가 하나 붙어 있고 아무도 고르지
+않았으면 비어 있다. 활성 기기 변경 이벤트와 이 스냅샷이 같은 뜻을 갖게 하려는 의도다 — 파생값을
+스냅샷에 섞으면 이벤트 없이 값만 바뀌는 순간이 생긴다. 그래서 "지금 명령이 갈 기기"를 화면에
+표시하는 쪽은 선택이 없을 때 기기가 하나뿐이면 그 기기를 쓰는 파생 규칙을 직접 적용한다.
 
 ### 명령 직렬화
 

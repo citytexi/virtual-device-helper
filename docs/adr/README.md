@@ -15,6 +15,7 @@ virtual-device-helper의 구조 결정을 기록한다. 기록하는 것은 **"�
 | [0004](0004-hybrid-mcp-tool-surface.md) | MCP 툴 표면은 저수준 전부 + 고수준 소수 | accepted | 2026-09-22 | uiautomator 덤프를 그대로 못 주므로 순수 저수준안은 불성립 |
 | [0005](0005-device-interface-abstraction.md) | 타깃 디바이스는 Device 인터페이스로 가른다 | accepted | 2026-09-22 | 구현체는 AndroidDevice 하나. iOS는 M4에서 인터페이스를 넓힌다 |
 | [0006](0006-build-stack-electron-vite.md) | 빌드 스택은 electron-vite + electron-builder + React | accepted | 2026-09-22 | 세 타깃이 한 설정·한 타입 체계를 공유 |
+| [0007](0007-xml-parsing-library.md) | uiautomator 덤프 파싱에 fast-xml-parser를 들인다 | accepted | 2026-09-22 | 정규식은 조용히 노드를 흘린다. 파서는 parseUiDump 한 곳에 가둔다 |
 <!-- index:end -->
 
 ## 언제 ADR을 쓰는가

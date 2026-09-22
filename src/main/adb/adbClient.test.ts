@@ -159,6 +159,21 @@ describe('adbClient.exec — 스트림 에러와 시그널 종료', () => {
     await expect(pending).rejects.toMatchObject({ toolError: { kind: 'command_failed' } })
   })
 
+  it('kills the child process when a stream error fails the command', async () => {
+    // M1-1 carry-over 2: failFromStream은 지금 reject만 하고 자식을 죽이지
+    // 않는다. main은 오래 도는 Electron 프로세스라 이런 adb 자식이 좀비로
+    // 쌓인다. 타임아웃 경로가 이미 하는 child.kill('SIGKILL')을 여기서도 해야 한다.
+    const fake = controllableSpawn()
+    const client = createAdbClient('/opt/sdk/platform-tools/adb', fake.spawn)
+
+    const pending = client.exec(null, ['logcat', '-d'])
+    fake.emitStdoutError(new Error('EPIPE'))
+
+    await pending.catch(() => undefined)
+
+    expect(fake.killCalls).toEqual(['SIGKILL'])
+  })
+
   it('rejects with command_failed when stderr emits an error instead of leaving it uncaught', async () => {
     const fake = controllableSpawn()
     const client = createAdbClient('/opt/sdk/platform-tools/adb', fake.spawn)

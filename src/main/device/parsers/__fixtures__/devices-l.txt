@@ -1,0 +1,3 @@
+List of devices attached
+RFCXC00V8AZ            device usb:1-1.3.1 product:a35xks model:SM_A356N device:a35x transport_id:2
+
