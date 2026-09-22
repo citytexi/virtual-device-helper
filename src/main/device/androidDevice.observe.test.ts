@@ -121,12 +121,21 @@ describe('AndroidDevice.readLogs', () => {
   })
 
   it('clamps a limit above the hard maximum instead of honouring it', async () => {
-    const { adb } = fakeAdb({ logcat: logs })
+    // 5줄짜리 고정 픽스처로는 클램프가 없어도 우연히 통과한다.
+    // 상한을 실제로 넘는 로그를 합성해야 클램프가 없으면 이 테스트가 진짜로 깨진다.
+    const overLimitCount = MAX_LOG_LIMIT + 10
+    const overLimitLogs = Array.from(
+      { length: overLimitCount },
+      (_, i) => `09-22 11:06:20.000  1 2 I Tag${i}: message ${i}`
+    ).join('\n')
+    const { adb } = fakeAdb({ logcat: overLimitLogs })
     const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })
 
     const result = await device.readLogs({ limit: MAX_LOG_LIMIT + 5000 })
 
-    expect(result.lines.length).toBeLessThanOrEqual(MAX_LOG_LIMIT)
+    expect(result.lines.length).toBe(MAX_LOG_LIMIT)
+    expect(result.truncated).toBe(true)
+    expect(result.droppedCount).toBe(10)
   })
 
   it('filters on tag and message, case-insensitively', async () => {
