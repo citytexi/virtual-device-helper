@@ -82,6 +82,14 @@ describe('AndroidDevice.inputText', () => {
       toolError: { kind: 'command_failed' }
     })
   })
+
+  it('rejects text containing % because the device decodes %s back to a space', async () => {
+    const { adb } = fakeAdb()
+
+    await expect(makeDevice(adb).inputText('a%sb')).rejects.toMatchObject({
+      toolError: { kind: 'command_failed' }
+    })
+  })
 })
 
 describe('AndroidDevice.pressKey', () => {

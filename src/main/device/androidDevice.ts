@@ -34,11 +34,17 @@ const KEYCODES: Record<KeyName, string> = {
 
 /**
  * `input text`는 ASCII만 안전하게 보낼 수 있다. 공백은 %s로, 셸 메타문자는
- * 백슬래시로 이스케이프한다. ASCII 밖의 문자는 조용히 깨뜨리는 대신 거부한다.
+ * 백슬래시로 이스케이프한다. ASCII 밖의 문자와 %는 조용히 깨뜨리는 대신 거부한다.
  */
 function escapeInputText(text: string): string {
   if (!/^[\x20-\x7e]*$/.test(text)) {
     throw deviceError('command_failed', 'adb input text로는 ASCII 문자만 보낼 수 있다', '해당 문자는 클립보드 붙여넣기 등 다른 방법이 필요하다. M1 범위 밖이다', {
+      text
+    })
+  }
+
+  if (text.includes('%')) {
+    throw deviceError('command_failed', 'adb input text로는 %를 포함한 문자열을 보낼 수 없다', '기기가 %s를 공백으로 되돌려 읽기 때문에 %가 섞인 문자열은 안전하게 보낼 방법이 없다. %를 뺀 다음 나눠서 보내거나 다른 방법을 써라', {
       text
     })
   }
