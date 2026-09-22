@@ -112,3 +112,88 @@ describe('adbClient.exec', () => {
     })
   })
 })
+
+/**
+ * 자식 프로세스를 테스트가 직접 조종할 수 있게 만든 spawn이다.
+ * 위의 fakeSpawn과 달리 close·stream 에러 시점을 테스트가 정한다.
+ */
+function controllableSpawn(): {
+  spawn: SpawnFn
+  stdout: Readable
+  stderr: Readable
+  close: (code: number | null, signal?: NodeJS.Signals | null) => void
+  emitStdoutError: (error: Error) => void
+  emitStderrError: (error: Error) => void
+  killCalls: Array<NodeJS.Signals | undefined>
+} {
+  const stdout = new Readable({ read() {} })
+  const stderr = new Readable({ read() {} })
+  const child = new EventEmitter() as ReturnType<SpawnFn>
+  const killCalls: Array<NodeJS.Signals | undefined> = []
+  child.stdout = stdout
+  child.stderr = stderr
+  child.kill = ((signal?: NodeJS.Signals) => {
+    killCalls.push(signal)
+    return true
+  }) as never
+
+  return {
+    spawn: () => child,
+    stdout,
+    stderr,
+    close: (code, signal = null) => child.emit('close', code, signal),
+    emitStdoutError: (error) => stdout.emit('error', error),
+    emitStderrError: (error) => stderr.emit('error', error),
+    killCalls
+  }
+}
+
+describe('adbClient.exec — 스트림 에러와 시그널 종료', () => {
+  it('rejects with command_failed when stdout emits an error instead of leaving it uncaught', async () => {
+    const fake = controllableSpawn()
+    const client = createAdbClient('/opt/sdk/platform-tools/adb', fake.spawn)
+
+    const pending = client.exec(null, ['logcat', '-d'])
+    fake.emitStdoutError(new Error('EPIPE'))
+
+    await expect(pending).rejects.toMatchObject({ toolError: { kind: 'command_failed' } })
+  })
+
+  it('rejects with command_failed when stderr emits an error instead of leaving it uncaught', async () => {
+    const fake = controllableSpawn()
+    const client = createAdbClient('/opt/sdk/platform-tools/adb', fake.spawn)
+
+    const pending = client.exec(null, ['shell', 'ls'])
+    fake.emitStderrError(new Error('EPIPE'))
+
+    await expect(pending).rejects.toMatchObject({ toolError: { kind: 'command_failed' } })
+  })
+
+  it('rejects instead of reporting success when the process is killed by a signal', async () => {
+    const fake = controllableSpawn()
+    const client = createAdbClient('/opt/sdk/platform-tools/adb', fake.spawn)
+
+    const pending = client.exec(null, ['exec-out', 'screencap', '-p'])
+    fake.stdout.push(Buffer.from([0x89, 0x50]))
+    fake.stdout.push(null)
+    fake.stderr.push(null)
+    fake.close(null, 'SIGKILL')
+
+    const error = await pending.catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(DeviceError)
+    expect((error as DeviceError).toolError.kind).toBe('command_failed')
+    expect((error as DeviceError).toolError.details?.signal).toBe('SIGKILL')
+  })
+
+  it('still reports device_unresponsive when the timeout kill produces a signal close', async () => {
+    const fake = controllableSpawn()
+    const client = createAdbClient('/opt/sdk/platform-tools/adb', fake.spawn)
+
+    const pending = client.exec(null, ['shell', 'sleep', '99'], { timeoutMs: 10 })
+    // 타임아웃이 SIGKILL을 보낸 뒤 실제 close(null, 'SIGKILL')이 도착하는 상황을 만든다.
+    setTimeout(() => fake.close(null, 'SIGKILL'), 30)
+
+    await expect(pending).rejects.toMatchObject({ toolError: { kind: 'device_unresponsive' } })
+  })
+})
