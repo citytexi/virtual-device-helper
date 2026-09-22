@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { registerDeviceTools } from './tools/device'
 import { registerAppTools } from './tools/app'
+import { registerObserveTools } from './tools/observe'
 import { registerUiTools } from './tools/ui'
 import type { ToolContext } from './toolContext'
 
@@ -12,4 +13,5 @@ export function registerTools(server: McpServer, context: ToolContext): void {
   registerDeviceTools(server, context)
   registerAppTools(server, context)
   registerUiTools(server, context)
+  registerObserveTools(server, context)
 }
