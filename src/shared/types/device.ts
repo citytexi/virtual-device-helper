@@ -82,7 +82,11 @@ export interface LogOpts {
 export interface Device {
   readonly serial: string
   info(): Promise<DeviceInfo>
-  install(apkPath: string, opts?: InstallOpts): Promise<string>
+  /**
+   * 설치된 패키지명. 재설치라 패키지 목록이 그대로여서 이름을 특정할 수 없으면 null이다 —
+   * 빈 문자열로 말하면 호출부가 그것을 유효한 패키지명으로 착각한다.
+   */
+  install(apkPath: string, opts?: InstallOpts): Promise<string | null>
   uninstall(pkg: string): Promise<void>
   launch(pkg: string, activity?: string): Promise<void>
   stop(pkg: string): Promise<void>

@@ -68,6 +68,16 @@ describe('AndroidDevice.install', () => {
 
     await expect(device.install('/tmp/app.apk')).resolves.toBe('com.example.app')
   })
+
+  it('returns null rather than an empty string when a reinstall leaves the package list unchanged', async () => {
+    // 에이전트의 rebuild 루프에서는 이 경로가 정상 경로다: 늘 reinstall: true이고
+    // 패키지는 이미 깔려 있다. 빈 문자열을 돌려주면 그대로 app_launch로 흘러가
+    // package_not_found가 된다. 모르는 값은 이 브랜치의 나머지와 같이 null로 말한다.
+    const { adb } = fakeAdb({ 'pm list packages': 'package:com.example.app\n' })
+    const device = makeDevice(adb)
+
+    await expect(device.install('/tmp/app.apk', { reinstall: true })).resolves.toBeNull()
+  })
 })
 
 describe('AndroidDevice app commands', () => {

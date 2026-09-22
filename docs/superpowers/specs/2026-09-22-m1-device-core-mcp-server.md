@@ -7,7 +7,7 @@ scope: [main, renderer, preload, mcp, android, build]
 hosts: [macos]
 supersedes:
 superseded_by:
-related_adr: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006]
+related_adr: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007]
 related_spec:
 related_architecture:
 related_plan:
@@ -94,7 +94,7 @@ adb 미발견, 기기 끊김, 타임아웃을 여기서 타입 있는 에러로 
 interface Device {
   readonly serial: string
   info(): Promise<DeviceInfo>
-  install(apkPath: string, opts?: InstallOpts): Promise<string>
+  install(apkPath: string, opts?: InstallOpts): Promise<string | null>
   uninstall(pkg: string): Promise<void>
   launch(pkg: string, activity?: string): Promise<void>
   stop(pkg: string): Promise<void>
@@ -112,7 +112,8 @@ interface Device {
 ```
 
 `dumpUi`는 이미 요약된 `UiNode[]`를 돌려준다. 원본 XML은 이 경계를 넘지 않는다.
-`install`은 설치된 패키지명을 돌려준다. `readLogs`가 돌려주는 `LogReadResult`는 줄 배열과 함께
+`install`은 설치된 패키지명을 돌려준다. 재설치라 패키지 목록이 그대로여서 이름을 특정할 수
+없으면 `null`이다 — 빈 문자열로 말하면 호출부가 그것을 유효한 패키지명으로 착각한다. `readLogs`가 돌려주는 `LogReadResult`는 줄 배열과 함께
 잘림 여부를 담는다 — 잘림은 에러가 아니라 성공 응답의 필드다.
 
 ### MCP 툴

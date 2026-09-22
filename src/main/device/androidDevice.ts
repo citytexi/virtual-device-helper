@@ -49,7 +49,9 @@ function escapeInputText(text: string): string {
     })
   }
 
-  return text.replace(/(["$&'()*;<>?\[\\\]`|])/g, '\\$1').replace(/ /g, '%s')
+  // 기기 셸은 mksh다. #은 단어 첫머리에서 주석을 열어 뒤를 통째로 삼키고, ~는 틸드
+  // 확장, {}는 중괄호 확장을 부른다. 앞의 메타문자들과 같은 이유로 여기서 막는다.
+  return text.replace(/(["#$&'()*;<>?\[\\\]`{|}~])/g, '\\$1').replace(/ /g, '%s')
 }
 
 export interface AndroidDeviceDeps {
@@ -105,10 +107,13 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
       throw deviceError('command_failed', `scale은 0보다 크고 1 이하여야 한다: ${opts.scale}`, '0.1에서 1.0 사이 값을 써라')
     }
 
-    const size = await screenSize()
-    const longEdge = Math.max(size.width, size.height)
-    const maxLongEdge =
-      opts.scale === undefined ? DEFAULT_MAX_LONG_EDGE : Math.round(longEdge * opts.scale)
+    // scale이 없으면 기기 해상도를 알 필요가 없다. 기본 경로에서 wm size 왕복을
+    // 한 번 아낀다.
+    let maxLongEdge = DEFAULT_MAX_LONG_EDGE
+    if (opts.scale !== undefined) {
+      const size = await screenSize()
+      maxLongEdge = Math.round(Math.max(size.width, size.height) * opts.scale)
+    }
 
     const captured = await adb.exec(serial, ['exec-out', 'screencap', '-p'], {
       timeoutMs: SCREENSHOT_TIMEOUT_MS
@@ -120,11 +125,30 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
   }
 
   async function dumpUi(): Promise<UiNode[]> {
-    const size = await screenSize()
-    await shell(['uiautomator', 'dump', DUMP_PATH])
-    const xml = (await adb.exec(serial, ['exec-out', 'cat', DUMP_PATH])).stdout
+    // uiautomator dump는 화면이 안정되지 않으면 "ERROR: could not get idle state."를
+    // 내고 파일을 건드리지 않는다. 앞선 덤프가 그 자리에 남아 있으면 지난 화면의
+    // 좌표가 지금 화면인 것처럼 돌아간다 — 틀린 성공은 UI를 조작하는 에이전트에게
+    // 가장 나쁜 실패 모양이다. 그래서 먼저 지워서 읽을 수 있는 헌 덤프 자체를 없앤다.
+    // 성공 메시지 문구로 판정하지 않는 이유는 그 문구가 Android 버전마다 다르기 때문이다.
+    await shell(['rm', '-f', DUMP_PATH])
+    const dumpOutput = await shell(['uiautomator', 'dump', DUMP_PATH])
 
-    return parseUiDump(xml, { screenWidth: size.width, screenHeight: size.height })
+    function dumpFailed(): never {
+      throw deviceError('command_failed', 'UI 덤프를 뜨지 못했다', '화면 전환이나 애니메이션이 끝난 뒤 다시 불러라', {
+        stdout: dumpOutput.trim()
+      })
+    }
+
+    // uiautomator는 실패를 종료 코드가 아니라 stdout의 ERROR 줄로 말한다. 먼저 지웠더라도
+    // 그 rm이 듣지 않는 기기가 있을 수 있어, 실패를 말한 덤프는 읽지 않고 여기서 끊는다.
+    if (/^\s*ERROR\b/im.test(dumpOutput)) dumpFailed()
+
+    const xml = (await adb.exec(serial, ['exec-out', 'cat', DUMP_PATH])).stdout
+    if (!xml.includes('<hierarchy')) dumpFailed()
+
+    // 화면 사각형은 덤프의 루트 노드 bounds에 들어 있다. wm size는 회전을 반영하지
+    // 않아 가로 화면에서 틀린 답을 준다.
+    return parseUiDump(xml)
   }
 
   async function readLogs(opts: LogOpts = {}): Promise<LogReadResult> {
@@ -178,7 +202,7 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     })
   }
 
-  async function install(apkPath: string, opts: InstallOpts = {}): Promise<string> {
+  async function install(apkPath: string, opts: InstallOpts = {}): Promise<string | null> {
     if (!apkPath.endsWith('.apk')) {
       throw deviceError('apk_path_invalid', `APK 파일이 아니다: ${apkPath}`, '.apk 파일 경로를 줘라', { apkPath })
     }
@@ -198,9 +222,11 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     const after = await listPackages()
     const added = after.filter((pkg) => !before.has(pkg))
 
-    // 재설치면 목록이 그대로다. 그때는 이름을 알 방법이 없으므로 빈 문자열 대신 명시적으로 알린다.
+    // 재설치면 목록이 그대로다. 설치 자체는 성공했으니 실패로 올리지 않되, 패키지명을
+    // 알 수 없다는 사실은 null로 말한다. 빈 문자열은 그대로 app_launch에 흘러들어가
+    // package_not_found가 되고, 이 브랜치의 다른 "모름"들도 모두 null이다.
     if (added.length === 1) return added[0] as string
-    if (added.length === 0 && opts.reinstall) return ''
+    if (added.length === 0 && opts.reinstall) return null
 
     throw deviceError('command_failed', '설치 후 패키지명을 특정하지 못했다', 'app_list 대신 패키지명을 직접 지정해 실행해라', {
       added

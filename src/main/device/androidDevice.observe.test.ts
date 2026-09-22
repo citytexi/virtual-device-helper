@@ -85,6 +85,16 @@ describe('AndroidDevice.screenshot', () => {
     expect(resize).toHaveBeenCalledWith(expect.any(Buffer), 1200)
   })
 
+  it('does not pay for a wm size round trip on the default path', async () => {
+    // 기본 경로는 기기 해상도를 알 필요가 없다. 긴 변 상한이 상수이기 때문이다.
+    const { adb, calls } = fakeAdb({ screencap: Buffer.from([1]) })
+    const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })
+
+    await device.screenshot()
+
+    expect(calls.some((args) => args.join(' ').includes('wm size'))).toBe(false)
+  })
+
   it('rejects a scale outside (0, 1]', async () => {
     const { adb } = fakeAdb({ screencap: Buffer.from([1]), 'wm size': 'Physical size: 1080x2400\n' })
     const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })
@@ -162,11 +172,14 @@ describe('AndroidDevice.readLogs', () => {
 describe('AndroidDevice.dumpUi', () => {
   it('returns summarised nodes, never the raw XML', async () => {
     const xml = `<?xml version="1.0"?><hierarchy rotation="0"><node index="0" text="로그인" resource-id="com.example:id/login" class="android.widget.Button" content-desc="" clickable="true" bounds="[80,860][1000,1000]" /></hierarchy>`
-    const { adb } = fakeAdb({ 'window_dump.xml': xml, 'wm size': 'Physical size: 1080x2400\n' })
+    const { adb, calls } = fakeAdb({ 'exec-out cat': xml })
     const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })
 
     const nodes = await device.dumpUi()
 
+    // 화면 사각형은 덤프의 루트 노드가 들고 있다. wm size는 회전을 반영하지 않아
+    // 가로 화면에서 거의 모든 노드를 버리게 만들고, 왕복 한 번 값도 못 한다.
+    expect(calls.some((args) => args.join(' ').includes('wm size'))).toBe(false)
     expect(nodes).toEqual([
       {
         index: 0,
@@ -179,5 +192,43 @@ describe('AndroidDevice.dumpUi', () => {
         clickable: true
       }
     ])
+  })
+
+  it('clears the previous dump file before asking for a new one', async () => {
+    const xml = `<?xml version="1.0"?><hierarchy rotation="0"><node index="0" text="로그인" resource-id="com.example:id/login" class="android.widget.Button" content-desc="" clickable="true" bounds="[80,860][1000,1000]" /></hierarchy>`
+    const { adb, calls } = fakeAdb({ 'exec-out cat': xml })
+    const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })
+
+    await device.dumpUi()
+
+    const removed = calls.findIndex((args) => args.includes('rm') && args.includes('/sdcard/window_dump.xml'))
+    const dumped = calls.findIndex((args) => args.includes('uiautomator'))
+    expect(removed).toBeGreaterThanOrEqual(0)
+    expect(removed).toBeLessThan(dumped)
+  })
+
+  it('reports a failed dump instead of handing back the previous screen', async () => {
+    // uiautomator dump는 애니메이션 중이면 "ERROR: could not get idle state."를 내고
+    // 파일을 건드리지 않는다. 앞선 덤프가 남아 있으면 지난 화면의 좌표가 지금 화면인
+    // 것처럼 돌아간다 — UI를 조작하는 에이전트에게 가장 나쁜 실패 모양이다.
+    const stale = `<?xml version="1.0"?><hierarchy rotation="0"><node index="0" text="지난 화면" resource-id="com.example:id/old" class="android.widget.Button" content-desc="" clickable="true" bounds="[80,860][1000,1000]" /></hierarchy>`
+    const { adb } = fakeAdb({
+      uiautomator: 'ERROR: could not get idle state.\n',
+      'exec-out cat': stale
+    })
+    const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })
+
+    await expect(device.dumpUi()).rejects.toMatchObject({
+      toolError: { kind: 'command_failed' }
+    })
+  })
+
+  it('reports a dump that produced no hierarchy rather than returning an empty screen', async () => {
+    const { adb } = fakeAdb({ 'exec-out cat': '' })
+    const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })
+
+    await expect(device.dumpUi()).rejects.toMatchObject({
+      toolError: { kind: 'command_failed' }
+    })
   })
 })

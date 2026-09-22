@@ -75,6 +75,22 @@ describe('AndroidDevice.inputText', () => {
     expect(calls[0]?.[3]).toBe('a\\&b\\$c')
   })
 
+  it('escapes the mksh expansion characters that would otherwise rewrite the text', async () => {
+    // 기기 셸은 mksh다. ~는 틸드 확장, {a,b}는 중괄호 확장, 단어 첫머리의 #은
+    // 주석 시작이라 뒤가 통째로 사라진다. 셋 다 조용히 다른 글자를 타이핑하게 만든다.
+    const { adb, calls } = fakeAdb()
+    const device = makeDevice(adb)
+
+    await device.inputText('#tag')
+    expect(calls[0]?.[3]).toBe('\\#tag')
+
+    await device.inputText('~/home')
+    expect(calls[1]?.[3]).toBe('\\~/home')
+
+    await device.inputText('{a,b}')
+    expect(calls[2]?.[3]).toBe('\\{a,b\\}')
+  })
+
   it('rejects text it cannot send safely instead of sending something wrong', async () => {
     const { adb } = fakeAdb()
 
