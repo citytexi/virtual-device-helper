@@ -7,6 +7,13 @@ export type ToolContent =
   | { type: 'image'; data: string; mimeType: string }
 
 export interface ToolResult {
+  /**
+   * MCP SDK의 `registerTool` 콜백이 기대하는 반환 타입(`CallToolResult`)은 zod로 추론된
+   * 타입이라 인덱스 시그니처가 함께 따라온다. 이 인덱스 시그니처가 없으면 TypeScript가
+   * `ToolResult`를 그 자리에 대입하지 못한다 — 형변환을 각 툴 파일에 흩어 두는 대신 여기서
+   * 한 번만 맞춰 둔다.
+   */
+  [key: string]: unknown
   content: ToolContent[]
   isError?: boolean
 }

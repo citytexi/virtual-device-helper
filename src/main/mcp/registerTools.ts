@@ -1,4 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { registerDeviceTools } from './tools/device'
 import type { ToolContext } from './toolContext'
 
 /**
@@ -6,6 +7,5 @@ import type { ToolContext } from './toolContext'
  * 순서는 스펙의 표 순서와 같게 유지한다 — 툴 목록이 그 순서로 노출된다.
  */
 export function registerTools(server: McpServer, context: ToolContext): void {
-  void server
-  void context
+  registerDeviceTools(server, context)
 }
