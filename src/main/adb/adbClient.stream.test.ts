@@ -134,6 +134,34 @@ describe('adbClient.stream', () => {
     expect(closeCalls).toBe(1)
   })
 
+  it('does not deliver a second error after close has already been reported', async () => {
+    // M1-1 carry-over 1: stdout error가 notifyClose(null)까지 먼저 끝내 놓은
+    // 뒤에, 실제 close 이벤트가 비정상 종료 코드로 뒤따라오면 deliverError가
+    // 한 번 더 불려서 "에러 뒤에는 반드시 onClose가 뒤따른다"는 onError의
+    // 계약을 깬다(error → close → error). closeNotified 가드로 이걸 막는다.
+    const fake = pushableSpawn()
+    const client = createAdbClient('/opt/sdk/platform-tools/adb', fake.spawn)
+    const errors: unknown[] = []
+    const closes: Array<number | null> = []
+
+    const stream = client.stream(null, ['logcat'])
+    stream.onError((error) => errors.push(error))
+    stream.onClose((code) => closes.push(code))
+
+    fake.emitStdoutError(new Error('EPIPE'))
+    await vi.waitFor(() => expect(errors).toHaveLength(1))
+    await vi.waitFor(() => expect(closes).toHaveLength(1))
+
+    // 실제 close가 비정상 종료 코드로 뒤따라온다. stderr에는 분류 가능한
+    // 실패 문구까지 실어서, 고쳐지지 않았다면 두 번째 에러가 나가게 만든다.
+    fake.pushStderr('error: no devices/emulators found\n')
+    fake.close(1)
+    await new Promise((r) => setTimeout(r, 5))
+
+    expect(errors).toHaveLength(1)
+    expect(closes).toHaveLength(1)
+  })
+
   it('does not call onLine for data received after close', async () => {
     const fake = pushableSpawn()
     const client = createAdbClient('/opt/sdk/platform-tools/adb', fake.spawn)

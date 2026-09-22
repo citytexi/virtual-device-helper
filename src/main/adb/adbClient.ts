@@ -170,6 +170,7 @@ export function createAdbClient(adbPath: string, spawnFn: SpawnFn = nodeSpawn as
         if (settled) return
         settled = true
         clearTimeout(timer)
+        child.kill('SIGKILL')
         reject(
           deviceError('command_failed', `adb ${streamName} 읽기에 실패했다: ${error.message}`, '첨부된 정보를 확인해라', {
             stream: streamName,
@@ -241,9 +242,12 @@ export function createAdbClient(adbPath: string, spawnFn: SpawnFn = nodeSpawn as
     }
 
     // stopped 가드는 여기 한 곳에만 둔다 — 모든 에러 경로가 이 함수를 거쳐가므로
-    // 경로마다 따로 stopped를 확인할 필요가 없다.
+    // 경로마다 따로 stopped를 확인할 필요가 없다. closeNotified 가드는 그와
+    // 별개로 둔다: close가 이미 알려진 뒤에 또 에러가 오면(예: stdout error로
+    // notifyClose(null)까지 끝난 뒤 실제 close가 비정상 코드로 뒤따라오는 경우)
+    // "에러 뒤에는 반드시 onClose가 뒤따른다"는 onError의 계약이 깨진다.
     function deliverError(error: DeviceError): void {
-      if (stopped) return
+      if (stopped || closeNotified) return
       for (const callback of errorCallbacks) callback(error)
     }
 
