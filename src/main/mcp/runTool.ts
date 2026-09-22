@@ -49,9 +49,21 @@ export async function runTool(
   const startedAt = Date.now()
   const id = randomUUID()
 
+  // 기록(sink.onToolCall)은 툴 결과와 완전히 분리한다. sink가 예외를 던져도(예: 창을 닫은
+  // 뒤 webContents가 destroyed 상태인 경우) 이미 끝난 handler의 성공/실패 판정을 바꾸면
+  // 안 된다. 그래서 sink 호출은 이 작은 함수 하나로 모으고 예외를 삼킨다. 호출당 정확히
+  // 한 번만 부르도록 성공/실패 분기 각각에서 한 번씩만 이 함수를 쓴다.
+  function recordSafely(record: Parameters<ToolCallSink['onToolCall']>[0]): void {
+    try {
+      sink.onToolCall(record)
+    } catch {
+      // 기록 실패는 무시한다. 활동 탭에 못 남아도 툴 결과는 그대로 에이전트에게 간다.
+    }
+  }
+
   try {
     const payload = await handler()
-    sink.onToolCall({
+    recordSafely({
       id,
       tool,
       argsSummary: summariseArgs(args),
@@ -71,7 +83,7 @@ export async function runTool(
           hint: '같은 호출을 다시 시도하고, 반복되면 앱의 활동 탭에서 맥락을 확인해라'
         }
 
-    sink.onToolCall({
+    recordSafely({
       id,
       tool,
       argsSummary: summariseArgs(args),

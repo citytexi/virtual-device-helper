@@ -99,3 +99,57 @@ describe('runTool failure', () => {
     expect(sink.records).toHaveLength(1)
   })
 })
+
+describe('runTool sink isolation', () => {
+  it('still returns a success result when the sink throws on a successful call', async () => {
+    const sink = {
+      onToolCall: () => {
+        throw new Error('Object has been destroyed')
+      }
+    }
+
+    const result = await runTool(sink, 'device_list', {}, async () => ({ devices: [] }))
+
+    expect(result.isError).toBeUndefined()
+    expect(result.content[0]).toEqual({ type: 'text', text: JSON.stringify({ devices: [] }, null, 2) })
+  })
+
+  it('still returns the original structured error when the sink throws on a failed call, without rejecting', async () => {
+    const sink = {
+      onToolCall: () => {
+        throw new Error('Object has been destroyed')
+      }
+    }
+
+    const result = await runTool(sink, 'ui_tap', {}, async () => {
+      throw deviceError('no_device', '연결된 기기가 없다', 'device_boot로 부팅해라')
+    })
+
+    expect(result.isError).toBe(true)
+    const payload = JSON.parse((result.content[0] as { text: string }).text) as {
+      kind: string
+      hint: string
+    }
+    expect(payload.kind).toBe('no_device')
+    expect(payload.hint).toBe('device_boot로 부팅해라')
+  })
+
+  it('calls the sink exactly once per invocation, even when the sink throws', async () => {
+    let calls = 0
+    const sink = {
+      onToolCall: () => {
+        calls += 1
+        throw new Error('Object has been destroyed')
+      }
+    }
+
+    await runTool(sink, 'device_list', {}, async () => ({ devices: [] }))
+    expect(calls).toBe(1)
+
+    calls = 0
+    await runTool(sink, 'ui_tap', {}, async () => {
+      throw deviceError('no_device', '없다', '부팅해라')
+    })
+    expect(calls).toBe(1)
+  })
+})
