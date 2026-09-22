@@ -33,6 +33,11 @@ export interface DeviceRegistry {
   resolve(serial?: string): Device
   setActive(serial: string): void
   clearActive(): void
+  /**
+   * 명시적으로 고른 기기. device_select나 앱의 기기 선택으로만 채워진다.
+   * 아무것도 고르지 않았으면 기기가 붙어 있어도 null이다 — 기기가 하나뿐일 때
+   * 그것이 대상이 되는 판단은 resolve()가 호출 시점에 한다.
+   */
   getActive(): string | null
   /** 같은 기기의 명령을 직렬화한다. 다른 기기끼리는 병렬로 돈다. */
   run<T>(serial: string, task: () => Promise<T>): Promise<T>
@@ -62,7 +67,6 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
       if (devices.has(serial)) return
       devices.set(serial, deps.createDevice(serial))
       emit({ type: 'device_connected', serial })
-      if (active === null) setActiveInternal(serial)
       return
     }
 
@@ -74,10 +78,9 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
     // settled entry 하나가 serial당 영구히 남는 트레이드오프를 받아들인다.
     emit({ type: 'device_disconnected', serial })
 
-    if (active !== serial) return
-    // 활성 기기가 사라졌다. 남은 것이 하나뿐이면 그것을 활성으로 올린다.
-    const remaining = [...devices.keys()]
-    setActiveInternal(remaining.length === 1 ? (remaining[0] as string) : null)
+    // 고른 기기가 사라졌으면 선택을 비운다. 남은 기기가 하나뿐일 때 그것이 대상이
+    // 되는 일은 resolve()가 그때 판단한다.
+    if (active === serial) setActiveInternal(null)
   }
 
   function onFailure(failure: TrackFailure): void {
@@ -116,6 +119,13 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
 
       if (devices.size === 0) {
         throw deviceError('no_device', '연결된 기기가 없다', 'device_list로 AVD를 확인하고 device_boot로 부팅해라')
+      }
+
+      // 기기가 하나뿐이면 고를 것이 없다. 스펙의 "기기가 하나면 자동으로 활성이 된다"는
+      // 여기서 늦게 판단한다 — 연결 시점에 활성 슬롯을 채우면 기기가 둘일 때의
+      // ambiguous_device가 영영 도달하지 않는다.
+      if (devices.size === 1) {
+        return devices.values().next().value as Device
       }
 
       throw deviceError('ambiguous_device', '기기가 여럿이라 대상을 정할 수 없다', 'serial을 지정하거나 device_select로 활성 기기를 정해라', {

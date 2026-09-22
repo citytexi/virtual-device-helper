@@ -59,11 +59,24 @@ describe('DeviceRegistry membership', () => {
 })
 
 describe('DeviceRegistry active device', () => {
-  it('makes the first device active automatically', () => {
+  // 스펙에서 활성 기기는 "명시적으로 고른 기기" 하나만 뜻한다. 기기가 하나뿐일 때
+  // 그것이 대상이 되는 것은 resolve()가 늦게 판단하는 일이다. 연결 시점에 활성
+  // 슬롯을 채워 버리면 기기가 둘일 때의 ambiguous_device가 도달할 수 없게 된다.
+  it('leaves the active slot empty when a device connects on its own', () => {
     const harness = makeRegistry()
     harness.registry.start()
 
     harness.connect('emulator-5554')
+
+    expect(harness.registry.getActive()).toBeNull()
+  })
+
+  it('remembers the device that was chosen explicitly', () => {
+    const harness = makeRegistry()
+    harness.registry.start()
+    harness.connect('emulator-5554')
+
+    harness.registry.setActive('emulator-5554')
 
     expect(harness.registry.getActive()).toBe('emulator-5554')
   })
@@ -71,30 +84,44 @@ describe('DeviceRegistry active device', () => {
   it('does not steal the active slot when a second device appears', () => {
     const harness = makeRegistry()
     harness.registry.start()
-
     harness.connect('emulator-5554')
+    harness.registry.setActive('emulator-5554')
+
     harness.connect('emulator-5556')
 
     expect(harness.registry.getActive()).toBe('emulator-5554')
   })
 
-  it('falls back to the only remaining device when the active one disappears', () => {
+  it('clears the active slot when the chosen device disappears', () => {
     const harness = makeRegistry()
     harness.registry.start()
-
     harness.connect('emulator-5554')
     harness.connect('emulator-5556')
+    harness.registry.setActive('emulator-5554')
+
     harness.disconnect('emulator-5554')
 
-    expect(harness.registry.getActive()).toBe('emulator-5556')
+    expect(harness.registry.getActive()).toBeNull()
   })
 
   it('clears the active slot when the last device disappears', () => {
     const harness = makeRegistry()
     harness.registry.start()
-
     harness.connect('emulator-5554')
+    harness.registry.setActive('emulator-5554')
+
     harness.disconnect('emulator-5554')
+
+    expect(harness.registry.getActive()).toBeNull()
+  })
+
+  it('forgets the choice when it is cleared', () => {
+    const harness = makeRegistry()
+    harness.registry.start()
+    harness.connect('emulator-5554')
+    harness.registry.setActive('emulator-5554')
+
+    harness.registry.clearActive()
 
     expect(harness.registry.getActive()).toBeNull()
   })
@@ -118,12 +145,22 @@ describe('DeviceRegistry.resolve', () => {
     expect(harness.registry.resolve('emulator-5554').serial).toBe('emulator-5554')
   })
 
-  it('returns the active device when no serial is given', () => {
+  it('resolves to the only attached device even though nothing chose it', () => {
     const harness = makeRegistry()
     harness.registry.start()
     harness.connect('emulator-5554')
 
     expect(harness.registry.resolve().serial).toBe('emulator-5554')
+  })
+
+  it('prefers the explicitly chosen device when several are attached', () => {
+    const harness = makeRegistry()
+    harness.registry.start()
+    harness.connect('emulator-5554')
+    harness.connect('emulator-5556')
+    harness.registry.setActive('emulator-5556')
+
+    expect(harness.registry.resolve().serial).toBe('emulator-5556')
   })
 
   it('throws no_device when nothing is attached', () => {
@@ -135,14 +172,13 @@ describe('DeviceRegistry.resolve', () => {
     )
   })
 
-  it('throws ambiguous_device with the candidate list when the active slot is empty', () => {
+  // 스펙의 완료 조건: "기기가 둘인데 serial을 빼면 후보 목록이 온다."
+  // 기기 둘, 아무것도 고르지 않은 상태가 이 에러의 정확한 조건이다.
+  it('throws ambiguous_device with the candidate list when two devices are attached and none was chosen', () => {
     const harness = makeRegistry()
     harness.registry.start()
     harness.connect('emulator-5554')
     harness.connect('emulator-5556')
-    harness.disconnect('emulator-5554')
-    harness.connect('emulator-5558')
-    harness.registry.clearActive()
 
     const error = (() => {
       try {
@@ -154,7 +190,19 @@ describe('DeviceRegistry.resolve', () => {
     })()
 
     expect(error?.toolError.kind).toBe('ambiguous_device')
-    expect(error?.toolError.details?.candidates).toEqual(['emulator-5556', 'emulator-5558'])
+    expect(error?.toolError.details?.candidates).toEqual(['emulator-5554', 'emulator-5556'])
+  })
+
+  it('falls back to the only remaining device after the chosen one disappears', () => {
+    const harness = makeRegistry()
+    harness.registry.start()
+    harness.connect('emulator-5554')
+    harness.connect('emulator-5556')
+    harness.registry.setActive('emulator-5554')
+
+    harness.disconnect('emulator-5554')
+
+    expect(harness.registry.resolve().serial).toBe('emulator-5556')
   })
 })
 
@@ -257,6 +305,7 @@ describe('DeviceRegistry events', () => {
     harness.registry.start()
 
     harness.connect('emulator-5554')
+    harness.registry.setActive('emulator-5554')
     harness.disconnect('emulator-5554')
 
     expect(events).toEqual([
@@ -264,6 +313,21 @@ describe('DeviceRegistry events', () => {
       { type: 'active_changed', serial: 'emulator-5554' },
       { type: 'device_disconnected', serial: 'emulator-5554' },
       { type: 'active_changed', serial: null }
+    ])
+  })
+
+  it('does not announce an active change for a device nobody chose', () => {
+    const harness = makeRegistry()
+    const events: RegistryEvent[] = []
+    harness.registry.on((event) => events.push(event))
+    harness.registry.start()
+
+    harness.connect('emulator-5554')
+    harness.disconnect('emulator-5554')
+
+    expect(events).toEqual([
+      { type: 'device_connected', serial: 'emulator-5554' },
+      { type: 'device_disconnected', serial: 'emulator-5554' }
     ])
   })
 
