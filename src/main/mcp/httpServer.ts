@@ -64,17 +64,32 @@ function deny(response: ServerResponse, status: number, message: string): void {
   response.end(JSON.stringify({ error: message }))
 }
 
+// 클라이언트가 요청 도중(예: 본문을 다 보내지 않고) 소켓을 끊으면 readBody나
+// transport.handleRequest가 reject된다. 여기서 받지 않으면 Electron main 프로세스에서
+// unhandled rejection이 나 앱이 죽을 수 있다.
+function failSafely(response: ServerResponse): void {
+  if (response.headersSent || response.writableEnded) {
+    response.destroy()
+    return
+  }
+  try {
+    deny(response, 500, 'internal error')
+  } catch {
+    response.destroy()
+  }
+}
+
 export async function startMcpHttpServer(opts: StartMcpHttpServerOpts): Promise<McpServerHandle> {
   const token = randomBytes(32).toString('base64url')
 
   const server = createServer((request, response) => {
-    void handle(request, response)
+    handle(request, response).catch(() => failSafely(response))
   })
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    // Origin이 붙어 있다는 것은 브라우저에서 왔다는 뜻이다. 브라우저 클라이언트를
-    // 지원하지 않으므로 전부 거부한다. DNS rebinding을 막는다.
-    if (request.headers.origin) {
+    // Origin 헤더가 존재하면 값과 상관없이(빈 문자열 포함) 거부한다. 브라우저 클라이언트를
+    // 지원하지 않으므로 헤더의 존재 자체가 거부 사유다. DNS rebinding을 막는다.
+    if (request.headers.origin !== undefined) {
       deny(response, 403, 'browser origins are not accepted')
       return
     }
@@ -98,8 +113,9 @@ export async function startMcpHttpServer(opts: StartMcpHttpServerOpts): Promise<
 
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
     response.on('close', () => {
-      void transport.close()
-      void mcp.close()
+      // 연결이 도중에 끊긴 뒤라 close()가 실패해도 요청 처리와는 무관하다 — 조용히 삼킨다.
+      transport.close().catch(() => {})
+      mcp.close().catch(() => {})
     })
 
     await mcp.connect(transport)
