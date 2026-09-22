@@ -9,7 +9,7 @@ owner: virtual-device-helper 팀
 scope: [main, android, shared]
 hosts: [macos]
 archived_reason:
-related_adr: [ADR-0003, ADR-0004, ADR-0005]
+related_adr: [ADR-0003, ADR-0004, ADR-0005, ADR-0007]
 related_spec: m1-device-core-mcp-server
 related_architecture:
 related_plan: [m1-1-foundation-and-adb, m1-3-mcp-server]
