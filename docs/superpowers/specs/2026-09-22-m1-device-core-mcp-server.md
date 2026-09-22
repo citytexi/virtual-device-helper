@@ -94,7 +94,7 @@ adb 미발견, 기기 끊김, 타임아웃을 여기서 타입 있는 에러로 
 interface Device {
   readonly serial: string
   info(): Promise<DeviceInfo>
-  install(apkPath: string, opts?: InstallOpts): Promise<void>
+  install(apkPath: string, opts?: InstallOpts): Promise<string>
   uninstall(pkg: string): Promise<void>
   launch(pkg: string, activity?: string): Promise<void>
   stop(pkg: string): Promise<void>
@@ -105,13 +105,15 @@ interface Device {
   inputText(text: string): Promise<void>
   pressKey(key: KeyName): Promise<void>
   dumpUi(): Promise<UiNode[]>
-  screenshot(opts?: ScreenshotOpts): Promise<ImageData>
-  readLogs(opts?: LogOpts): Promise<LogLine[]>
+  screenshot(opts?: ScreenshotOpts): Promise<ScreenshotResult>
+  readLogs(opts?: LogOpts): Promise<LogReadResult>
   clearLogs(): Promise<void>
 }
 ```
 
 `dumpUi`는 이미 요약된 `UiNode[]`를 돌려준다. 원본 XML은 이 경계를 넘지 않는다.
+`install`은 설치된 패키지명을 돌려준다. `readLogs`가 돌려주는 `LogReadResult`는 줄 배열과 함께
+잘림 여부를 담는다 — 잘림은 에러가 아니라 성공 응답의 필드다.
 
 ### MCP 툴
 
@@ -222,7 +224,9 @@ renderer가 자기만의 기기 상태를 따로 추론하지 않는다.
 | APK 경로 오류 | 경로가 없거나 `.apk`가 아니다 | 경로 확인 |
 | 기기 무응답 | 타임아웃, 어떤 명령이었는지 | 재시도 또는 `device_shutdown` 후 재부팅 |
 | 명령 실패 | 원문 stderr 첨부 | 명령별로 다름 |
-| 응답 잘림 | 잘렸다는 사실과 남은 양 | `limit`·`query`로 좁히기 |
+
+응답 잘림은 위 표에 넣지 않는다. 에러가 아니라 성공 응답의 필드다. `log_read`는 `truncated`와
+버려진 줄 수를 함께 돌려주고, 에이전트는 `limit`·`filter`로 좁혀 다시 부른다.
 
 renderer 쪽 실패는 조용히 사라지지 않는다. SDK 미발견은 전용 안내 화면, 나머지는 기기 패널의
 상태 표시로 드러난다.
