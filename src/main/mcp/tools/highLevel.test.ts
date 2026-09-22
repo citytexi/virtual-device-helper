@@ -4,6 +4,7 @@ import type { DeviceRegistry } from '../../device/registry'
 import type { Device, UiNode } from '../../../shared/types/device'
 import { createToolHarness } from '../testHarness'
 import { UI_FIND_MAX_NODES } from './ui'
+import { waitForSettle } from './app'
 
 function node(overrides: Partial<UiNode> = {}): UiNode {
   return {
@@ -164,25 +165,59 @@ describe('app_reset_and_launch', () => {
     await harness.close()
   })
 
-  it('reports settled false rather than failing when the screen keeps changing', async () => {
+})
+
+// app_reset_and_launch는 settleTimeoutMs를 툴 인자로 노출하지 않는다 (공개 인터페이스는
+// pkg, serial? 뿐이다). 짧은 타임아웃을 주입해야 하는 시나리오는 waitForSettle을 직접
+// 단위 테스트한다 — 함수 자체는 여전히 타임아웃을 파라미터로 받는다.
+describe('waitForSettle', () => {
+  it('reports settled false rather than never returning when the screen keeps changing', async () => {
     let call = 0
-    const harness = await harnessFor({
-      stop: async () => {},
-      clearData: async () => {},
-      launch: async () => {},
-      dumpUi: async () => {
+    const result = await waitForSettle(
+      async () => {
         call += 1
         return Array.from({ length: call }, (_, i) => node({ index: i, resourceId: `n${call}-${i}` }))
-      }
-    })
+      },
+      100,
+      (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      () => Date.now()
+    )
 
-    const payload = (await harness.call('app_reset_and_launch', {
-      pkg: 'com.example.app',
-      settleTimeoutMs: 100
-    })) as { settled: boolean }
+    expect(result.settled).toBe(false)
+  })
 
-    expect(payload.settled).toBe(false)
+  it('does not report settled from a single dump, even when that dump is empty', async () => {
+    let calls = 0
+    const result = await waitForSettle(
+      async () => {
+        calls += 1
+        return []
+      },
+      50,
+      (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      () => Date.now()
+    )
 
-    await harness.close()
+    // timeoutMs(50)가 폴링 간격(400ms)보다 짧으므로 덤프는 정확히 한 번만 일어난다.
+    // 그 한 번만으로 settled: true가 나오면 previous의 초기값을 빈 문자열과
+    // 혼동한 것이다 — 빈 배열의 지문도 빈 문자열이기 때문이다.
+    expect(calls).toBe(1)
+    expect(result).toEqual({ settled: false, nodeCount: 0 })
+  })
+
+  it('settles once two consecutive empty dumps agree', async () => {
+    let calls = 0
+    const result = await waitForSettle(
+      async () => {
+        calls += 1
+        return []
+      },
+      1000,
+      (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      () => Date.now()
+    )
+
+    expect(calls).toBe(2)
+    expect(result).toEqual({ settled: true, nodeCount: 0 })
   })
 })

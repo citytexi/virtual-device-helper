@@ -10,22 +10,26 @@ const serial = z
 
 const pkg = z.string().describe('안드로이드 패키지명. 예: com.example.app')
 
-const SETTLE_POLL_MS = 400
-const SETTLE_DEFAULT_TIMEOUT_MS = 8_000
+export const SETTLE_POLL_MS = 400
+export const SETTLE_DEFAULT_TIMEOUT_MS = 8_000
 
 /**
  * 첫 화면이 안정됐는지 본다. UI 덤프의 요소 구성이 연속 두 번 같으면 안정으로 본다.
  * 고정 대기보다 빠르고, 로그 신호보다 앱에 덜 의존한다.
  * 스펙의 열린 질문이므로 실제 앱으로 검증한 뒤 필요하면 기준을 바꾼다.
+ *
+ * previous는 "아직 첫 덤프가 없다"를 뜻하는 null로 시작한다. 빈 문자열로 시작하면
+ * dump()가 빈 배열을 돌려줄 때 그 지문도 빈 문자열이라 첫 덤프 단 한 번만으로
+ * "이전과 같다"고 오판한다 — 스플래시 화면이 전부 걸러지는 앱 실행 직후가 그 경우다.
  */
-async function waitForSettle(
+export async function waitForSettle(
   dump: () => Promise<Array<{ resourceId: string | null; text: string | null }>>,
   timeoutMs: number,
   sleep: (ms: number) => Promise<void>,
   now: () => number
 ): Promise<{ settled: boolean; nodeCount: number }> {
   const deadline = now() + timeoutMs
-  let previous = ''
+  let previous: string | null = null
   let nodeCount = 0
 
   while (now() < deadline) {
@@ -33,7 +37,7 @@ async function waitForSettle(
     nodeCount = nodes.length
     const fingerprint = nodes.map((node) => `${node.resourceId ?? ''}|${node.text ?? ''}`).join('\n')
 
-    if (fingerprint === previous) return { settled: true, nodeCount }
+    if (previous !== null && fingerprint === previous) return { settled: true, nodeCount }
 
     previous = fingerprint
     await sleep(SETTLE_POLL_MS)
@@ -155,10 +159,6 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
         '앱을 강제 종료하고 데이터를 지운 뒤 다시 실행하고, 첫 화면이 안정될 때까지 기다린다. 매번 같은 조건에서 테스트를 시작할 때 쓴다.',
       inputSchema: {
         pkg,
-        settleTimeoutMs: z
-          .number()
-          .optional()
-          .describe('첫 화면이 안정되기를 기다리는 시간(밀리초). 기본 8000'),
         serial
       }
     },
@@ -173,7 +173,7 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
 
           const settle = await waitForSettle(
             () => device.dumpUi(),
-            args.settleTimeoutMs ?? SETTLE_DEFAULT_TIMEOUT_MS,
+            SETTLE_DEFAULT_TIMEOUT_MS,
             (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
             () => Date.now()
           )
