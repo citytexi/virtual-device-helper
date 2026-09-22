@@ -10,6 +10,7 @@ function fakeClient(): { client: AdbClient; emit: (line: string) => void; closed
       lineCallback = callback
     },
     onClose: () => {},
+    onError: () => {},
     close: () => {
       closed = true
     }

@@ -1,5 +1,5 @@
 import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { deviceError } from '../../shared/types/errors'
+import { deviceError, type DeviceError } from '../../shared/types/errors'
 
 export type SpawnFn = (command: string, args: string[]) => ChildProcessWithoutNullStreams
 
@@ -18,6 +18,11 @@ export interface ExecResult {
 export interface AdbStream {
   onLine(callback: (line: string) => void): void
   onClose(callback: (code: number | null) => void): void
+  /**
+   * 필수 멤버다 — 선택으로 두면 소비자가 등록을 잊기 쉽고, 그러면 stdout/stderr/child
+   * 에러가 조용히 사라진다. 에러를 받은 뒤에는 반드시 onClose(null)이 뒤따른다.
+   */
+  onError(callback: (error: DeviceError) => void): void
   close(): void
 }
 
@@ -151,12 +156,38 @@ export function createAdbClient(adbPath: string, spawnFn: SpawnFn = nodeSpawn as
   }
 
   function stream(serial: string | null, args: string[]): AdbStream {
-    const child = spawnFn(adbPath, withSerial(serial, args))
+    const fullArgs = withSerial(serial, args)
+    const child = spawnFn(adbPath, fullArgs)
     const lineCallbacks: Array<(line: string) => void> = []
     const closeCallbacks: Array<(code: number | null) => void> = []
+    const errorCallbacks: Array<(error: DeviceError) => void> = []
     let buffer = ''
+    // close()가 세우는 정지 플래그. data·close·error 핸들러는 전부 진입할 때
+    // 이 값을 확인해서, close() 이후 도착하는 이벤트가 콜백을 부르지 않게 막는다.
+    // SIGTERM은 비동기라 콜백 등록을 지우는 것만으로는 막을 수 없다.
+    let stopped = false
+    // 에러 뒤에 실제 close 이벤트가 따로 와도 onClose가 두 번 불리지 않게 막는다.
+    let closeNotified = false
+
+    function notifyClose(code: number | null): void {
+      if (closeNotified) return
+      closeNotified = true
+      for (const callback of closeCallbacks) callback(code)
+    }
+
+    // stopped 가드는 여기 한 곳에만 둔다 — 세 error 핸들러가 전부 이 함수를 거쳐가므로
+    // 핸들러마다 따로 stopped를 확인할 필요가 없다.
+    function notifyError(error: DeviceError): void {
+      if (stopped) return
+      for (const callback of errorCallbacks) callback(error)
+      // onError만 등록하고 onClose는 기다리지 않는 소비자가 있을 수 있으니, 실제
+      // close 이벤트가 따로 오지 않는 경우를 대비해 여기서 끝을 알린다. 나중에
+      // 진짜 close가 오면 notifyClose의 closeNotified 가드가 중복 호출을 막는다.
+      notifyClose(null)
+    }
 
     child.stdout.on('data', (chunk: Buffer) => {
+      if (stopped) return
       buffer += chunk.toString('utf8')
       const parts = buffer.split('\n')
       buffer = parts.pop() ?? ''
@@ -165,13 +196,35 @@ export function createAdbClient(adbPath: string, spawnFn: SpawnFn = nodeSpawn as
       }
     })
 
-    // 리스너 없이 stdout이 'error'를 emit하면 Node가 uncaught exception으로
-    // 프로세스를 끊어버린다. AdbStream에는 아직 에러를 알릴 통로가 없으니,
-    // 여기서는 일단 그 크래시만 막는다.
-    child.stdout.on('error', () => {})
+    child.stdout.on('error', (error: Error) => {
+      notifyError(
+        deviceError('command_failed', `adb stdout 읽기에 실패했다: ${error.message}`, '첨부된 정보를 확인해라', {
+          stream: 'stdout',
+          args: fullArgs
+        })
+      )
+    })
+
+    child.stderr.on('error', (error: Error) => {
+      notifyError(
+        deviceError('command_failed', `adb stderr 읽기에 실패했다: ${error.message}`, '첨부된 정보를 확인해라', {
+          stream: 'stderr',
+          args: fullArgs
+        })
+      )
+    })
+
+    child.on('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') {
+        notifyError(deviceError('adb_not_found', `adb를 찾을 수 없다: ${adbPath}`, 'Android SDK 설치와 platform-tools를 확인해라'))
+        return
+      }
+      notifyError(deviceError('command_failed', `adb 실행에 실패했다: ${error.message}`, '첨부된 정보를 확인해라', { args: fullArgs }))
+    })
 
     child.on('close', (code) => {
-      for (const callback of closeCallbacks) callback(code)
+      if (stopped) return
+      notifyClose(code)
     })
 
     return {
@@ -181,7 +234,11 @@ export function createAdbClient(adbPath: string, spawnFn: SpawnFn = nodeSpawn as
       onClose(callback) {
         closeCallbacks.push(callback)
       },
+      onError(callback) {
+        errorCallbacks.push(callback)
+      },
       close() {
+        stopped = true
         child.kill('SIGTERM')
       }
     }
