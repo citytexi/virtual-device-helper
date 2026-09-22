@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>scrcpy WebCodecs spike</title>
+  </head>
+  <body>
+    <canvas id="screen" width="472" height="1024"></canvas>
+    <pre id="log"></pre>
+    <script>
+      // 스파이크 코드. 버린다.
+      const { ipcRenderer } = require('electron')
+      const { readFileSync, writeFileSync } = require('node:fs')
+      const { join } = require('node:path')
+
+      const log = (text) => {
+        document.getElementById('log').textContent += text + '\n'
+        console.log(text)
+      }
+
+      const dir = __dirname
+      const meta = JSON.parse(readFileSync(join(dir, 'stream.json'), 'utf8'))
+      log('stream meta ' + JSON.stringify(meta))
+
+      const canvas = document.getElementById('screen')
+      canvas.width = meta.width
+      canvas.height = meta.height
+      const context = canvas.getContext('2d')
+
+      let drawn = false
+
+      const decoder = new VideoDecoder({
+        output: (frame) => {
+          context.drawImage(frame, 0, 0, canvas.width, canvas.height)
+          const codedSize = frame.codedWidth + 'x' + frame.codedHeight
+          frame.close()
+          if (drawn) return
+          drawn = true
+          log('frame drawn ' + codedSize)
+
+          const dataUrl = canvas.toDataURL('image/png')
+          const png = Buffer.from(dataUrl.split(',')[1], 'base64')
+          const path = join(dir, 'frame.png')
+          writeFileSync(path, png)
+          log('wrote ' + path)
+          ipcRenderer.send('spike-result', { ok: true, path, codedSize })
+        },
+        error: (error) => {
+          log('decoder error: ' + error.message)
+          ipcRenderer.send('spike-result', { ok: false, reason: error.message })
+        }
+      })
+
+      // description 을 주지 않으면 WebCodecs 는 Annex-B 로 간주한다.
+      // config 패킷(SPS/PPS)을 키프레임 앞에 붙여 하나의 key chunk 로 넣는다.
+      decoder.configure({ codec: meta.codecString, optimizeForLatency: true })
+      log('configured ' + meta.codecString + ' state=' + decoder.state)
+
+      const bytes = new Uint8Array(readFileSync(join(dir, 'keyframe.h264')))
+      decoder.decode(new EncodedVideoChunk({ type: 'key', timestamp: 0, data: bytes }))
+      log('decode submitted ' + bytes.length + ' bytes')
+      decoder.flush().then(
+        () => log('flush resolved'),
+        (error) => {
+          log('flush rejected: ' + error.message)
+          ipcRenderer.send('spike-result', { ok: false, reason: 'flush: ' + error.message })
+        }
+      )
+    </script>
+  </body>
+</html>

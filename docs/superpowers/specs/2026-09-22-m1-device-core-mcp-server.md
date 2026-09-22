@@ -268,6 +268,29 @@ preload는 `contextBridge`로 **좁은 API만** 노출한다. 임의 채널을 �
 - 실패 시 후퇴안: main에서 ffmpeg 디코딩, 또는 screencap 폴링. 둘 다 M2의 모양이 달라지며
   [ADR-0002](../../adr/0002-screen-streaming-via-scrcpy-server.md)를 대체한다.
 
+### 스파이크 결과 (2026-09-22)
+
+- scrcpy 릴리스: `v4.1` (`vendor/scrcpy/VERSION`에 태그와 jar의 SHA-256을 고정했다.
+  해시는 릴리스의 `SHA256SUMS.txt`와 일치한다)
+- 소켓 연결: 성공 — `adb forward tcp:27183 localabstract:scrcpy` 뒤
+  `app_process`로 `com.genymobile.scrcpy.Server`를 띄우고 `tunnel_forward=true`로
+  붙었다. 서버가 dummy byte와 기기 이름 `SM-A356N`을 먼저 보냈다.
+- H.264 수신: 성공 — codec id `h264`, session meta `472x1024`를 받은 뒤
+  config 패킷 38바이트와 첫 키프레임 21927바이트가 왔다.
+- WebCodecs 디코딩: 성공 — Electron renderer의 `VideoDecoder`를 `avc1.640020`으로
+  `configure`하고 config 패킷 + 키프레임을 하나의 key `EncodedVideoChunk`로 넣으니
+  output 콜백이 `472x1024` 프레임을 한 장 내놨다. 캔버스에 그린 결과가 기기 홈 화면이다.
+- 판정: ADR-0002 유지
+- M2 설계의 전제: 비디오 소켓은 길이 선두 프레이밍이라 Annex-B start code를 스캔할 필요가
+  없다. 패킷 헤더 12바이트는 `ptsAndFlags` 8바이트(big-endian, bit 62 = config, bit 61 =
+  키프레임, 하위 비트 = PTS 마이크로초)와 페이로드 길이 4바이트로 이루어진다. 그 앞에는
+  dummy byte 1바이트, 기기 이름 64바이트, codec id 4바이트, session meta 12바이트가
+  순서대로 온다. SPS/PPS는 첫 config 패킷에 Annex-B로 들어 있고, WebCodecs는 `description`을
+  주지 않으면 Annex-B로 해석하므로 config 패킷을 키프레임 앞에 그대로 이어 붙이면 된다.
+  `codec` 문자열은 SPS의 `profile_idc`·`constraint_flags`·`level_idc`에서 만든다.
+  이 헤더 순서는 `send_dummy_byte`·`send_device_meta`·`send_stream_meta`·`send_frame_meta`가
+  모두 기본값 true일 때의 것이고, 릴리스마다 달라질 수 있어 버전 고정이 전제다.
+
 ## 테스트
 
 외부와 닿는 지점이 `adbClient` 하나다. 그것만 가짜로 바꾸면 위 다섯 층이 실기기 없이 덮인다.
