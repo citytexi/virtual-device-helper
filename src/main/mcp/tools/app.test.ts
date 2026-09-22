@@ -62,6 +62,16 @@ describe('app_install', () => {
 
     await harness.close()
   })
+
+  it('returns null rather than an empty string when the package name cannot be determined', async () => {
+    const harness = await harnessFor({ install: async () => null })
+
+    await expect(
+      harness.call('app_install', { apkPath: '/tmp/app.apk', reinstall: true })
+    ).resolves.toEqual({ pkg: null })
+
+    await harness.close()
+  })
 })
 
 describe('app_launch', () => {

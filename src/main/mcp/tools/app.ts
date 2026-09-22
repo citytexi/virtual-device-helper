@@ -6,7 +6,7 @@ import type { ToolContext } from '../toolContext'
 const serial = z
   .string()
   .optional()
-  .describe('대상 기기의 serial. 생략하면 활성 기기를 쓴다.')
+  .describe('대상 기기의 serial. 생략하면 활성 기기를 쓴다. 기기가 여럿인데 생략하면 에러가 난다.')
 
 const pkg = z.string().describe('안드로이드 패키지명. 예: com.example.app')
 
