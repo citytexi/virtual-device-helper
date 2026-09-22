@@ -31,6 +31,7 @@
     "vitest": "^5.0.1"
   },
   "dependencies": {
+    "fast-xml-parser": "^5.11.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   }
