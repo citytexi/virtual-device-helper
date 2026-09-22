@@ -1,6 +1,12 @@
 import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { deviceError, type DeviceError } from '../../shared/types/errors'
 
+/**
+ * adb 실패의 타입 있는 표현이다. 이 층이 만들어 내보내는 값이라, 소비자가
+ * 자기 콜백 인자의 이름을 붙이려고 shared/types까지 내려가지 않아도 되게 여기서 같이 낸다.
+ */
+export type { DeviceError }
+
 export type SpawnFn = (command: string, args: string[]) => ChildProcessWithoutNullStreams
 
 export interface ExecOpts {
