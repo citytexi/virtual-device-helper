@@ -211,6 +211,42 @@ describe('DeviceRegistry.run', () => {
 
     expect(order).toEqual(['fast', 'slow'])
   })
+
+  it('keeps a task queued for a serial ordered even if that device disconnects and reconnects mid-flight', async () => {
+    // 평범한 에뮬레이터 재부팅 시나리오다: 같은 serial로 disconnect 직후
+    // reconnect가 온다. run()이 큐 항목을 지운 채 새 체인을 새로 시작하면,
+    // 아직 안 끝난 taskA와 뒤이은 taskB가 같은 기기에서 동시에 돈다 —
+    // DeviceRegistry가 막으려는 바로 그 상황이다.
+    const harness = makeRegistry()
+    harness.registry.start()
+    harness.connect('emulator-5554')
+
+    let resolveTaskA: (() => void) | undefined
+    const order: string[] = []
+    const taskA = harness.registry.run('emulator-5554', async () => {
+      await new Promise<void>((resolve) => {
+        resolveTaskA = resolve
+      })
+      order.push('taskA')
+    })
+
+    harness.disconnect('emulator-5554')
+    harness.connect('emulator-5554')
+
+    let taskBStarted = false
+    const taskB = harness.registry.run('emulator-5554', async () => {
+      taskBStarted = true
+      order.push('taskB')
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(taskBStarted).toBe(false)
+
+    resolveTaskA?.()
+    await Promise.all([taskA, taskB])
+
+    expect(order).toEqual(['taskA', 'taskB'])
+  })
 })
 
 describe('DeviceRegistry events', () => {

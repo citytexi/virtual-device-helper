@@ -67,7 +67,11 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
     }
 
     if (!devices.delete(serial)) return
-    queues.delete(serial)
+    // queues에서는 지우지 않는다. 같은 serial로 disconnect 직후 reconnect가
+    // 오는 것(에뮬레이터 재부팅)은 흔한 일이고, 여기서 지우면 아직 안 끝난
+    // 이전 작업과 새로 들어온 작업이 run()에서 각자 새 체인으로 시작해
+    // 같은 기기에서 동시에 돈다 — DeviceRegistry가 막으려는 바로 그 상황이다.
+    // settled entry 하나가 serial당 영구히 남는 트레이드오프를 받아들인다.
     emit({ type: 'device_disconnected', serial })
 
     if (active !== serial) return
