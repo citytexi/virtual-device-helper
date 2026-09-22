@@ -25,6 +25,27 @@ export const MAX_LOG_LIMIT = 2000
 const SCREENSHOT_TIMEOUT_MS = 60_000
 const DUMP_PATH = '/sdcard/window_dump.xml'
 
+const KEYCODES: Record<KeyName, string> = {
+  back: 'KEYCODE_BACK',
+  home: 'KEYCODE_HOME',
+  enter: 'KEYCODE_ENTER',
+  tab: 'KEYCODE_TAB'
+}
+
+/**
+ * `input text`는 ASCII만 안전하게 보낼 수 있다. 공백은 %s로, 셸 메타문자는
+ * 백슬래시로 이스케이프한다. ASCII 밖의 문자는 조용히 깨뜨리는 대신 거부한다.
+ */
+function escapeInputText(text: string): string {
+  if (!/^[\x20-\x7e]*$/.test(text)) {
+    throw deviceError('command_failed', 'adb input text로는 ASCII 문자만 보낼 수 있다', '해당 문자는 클립보드 붙여넣기 등 다른 방법이 필요하다. M1 범위 밖이다', {
+      text
+    })
+  }
+
+  return text.replace(/(["$&'()*;<>?\[\\\]`|])/g, '\\$1').replace(/ /g, '%s')
+}
+
 export interface AndroidDeviceDeps {
   serial: string
   adb: AdbClient
@@ -212,6 +233,40 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     await shell(['pm', 'grant', pkg, permission])
   }
 
+  async function tap(x: number, y: number): Promise<void> {
+    await shell(['input', 'tap', String(Math.round(x)), String(Math.round(y))])
+  }
+
+  async function swipe(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    durationMs: number
+  ): Promise<void> {
+    if (durationMs <= 0) {
+      throw deviceError('command_failed', `durationMs는 0보다 커야 한다: ${durationMs}`, '100에서 1000 사이 값을 써라')
+    }
+
+    await shell([
+      'input',
+      'swipe',
+      String(Math.round(x1)),
+      String(Math.round(y1)),
+      String(Math.round(x2)),
+      String(Math.round(y2)),
+      String(Math.round(durationMs))
+    ])
+  }
+
+  async function inputText(text: string): Promise<void> {
+    await shell(['input', 'text', escapeInputText(text)])
+  }
+
+  async function pressKey(key: KeyName): Promise<void> {
+    await shell(['input', 'keyevent', KEYCODES[key]])
+  }
+
   return {
     serial,
     info,
@@ -225,10 +280,9 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     stop,
     clearData,
     grantPermission,
-    // UI 조작은 Task 6에서 채운다.
-    tap: () => Promise.reject(new Error('tap is implemented in a later task')),
-    swipe: () => Promise.reject(new Error('swipe is implemented in a later task')),
-    inputText: () => Promise.reject(new Error('inputText is implemented in a later task')),
-    pressKey: () => Promise.reject(new Error('pressKey is implemented in a later task'))
+    tap,
+    swipe,
+    inputText,
+    pressKey
   }
 }
