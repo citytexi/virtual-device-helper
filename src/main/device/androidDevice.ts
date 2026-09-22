@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import type { AdbClient } from '../adb/adbClient'
 import { deviceError } from '../../shared/types/errors'
 import type {
@@ -28,6 +29,8 @@ export interface AndroidDeviceDeps {
   serial: string
   adb: AdbClient
   resizeImage: ResizeImage
+  /** APK 경로 검사용. 기본값은 node:fs의 existsSync. */
+  fileExists?: (path: string) => boolean
 }
 
 function parseWmSize(stdout: string): { width: number; height: number } {
@@ -45,7 +48,7 @@ function parseWmSize(stdout: string): { width: number; height: number } {
 }
 
 export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
-  const { serial, adb, resizeImage } = deps
+  const { serial, adb, resizeImage, fileExists = existsSync } = deps
 
   async function shell(args: string[], timeoutMs?: number): Promise<string> {
     const result = await adb.exec(serial, ['shell', ...args], timeoutMs ? { timeoutMs } : undefined)
@@ -130,6 +133,85 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     await adb.exec(serial, ['logcat', '-c'])
   }
 
+  async function listPackages(): Promise<string[]> {
+    const stdout = await shell(['pm', 'list', 'packages'])
+    return stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('package:'))
+      .map((line) => line.slice('package:'.length))
+  }
+
+  async function requirePackage(pkg: string): Promise<void> {
+    const packages = await listPackages()
+    if (packages.includes(pkg)) return
+
+    throw deviceError('package_not_found', `기기에 ${pkg}가 설치돼 있지 않다`, 'app_install로 먼저 설치해라', {
+      pkg
+    })
+  }
+
+  async function install(apkPath: string, opts: InstallOpts = {}): Promise<string> {
+    if (!apkPath.endsWith('.apk')) {
+      throw deviceError('apk_path_invalid', `APK 파일이 아니다: ${apkPath}`, '.apk 파일 경로를 줘라', { apkPath })
+    }
+    if (!fileExists(apkPath)) {
+      throw deviceError('apk_path_invalid', `파일이 없다: ${apkPath}`, '경로를 확인해라. 상대 경로면 절대 경로로 바꿔라', {
+        apkPath
+      })
+    }
+
+    const before = new Set(await listPackages())
+
+    const args = ['install']
+    if (opts.reinstall) args.push('-r')
+    args.push(apkPath)
+    await adb.exec(serial, args, { timeoutMs: 180_000 })
+
+    const after = await listPackages()
+    const added = after.filter((pkg) => !before.has(pkg))
+
+    // 재설치면 목록이 그대로다. 그때는 이름을 알 방법이 없으므로 빈 문자열 대신 명시적으로 알린다.
+    if (added.length === 1) return added[0] as string
+    if (added.length === 0 && opts.reinstall) return ''
+
+    throw deviceError('command_failed', '설치 후 패키지명을 특정하지 못했다', 'app_list 대신 패키지명을 직접 지정해 실행해라', {
+      added
+    })
+  }
+
+  async function uninstall(pkg: string): Promise<void> {
+    await requirePackage(pkg)
+    await adb.exec(serial, ['uninstall', pkg])
+  }
+
+  async function launch(pkg: string, activity?: string): Promise<void> {
+    await requirePackage(pkg)
+
+    if (activity) {
+      const component = `${pkg}/${activity}`
+      await shell(['am', 'start', '-n', component])
+      return
+    }
+
+    // 런처 인텐트를 모를 때 monkey가 기본 액티비티를 대신 찾아 준다.
+    await shell(['monkey', '-p', pkg, '-c', 'android.intent.category.LAUNCHER', '1'])
+  }
+
+  async function stop(pkg: string): Promise<void> {
+    await shell(['am', 'force-stop', pkg])
+  }
+
+  async function clearData(pkg: string): Promise<void> {
+    await requirePackage(pkg)
+    await shell(['pm', 'clear', pkg])
+  }
+
+  async function grantPermission(pkg: string, permission: string): Promise<void> {
+    await requirePackage(pkg)
+    await shell(['pm', 'grant', pkg, permission])
+  }
+
   return {
     serial,
     info,
@@ -137,13 +219,13 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     dumpUi,
     readLogs,
     clearLogs,
-    // 앱 조작은 Task 5, UI 조작은 Task 6에서 채운다.
-    install: () => Promise.reject(new Error('install is implemented in a later task')),
-    uninstall: () => Promise.reject(new Error('uninstall is implemented in a later task')),
-    launch: () => Promise.reject(new Error('launch is implemented in a later task')),
-    stop: () => Promise.reject(new Error('stop is implemented in a later task')),
-    clearData: () => Promise.reject(new Error('clearData is implemented in a later task')),
-    grantPermission: () => Promise.reject(new Error('grantPermission is implemented in a later task')),
+    install,
+    uninstall,
+    launch,
+    stop,
+    clearData,
+    grantPermission,
+    // UI 조작은 Task 6에서 채운다.
     tap: () => Promise.reject(new Error('tap is implemented in a later task')),
     swipe: () => Promise.reject(new Error('swipe is implemented in a later task')),
     inputText: () => Promise.reject(new Error('inputText is implemented in a later task')),
