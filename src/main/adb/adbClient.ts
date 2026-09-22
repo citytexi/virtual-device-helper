@@ -150,8 +150,41 @@ export function createAdbClient(adbPath: string, spawnFn: SpawnFn = nodeSpawn as
     })
   }
 
-  function stream(): AdbStream {
-    throw new Error('stream is implemented in the next task')
+  function stream(serial: string | null, args: string[]): AdbStream {
+    const child = spawnFn(adbPath, withSerial(serial, args))
+    const lineCallbacks: Array<(line: string) => void> = []
+    const closeCallbacks: Array<(code: number | null) => void> = []
+    let buffer = ''
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString('utf8')
+      const parts = buffer.split('\n')
+      buffer = parts.pop() ?? ''
+      for (const line of parts) {
+        for (const callback of lineCallbacks) callback(line)
+      }
+    })
+
+    // 리스너 없이 stdout이 'error'를 emit하면 Node가 uncaught exception으로
+    // 프로세스를 끊어버린다. AdbStream에는 아직 에러를 알릴 통로가 없으니,
+    // 여기서는 일단 그 크래시만 막는다.
+    child.stdout.on('error', () => {})
+
+    child.on('close', (code) => {
+      for (const callback of closeCallbacks) callback(code)
+    })
+
+    return {
+      onLine(callback) {
+        lineCallbacks.push(callback)
+      },
+      onClose(callback) {
+        closeCallbacks.push(callback)
+      },
+      close() {
+        child.kill('SIGTERM')
+      }
+    }
   }
 
   return { exec, stream }
