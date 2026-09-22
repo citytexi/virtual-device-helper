@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { isDeviceError, type ToolError } from '../../shared/types/errors'
 import type { ToolCallSink } from './toolContext'
 
@@ -7,13 +8,6 @@ export type ToolContent =
   | { type: 'image'; data: string; mimeType: string }
 
 export interface ToolResult {
-  /**
-   * MCP SDK의 `registerTool` 콜백이 기대하는 반환 타입(`CallToolResult`)은 zod로 추론된
-   * 타입이라 인덱스 시그니처가 함께 따라온다. 이 인덱스 시그니처가 없으면 TypeScript가
-   * `ToolResult`를 그 자리에 대입하지 못한다 — 형변환을 각 툴 파일에 흩어 두는 대신 여기서
-   * 한 번만 맞춰 둔다.
-   */
-  [key: string]: unknown
   content: ToolContent[]
   isError?: boolean
 }
@@ -38,13 +32,20 @@ export function jsonResult(payload: unknown): ToolResult {
  * 1. 실패를 예외가 아니라 구조화된 결과로 바꾼다 — 에이전트가 읽고 복구할 수 있어야 한다.
  * 2. 호출을 기록해 앱의 활동 탭으로 흘린다.
  * 3. 응답을 MCP content 형태로 포장한다.
+ *
+ * 선언한 반환 타입은 `ToolResult`가 아니라 MCP SDK가 `registerTool` 콜백에 기대하는
+ * `CallToolResult`다(zod로 추론된 타입이라 인덱스 시그니처가 붙는다). 그래야 이 함수를
+ * 그대로 콜백으로 넘기는 모든 툴 파일이 형변환 없이 쓸 수 있다. `ToolResult`는 이
+ * 함수 내부에서만 쓰는 엄격한 중간 타입으로 남기고, 캐스트는 두 `return` 지점에만 둔다 —
+ * `ToolResult`에 인덱스 시그니처를 넣어 두면 `isError` 같은 선택 필드의 오타를 excess
+ * property check가 잡아내지 못하게 된다.
  */
 export async function runTool(
   sink: ToolCallSink,
   tool: string,
   args: unknown,
   handler: () => Promise<unknown> | unknown
-): Promise<ToolResult> {
+): Promise<CallToolResult> {
   const startedAt = Date.now()
   const id = randomUUID()
 
@@ -59,7 +60,8 @@ export async function runTool(
       ok: true
     })
 
-    return isContentPayload(payload) ? { content: payload.content } : jsonResult(payload)
+    const result: ToolResult = isContentPayload(payload) ? { content: payload.content } : jsonResult(payload)
+    return result as CallToolResult
   } catch (thrown) {
     const toolError: ToolError = isDeviceError(thrown)
       ? thrown.toolError
@@ -79,9 +81,10 @@ export async function runTool(
       errorKind: toolError.kind
     })
 
-    return {
+    const result: ToolResult = {
       content: [{ type: 'text', text: JSON.stringify(toolError, null, 2) }],
       isError: true
     }
+    return result as CallToolResult
   }
 }

@@ -43,7 +43,7 @@ export function registerDeviceTools(server: McpServer, context: ToolContext): vo
   server.registerTool(
     'device_shutdown',
     {
-      description: '실행 중인 에뮬레이터를 종료한다.',
+      description: '실행 중인 에뮬레이터를 종료한다. serial을 생략하면 활성 기기를 끈다.',
       inputSchema: serialArg
     },
     async ({ serial }) =>
