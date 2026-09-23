@@ -17,7 +17,6 @@
 <!-- index:start -->
 | 스펙 | 상태 | 내용 |
 |------|------|------|
-| [m1-device-core-mcp-server](2026-09-22-m1-device-core-mcp-server.md) | draft | macOS×Android 기기 제어 코어와 앱 내장 MCP 서버. 툴 네 묶음, 최소 UI, M2 스파이크 |
 <!-- index:end -->
 
 ## 아카이브
@@ -27,6 +26,7 @@
 <!-- archive:start -->
 | 스펙 | 내용 |
 |------|------|
+| [m1-device-core-mcp-server](archive/2026-09-22-m1-device-core-mcp-server.md) | implemented — macOS×Android 기기 제어 코어와 앱 내장 MCP 서버. 검증 결과와 남은 결함 포함 |
 <!-- archive:end -->
 
 ## 작성 가이드

@@ -1,14 +1,14 @@
 ---
 id: m1-4-electron-shell-ui
 title: M1-4 — Electron 셸과 renderer UI
-status: draft
+status: done
 type: work-order
 created: 2026-09-22
-updated: 2026-09-22
+updated: 2026-09-23
 owner: virtual-device-helper 팀
 scope: [main, preload, renderer, build]
 hosts: [macos]
-archived_reason:
+archived_reason: M1 구현 완료. 최소 CSS와 종료 결함은 M1-5 검증 중에 고쳤다.
 related_adr: [ADR-0001, ADR-0003, ADR-0006]
 related_spec: m1-device-core-mcp-server
 related_architecture:
@@ -33,7 +33,7 @@ M1의 화면 영역은 정지 스크린샷이지만, 컴포넌트 경계를 M2�
 
 **Tech Stack:** Electron, React, TypeScript, Vitest, @testing-library/react, jsdom
 
-**Spec:** [`../specs/2026-09-22-m1-device-core-mcp-server.md`](../specs/2026-09-22-m1-device-core-mcp-server.md)
+**Spec:** [`../specs/2026-09-22-m1-device-core-mcp-server.md`](../../specs/archive/2026-09-22-m1-device-core-mcp-server.md)
 
 **계획 순서:** [M1-1](2026-09-22-m1-1-foundation-and-adb.md) →
 [M1-2](2026-09-22-m1-2-android-device.md) → [M1-3](2026-09-22-m1-3-mcp-server.md) →

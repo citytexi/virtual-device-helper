@@ -1,14 +1,14 @@
 ---
 id: m1-5-integration-verification
 title: M1-5 — 통합과 완료 검증
-status: draft
+status: done
 type: work-order
 created: 2026-09-22
-updated: 2026-09-22
+updated: 2026-09-23
 owner: virtual-device-helper 팀
 scope: [main, mcp, android, renderer, docs]
 hosts: [macos]
-archived_reason:
+archived_reason: M1 구현 완료. 완료 조건 검증 결과는 스펙의 검증 결과에 옮겼다.
 related_adr: [ADR-0001, ADR-0002, ADR-0003, ADR-0004]
 related_spec: m1-device-core-mcp-server
 related_architecture:
@@ -31,7 +31,7 @@ tags: [plan, m1, verification]
 
 **Tech Stack:** Vitest, Android 에뮬레이터, Claude Code
 
-**Spec:** [`../specs/2026-09-22-m1-device-core-mcp-server.md`](../specs/2026-09-22-m1-device-core-mcp-server.md)
+**Spec:** [`../specs/2026-09-22-m1-device-core-mcp-server.md`](../../specs/archive/2026-09-22-m1-device-core-mcp-server.md)
 
 **계획 순서:** [M1-1](2026-09-22-m1-1-foundation-and-adb.md) →
 [M1-2](2026-09-22-m1-2-android-device.md) → [M1-3](2026-09-22-m1-3-mcp-server.md) →
