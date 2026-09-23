@@ -176,6 +176,20 @@ describe('DevicePanel', () => {
     expect(alert.textContent).toMatch(/추적/)
   })
 
+  it('shows that the reason is unknown when tracking stopped with neither an error nor an exit code', () => {
+    render(
+      <DevicePanel
+        snapshot={snapshot({
+          trackingFailure: { error: null, exitCode: null }
+        })}
+      />
+    )
+
+    const alert = screen.getByRole('alert')
+    expect(alert.textContent).toContain('이유를 알 수 없다')
+    expect(alert.textContent).not.toContain('null')
+  })
+
   it('disables selecting another device while a boot or shutdown is pending', async () => {
     // R16 defect 1: 다른 기기를 고르는 select 버튼이 busy 중에도 살아 있으면
     // busy를 덮어써서 진행·실패 표시가 거짓말을 하게 된다.

@@ -21,13 +21,13 @@ describe('EndpointCard', () => {
     expect(screen.getByText(/서버가 떠 있지 않다/)).toBeDefined()
   })
 
-  it('does not claim a missing SDK is the only reason the server is down', () => {
+  it('names server-start failure as a possible reason, not just a missing SDK', () => {
     render(<EndpointCard server={null} />)
 
     const message = screen.getByText(/서버가 떠 있지 않다/).textContent ?? ''
     // SDK를 찾았어도 서버가 뜨는 데 실패할 수 있다 — 메시지가 SDK 부재만을
     // 원인으로 단정하면 안 된다.
-    expect(message).not.toMatch(/^서버가 떠 있지 않다\. Android SDK를 찾지 못하면 서버를 열지 않는다\.?$/)
+    expect(message).toMatch(/SDK는 찾았지만 서버가 뜨는 데 실패했을 수 있다/)
   })
 
   it('shows the endpoint url', () => {

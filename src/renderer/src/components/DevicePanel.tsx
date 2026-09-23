@@ -16,7 +16,9 @@ export interface DevicePanelProps {
 function TrackingFailureNotice({ failure }: { failure: TrackingFailure }): JSX.Element {
   const detail = failure.error
     ? `${failure.error.message} — ${failure.error.hint}`
-    : `(종료 코드: ${failure.exitCode})`
+    : failure.exitCode !== null
+      ? `(종료 코드: ${failure.exitCode})`
+      : '이유를 알 수 없다'
 
   return (
     <p role="alert">

@@ -45,21 +45,25 @@ export function useAppState(): {
     // id로 중복을 걸러내므로 스냅샷에 이미 실린 레코드가 버퍼에도 있어도
     // 두 번 쌓이지 않는다.
     const buffer: MainEvent[] = []
+    // setSnapshot의 업데이터 함수 안에서 buffer.push 같은 부수효과를 내지
+    // 않는다 — React가 업데이터를 여러 번 부르거나 건너뛸 수 있어(예: Strict
+    // Mode의 이중 호출) 부수효과의 실행 횟수가 보장되지 않는다. 대신 effect
+    // 지역 변수로 "스냅샷이 왔는가"를 직접 추적한다.
+    let ready = false
 
     const off = window.api.onEvent((event) => {
-      setSnapshot((current) => {
-        if (current === null) {
-          buffer.push(event)
-          return current
-        }
-        return reduce(current, event)
-      })
+      if (!ready) {
+        buffer.push(event)
+        return
+      }
+      setSnapshot((current) => (current === null ? current : reduce(current, event)))
     })
 
     window.api
       .getSnapshot()
       .then((initial) => {
         if (!alive) return
+        ready = true
         setSnapshot(buffer.reduce(reduce, initial))
       })
       .catch((thrown: unknown) => {
