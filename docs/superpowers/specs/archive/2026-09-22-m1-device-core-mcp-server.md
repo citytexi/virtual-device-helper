@@ -7,7 +7,7 @@ scope: [main, renderer, preload, mcp, android, build]
 hosts: [macos]
 supersedes:
 superseded_by:
-related_adr: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007]
+related_adr: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008]
 related_spec:
 related_architecture:
 related_plan: [m1-1-foundation-and-adb, m1-2-android-device, m1-3-mcp-server, m1-4-electron-shell-ui, m1-5-integration-verification]
@@ -192,10 +192,11 @@ interface Device {
   잘렸다는 사실과 남은 양을 함께 돌려준다. 줄 수만으로는 크기가 막히지 않으므로 세 가지를 더 한다.
   각 줄은 객체가 아니라 `MM-DD HH:MM:SS.mmm L tag(pid): message` 한 문자열이고(`observe.ts`의
   `formatLogLine`), 응답 JSON은 들여쓰지 않는다. 긴 메시지는 코드포인트 단위로 잘라 `…(+N자)`로
-  표시한다(`LOG_MESSAGE_MAX_CODEPOINTS`). 직렬화한 응답 전체가 `LOG_READ_RESPONSE_BUDGET_CHARS`를
-  넘으면 가장 오래된 줄부터 더 버리고 그만큼 `truncated`·`droppedCount`에 넣는다. 기본값과 상한은
-  `LOG_READ_DEFAULT_LIMIT`·`LOG_READ_MAX_LIMIT`이다. 근거는 검증에서 들여쓴 JSON 응답이 클라이언트의
-  인라인 한도를 넘었던 관찰이다.
+  표시한다(`LOG_MESSAGE_MAX_CODEPOINTS`). 직렬화한 응답 전체의 UTF-8 바이트 수가
+  `LOG_READ_RESPONSE_BUDGET_BYTES`를 넘으면 가장 오래된 줄부터 더 버리고 그만큼 `truncated`·`droppedCount`에
+  넣는다. 기본값과 상한은 `src/shared/limits.ts`의 `DEFAULT_LOG_LIMIT`·`MAX_LOG_LIMIT`이고 `observe.ts`에서는
+  `LOG_READ_DEFAULT_LIMIT`·`LOG_READ_MAX_LIMIT`으로 쓴다. 근거는 검증에서 들여쓴 JSON 응답이 클라이언트의
+  인라인 한도를 넘었던 관찰이고, 결정과 기각한 대안은 [ADR-0008](../../../adr/0008-log-read-response-shape.md)에 있다.
 
 ## 동작 / 상태
 
@@ -370,9 +371,9 @@ M1이 끝났다는 것은 아래가 성립한다는 뜻이다.
 
 환경: macOS 호스트, AVD Pixel_7_API_36(API 36, `emulator-5554`), 클라이언트 Claude Code 2.1.280을
 `claude -p`와 `--strict-mcp-config`로 이 앱의 MCP 설정만 붙였다. APK는 다른 프로젝트의 앱
-(`com.teamyg.parfait`)이다. 이 앱의 첫 화면은 온보딩과 외부(카카오) 로그인 버튼뿐이라 위 지시문의
-"로그인 화면 이메일 칸"이 없다. 그래서 지시문은 "첫 화면에서 텍스트 입력 칸 하나에 `test@example.com`을
-넣고"로 바꿔 줬다.
+(`com.teamyg.parfait`)이다. 에이전트에게 준 지시문은 M1-5 계획에 적힌 문구 그대로다. 그 문구는 위 완료 조건의 "로그인 화면
+이메일 칸" 대신 "첫 화면에서 텍스트 입력 칸 하나에 `test@example.com`을 넣고"라고 적혀 있다. 이 앱의 첫
+화면은 온보딩과 외부(카카오) 로그인 버튼뿐이라 어느 문구가 말하는 입력 칸도 없었다.
 
 - **에이전트 경로: 부분 성공.** 수정 뒤의 실행에서 원래 APK로 `app_install` → `app_launch` → `ui_find` →
   `screenshot` → `log_read`가 사람 개입 없이 성공했다. 에이전트는 첫 화면에 `EditText`가 없다고 보고하고
