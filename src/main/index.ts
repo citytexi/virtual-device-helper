@@ -59,7 +59,7 @@ app
         const avd = createAvdController({ adb, emulatorPath: paths.emulator, spawn })
         return { registry, avd }
       },
-      startServer: startMcpHttpServer
+      startServer: (opts) => startMcpHttpServer({ ...opts, version: app.getVersion() })
     })
 
     createWindow()

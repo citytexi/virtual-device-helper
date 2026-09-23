@@ -2,7 +2,8 @@
 
 Android·iOS 가상 기기를 MCP로 제어하고, 화면·로그·이벤트를 한 화면에서 보는 Electron 데스크탑 앱.
 
-현재 상태: M1 완료 — macOS 호스트, Android 에뮬레이터, MCP 서버와 최소 UI.
+현재 상태: v0.1.0 — macOS(Apple Silicon) 호스트, Android 에뮬레이터, MCP 서버, 기기 스크린샷, 툴 호출 기록,
+에이전트 안내 탭. 실시간 화면 스트리밍과 화면 직접 조작은 아직 없다(M2).
 검증 결과와 남은 결함은 [M1 스펙](docs/superpowers/specs/archive/2026-09-22-m1-device-core-mcp-server.md)의
 "검증 결과"에 있다.
 
@@ -15,12 +16,34 @@ Android·iOS 가상 기기를 MCP로 제어하고, 화면·로그·이벤트를 
 이 앱은 Android SDK를 번들하지 않는다. 이유는
 [ADR-0003](docs/adr/0003-no-bundled-android-sdk.md)에 있다.
 
-## 실행
+## 설치
+
+[Releases](https://github.com/citytexi/virtual-device-helper/releases)에서
+`virtual-device-helper-<버전>-arm64.dmg`를 받아 Applications로 옮긴다. Apple Silicon Mac 전용이다.
+
+앱은 서명·공증되지 않았다. 이유는 [ADR-0009](docs/adr/0009-unsigned-arm64-mac-distribution.md)에 있다.
+처음 열 때 macOS가 "손상되었다" 또는 "확인할 수 없는 개발자"라며 막으면 격리 속성을 지운다.
+
+```bash
+xattr -dr com.apple.quarantine /Applications/virtual-device-helper.app
+```
+
+받은 파일은 릴리스 노트의 SHA-256과 비교해 확인할 수 있다.
+
+```bash
+shasum -a 256 virtual-device-helper-<버전>-arm64.dmg
+```
+
+## 소스에서 실행
 
 ```bash
 npm install
+node node_modules/electron/install.js   # Electron 실행 파일을 받는다 (처음 한 번)
 npm run dev
 ```
+
+Electron은 `npm install` 때 실행 파일을 받지 않는다. 받지 않은 채 `npm run dev`를 하면
+`Error: Electron uninstall`로 멈춘다. `node_modules`를 지우고 다시 설치했을 때도 두 번째 줄을 다시 실행한다.
 
 ## 에이전트로 테스트하기
 
@@ -105,6 +128,7 @@ npm test                   # 단위 테스트 (에뮬레이터 불필요)
 npm run test:integration   # 실기기 테스트 (에뮬레이터 필요)
 npm run typecheck
 npm run build
+npm run dist               # macOS arm64 dmg·zip을 dist/에 만든다 (서명 없음)
 ```
 
 `npm run test:integration`은 연결된 에뮬레이터가 하나뿐이면 그 기기를 쓴다. 에뮬레이터가 여럿이거나

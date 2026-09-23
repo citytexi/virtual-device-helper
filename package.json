@@ -1,15 +1,13 @@
 {
   "name": "virtual-device-helper",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "",
+  "description": "Android 가상 기기를 MCP로 제어하고 화면·로그·툴 호출을 한 화면에서 보는 Electron 앱",
   "main": "./out/main/index.js",
-  "directories": {
-    "doc": "docs"
-  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "dist": "electron-vite build && electron-builder --mac --arm64",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "test:watch": "vitest",

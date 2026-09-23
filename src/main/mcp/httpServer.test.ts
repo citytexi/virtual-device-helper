@@ -177,6 +177,14 @@ describe('startMcpHttpServer authentication', () => {
     expect(response.status).toBeLessThan(400)
   })
 
+  it('reports the app version it was given in the initialize response', async () => {
+    handle = await startMcpHttpServer({ context: fakeContext(), version: '9.8.7' })
+
+    const response = await post(`${handle.url}`, { authorization: `Bearer ${handle.token}` }, initialize)
+
+    expect(response.text).toContain('"serverInfo":{"name":"virtual-device-helper","version":"9.8.7"}')
+  })
+
   it('sends the agent guide as instructions in the initialize response', async () => {
     handle = await startMcpHttpServer({ context: fakeContext() })
 

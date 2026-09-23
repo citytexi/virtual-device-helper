@@ -17,6 +17,7 @@ virtual-device-helper의 구조 결정을 기록한다. 기록하는 것은 **"�
 | [0006](0006-build-stack-electron-vite.md) | 빌드 스택은 electron-vite + electron-builder + React | accepted | 2026-09-22 | 세 타깃이 한 설정·한 타입 체계를 공유 |
 | [0007](0007-xml-parsing-library.md) | uiautomator 덤프 파싱에 fast-xml-parser를 들인다 | accepted | 2026-09-22 | 정규식은 조용히 노드를 흘린다. 파서는 parseUiDump 한 곳에 가둔다 |
 | [0008](0008-log-read-response-shape.md) | log_read 응답은 압축 한 줄 문자열과 바이트 예산으로 준다 | accepted | 2026-09-23 | 줄 수 상한만으론 인라인 한도를 못 막았다. 구조화된 LogLine은 툴 층 아래에 남긴다 |
+| [0009](0009-unsigned-arm64-mac-distribution.md) | 배포는 서명 없는 macOS arm64 dmg·zip으로 한다 | accepted | 2026-09-23 | Developer ID 없음, Intel·Windows 미지원 |
 <!-- index:end -->
 
 ## 언제 ADR을 쓰는가

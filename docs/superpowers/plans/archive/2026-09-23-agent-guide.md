@@ -8,7 +8,7 @@ updated: 2026-09-23
 owner: virtual-device-helper 팀
 scope: [main, renderer, mcp, shared, docs]
 hosts: []
-archived_reason:
+archived_reason: 구현 완료. 최종 리뷰의 Important 두 건을 고쳐 PR #8로 develop에 머지했다.
 related_adr: [ADR-0001, ADR-0004]
 related_spec: agent-guide
 related_architecture:
@@ -31,7 +31,7 @@ tags: [plan, agent, mcp, prompt]
 
 **Tech Stack:** TypeScript, React, Electron, `@modelcontextprotocol/sdk`, Vitest, @testing-library/react, jsdom
 
-**Spec:** [`../specs/2026-09-23-agent-guide.md`](../specs/2026-09-23-agent-guide.md)
+**Spec:** [`../../specs/archive/2026-09-23-agent-guide.md`](../../specs/archive/2026-09-23-agent-guide.md)
 
 ## Global Constraints
 
