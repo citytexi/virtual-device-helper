@@ -3,6 +3,7 @@ import type { AvdController } from '../device/avdController'
 import { createDeviceRegistry, type DeviceRegistry } from '../device/registry'
 import type { McpServerHandle, StartMcpHttpServerOpts } from '../mcp/httpServer'
 import type { LocateSdkResult, SdkPaths } from '../sdk/locateSdk'
+import type { StreamManager } from '../stream/streamManager'
 import { deviceError } from '../../shared/types/errors'
 import { createAppState, type AppState } from './appState'
 import { registerIpcBridge, type BridgeActions, type SendToRenderer } from './ipcBridge'
@@ -18,6 +19,8 @@ export interface BootstrapDeps {
   send: SendToRenderer
   /** adb·에뮬레이터에 실제로 닿는 부품들. 테스트에서 가짜로 바꾼다. */
   createDeviceStack: (paths: SdkPaths) => DeviceStack
+  /** 화면 스트림 세션을 관리한다. 실제 adb·소켓·Electron 포트에 닿으므로 테스트에서 가짜로 바꾼다. */
+  createStreamManager: (registry: DeviceRegistry, paths: SdkPaths) => StreamManager
   startServer: (opts: StartMcpHttpServerOpts) => Promise<McpServerHandle>
 }
 
@@ -82,7 +85,9 @@ function assembleWithoutSdk(searched: string[]): { state: AppState; actions: Bri
     },
     bootAvd: reject,
     shutdownDevice: reject,
-    captureScreenshot: reject
+    captureScreenshot: reject,
+    startStream: reject,
+    stopStream: async () => {}
   }
   return { state, actions }
 }
@@ -107,6 +112,13 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
     registry,
     avd,
     server: null
+  })
+
+  const stream = deps.createStreamManager(registry, located.paths)
+  // 기기가 사라지면 그 기기의 스트림은 재시도하지 않고 닫는다. 재시도 루프의 isConnected
+  // 확인만으로는 대기 시간만큼 늦게 닫힌다.
+  registry.on((event) => {
+    if (event.type === 'device_disconnected') void stream.handleDisconnect(event.serial)
   })
 
   // 상태가 registry를 구독한 뒤에 추적을 시작한다. 그래야 처음 붙어 있던 기기의
@@ -137,7 +149,13 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
       captureScreenshot: (serial) => {
         const device = registry.resolve(serial)
         return registry.run(device.serial, () => device.screenshot())
-      }
+      },
+      startStream: async (serial) => {
+        // 모르는 serial이면 여기서 no_device로 끝낸다. 세션을 열어 adb가 실패하기를 기다리지 않는다.
+        registry.resolve(serial)
+        await stream.open(serial)
+      },
+      stopStream: () => stream.stop()
     },
     deps.send
   )
@@ -146,6 +164,7 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
     state,
     server,
     async stop() {
+      await stream.stop()
       registry.stop()
       await server?.close()
     }

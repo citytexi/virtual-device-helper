@@ -28,7 +28,9 @@ function harness() {
     selectDevice: vi.fn(),
     bootAvd: vi.fn(async () => {}),
     shutdownDevice: vi.fn(async () => {}),
-    captureScreenshot: vi.fn(async () => ({ base64: 'QUJD', width: 1, height: 1 }))
+    captureScreenshot: vi.fn(async () => ({ base64: 'QUJD', width: 1, height: 1 })),
+    startStream: vi.fn(async () => {}),
+    stopStream: vi.fn(async () => {})
   }
 
   registerIpcBridge(ipcMain as never, state, actions, (channel, payload) =>
@@ -48,7 +50,9 @@ describe('registerIpcBridge', () => {
         IPC_CHANNELS.selectDevice,
         IPC_CHANNELS.bootAvd,
         IPC_CHANNELS.shutdownDevice,
-        IPC_CHANNELS.captureScreenshot
+        IPC_CHANNELS.captureScreenshot,
+        IPC_CHANNELS.startStream,
+        IPC_CHANNELS.stopStream
       ].sort()
     )
   })
@@ -105,6 +109,25 @@ describe('registerIpcBridge', () => {
       ok: false,
       error: { kind: 'command_failed', message: '문자열 실패', hint: '다시 시도하고, 반복되면 활동 탭에서 맥락을 확인해라' }
     })
+  })
+
+  it('routes startStream with a serial and rejects a missing one', async () => {
+    const h = harness()
+    const handler = h.handlers.get(IPC_CHANNELS.startStream)!
+
+    await expect(handler({}, 'emulator-5554')).resolves.toEqual({ ok: true, value: undefined })
+    expect(h.actions.startStream).toHaveBeenCalledWith('emulator-5554')
+
+    const rejected = (await handler({}, 42)) as { ok: boolean }
+    expect(rejected.ok).toBe(false)
+  })
+
+  it('routes stopStream without arguments', async () => {
+    const h = harness()
+
+    await h.handlers.get(IPC_CHANNELS.stopStream)!({})
+
+    expect(h.actions.stopStream).toHaveBeenCalledTimes(1)
   })
 
   it('broadcasts main events on the single event channel', () => {
