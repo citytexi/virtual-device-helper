@@ -79,4 +79,15 @@ describe('locateSdk', () => {
 
     expect(result.ok).toBe(false)
   })
+
+  it('dedupes searched paths when ANDROID_HOME and ANDROID_SDK_ROOT point to the same place', () => {
+    const result = locateSdk(
+      deps({ ANDROID_HOME: '/opt/sdk', ANDROID_SDK_ROOT: '/opt/sdk' }, [])
+    )
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    const occurrences = result.searched.filter((path) => path === '/opt/sdk/platform-tools/adb')
+    expect(occurrences).toHaveLength(1)
+  })
 })
