@@ -6,6 +6,8 @@
 
 디렉토리에 의존하는 테스트는 임시 docs 트리를 만들고 docs.py의 경로 전역을 그쪽으로 돌린다.
 """
+import contextlib
+import io
 import shutil
 import tempfile
 import unittest
@@ -272,6 +274,21 @@ class LinksTest(unittest.TestCase):
                        ADR_DOC + "\n```\n[예시](없는파일.md)\n```\n")
             self.assertEqual(D.main(["links", "docs/adr/0003-fence.md"]), 0)
 
+    def test_skips_superpowers_scratch_tree(self):
+        # 저장소 루트를 훑을 때 gitignore된 SDD 작업 트리(.superpowers/)는 문서가 아니므로 뺀다.
+        # 같은 깨진 링크를 일반 디렉토리에 두면 여전히 잡혀야 한다 — 루트 스캔 자체는 살아 있다.
+        with TempDocsTree() as tree:
+            scratch = tree.root / ".superpowers/sdd/some-plan"
+            scratch.mkdir(parents=True)
+            (scratch / "brief.md").write_text("[깨짐](없는파일.md)\n", encoding="utf-8")
+            notes = tree.root / "notes"
+            notes.mkdir()
+            (notes / "memo.md").write_text("[깨짐](없는파일.md)\n", encoding="utf-8")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                D.main(["links"])
+            self.assertNotIn(".superpowers", out.getvalue())
+            self.assertIn("notes/memo.md", out.getvalue())
 
 if __name__ == "__main__":
     unittest.main()
