@@ -70,5 +70,7 @@ export function locateSdk(deps: LocateSdkDeps): LocateSdkResult {
     if (adbOk && emulatorOk) return { ok: true, paths: candidate }
   }
 
-  return { ok: false, searched }
+  // ANDROID_HOME과 ANDROID_SDK_ROOT가 같은 경로를 가리키면 같은 항목이 두 번
+  // 쌓인다. renderer가 이 목록을 key로 쓰므로(SdkMissing) 중복은 순서를 지키며 걸러낸다.
+  return { ok: false, searched: [...new Set(searched)] }
 }
