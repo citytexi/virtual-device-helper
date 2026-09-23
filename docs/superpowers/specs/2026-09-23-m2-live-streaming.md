@@ -74,7 +74,7 @@ scrcpy-server  ──video──▶ scrcpySession ──▶ streamManager ──
 - **`scrcpyJar.ts`** (main) — 번들한 jar의 경로 해석과 서버 버전 상수.
 - **`streamManager.ts`** (main) — renderer가 요청한 기기로 세션을 열고 닫는다. 포트를 만들어 renderer에
   건네고, 재시도 정책을 가진다. renderer에서 온 입력 메시지를 검증한다.
-- **preload** — `startStream`·`stopStream` 두 메서드와, `stream:port`로 받은 포트를 main world로
+- **preload** — `startStream`·`stopStream` 두 메서드와, `app:stream-port`(`IPC_CHANNELS.streamPort`)로 받은 포트를 main world로
   넘기는 전달 한 줄을 더한다.
 - **`streamPort.ts`** (renderer) — main world에서 `window` message 이벤트로 포트를 받는다.
 - **`h264.ts`** (renderer, 순수) — config 패킷의 SPS에서 WebCodecs `codec` 문자열을 뽑는다.
@@ -233,7 +233,7 @@ interface StreamManager {
 }
 ```
 
-- 포트는 `webContents.postMessage('stream:port', { serial, sessionId }, [port])`로 건넨다.
+- 포트는 `webContents.postMessage('app:stream-port', { serial, sessionId }, [port])`로 건넨다.
 - `MessagePortMain`은 `ArrayBuffer` transfer를 지원하지 않는다. 패킷은 structured clone으로 복사된다.
   `VideoPacket.data`를 정확한 크기의 새 버퍼로 만드는 이유가 이것이다. 큰 풀 버퍼의 view를 보내면 풀 전체가 복사된다.
 - 시작 실패도 포트의 `status` 메시지로 알린다. 포트를 세션보다 먼저 보내는 이유다.
@@ -250,8 +250,8 @@ interface RendererApi {
 }
 ```
 
-- `MessagePort`는 contextBridge를 넘지 못한다. preload는 `ipcRenderer.on('stream:port')`로 받은 포트를
-  `window.postMessage({ channel: 'stream:port', serial, sessionId }, '*', [port])`로 main world에 넘긴다.
+- `MessagePort`는 contextBridge를 넘지 못한다. preload는 `ipcRenderer.on('app:stream-port')`로 받은 포트를
+  `window.postMessage({ channel: 'app:stream-port', serial, sessionId }, '*', [port])`로 main world에 넘긴다.
   Electron 문서의 방식이다.
 - main world에서는 `streamPort.ts`가 `window`의 message 이벤트를 듣는다. `event.source === window`이고
   `channel`이 맞고 포트가 정확히 하나일 때만 받는다.
@@ -287,7 +287,7 @@ interface ToolCallRecord {
 | 상태 | 진입 | 화면 |
 |---|---|---|
 | `connecting` | `startStream` | 연결 중 표시 |
-| `streaming` | 비디오·control 소켓 연결 완료 | 캔버스 |
+| `streaming` | 비디오·control 소켓이 붙고 첫 session meta를 받음 | 캔버스 |
 | `reconnecting` | 예기치 않은 종료 후 기기가 아직 연결돼 있음 | 마지막 프레임 위에 재연결 중 표시 |
 | `failed` | 시작 실패, 재시도 소진, `startStream` invoke 실패 | 스크린샷 화면 + "다시 연결" 버튼 |
 
@@ -301,6 +301,8 @@ interface ToolCallRecord {
   닫고, IPC 메시지는 순서대로 도착하므로 가장 나중 것이 살아 있는 세션이다.
 - 창이 가려지거나 최소화돼도 스트림을 유지한다.
 - 앱 종료 시 세션을 닫는다.
+- renderer 쪽 포트가 끊기면(창 닫힘, reload, 크래시) main은 재시도 없이 그 세션을 닫는다. 이미 다른 세션으로
+  밀려난 포트의 끊김은 무시한다. 창이 없어 포트를 건네지 못했을 때도 포트를 닫아 같은 경로로 정리된다.
 
 ### 디코딩
 
@@ -355,7 +357,7 @@ interface ToolCallRecord {
 - `src/main/stream/streamManager.ts` — 세션 교체, 포트, 재시도, 입력 검증
 - `src/main/stream/__fixtures__/` — 실제 v4.1 비디오 소켓에서 뜬 바이트 (M1 스파이크의 `first-chunks.bin`)
 - `src/main/app/bootstrap.ts`, `src/main/app/ipcBridge.ts`, `src/main/index.ts` — 조립
-- `src/preload/index.ts`, `src/shared/types/ipc.ts` — `startStream`·`stopStream`, `stream:port`, `Gesture`
+- `src/preload/index.ts`, `src/shared/types/ipc.ts` — `startStream`·`stopStream`, `app:stream-port`, `Gesture`
 - `src/main/mcp/runTool.ts`, `src/main/mcp/tools/ui.ts` — gesture 기록
 - `electron-builder.yml` — jar를 `extraResources`로
 - `src/renderer/src/stream/streamPort.ts`, `h264.ts`, `streamDecoder.ts`, `inputMapper.ts`

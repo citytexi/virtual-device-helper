@@ -34,7 +34,7 @@ M1의 IPC는 요청·응답(`ipcMain.handle`)과 단일 이벤트 채널(`app:ev
 
 스트림 세션마다 `MessageChannelMain`을 하나 만들고, 그 포트 한쪽을 renderer에 건넨다.
 
-- main은 세션을 열 때 채널을 만들고 `webContents.postMessage('stream:port', meta, [port])`로 보낸다.
+- main은 세션을 열 때 채널을 만들고 `webContents.postMessage('app:stream-port', meta, [port])`로 보낸다.
 - 비디오 패킷, 세션 상태, 사람 입력 의도가 모두 이 포트를 오간다. `MessagePortMain`은 `ArrayBuffer`
   transfer를 지원하지 않으므로 패킷은 structured clone으로 복사된다. 그래서 패킷은 정확한 크기의 새 버퍼로 만든다.
 - 세션을 닫으면 포트도 닫는다. 늦게 도착한 패킷은 닫힌 포트와 함께 사라진다.
