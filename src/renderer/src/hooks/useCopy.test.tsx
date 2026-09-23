@@ -41,6 +41,20 @@ describe('useCopy', () => {
   })
 })
 
+describe('useCopy reset', () => {
+  it('forgets the last result', async () => {
+    stubClipboard(async () => {})
+    const { result } = renderHook(() => useCopy())
+
+    await act(async () => {
+      await result.current.copy('hello')
+    })
+    act(() => result.current.reset())
+
+    expect(result.current.status).toBeNull()
+  })
+})
+
 describe('copyStatusText', () => {
   it('says what happened in one line', () => {
     expect(copyStatusText({ ok: true })).toBe('복사했다')

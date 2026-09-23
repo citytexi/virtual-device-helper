@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { ServerStatus } from '../../../shared/types/ipc'
 import {
@@ -37,6 +37,14 @@ export function AgentTab({ server, targetSerial }: AgentTabProps): JSX.Element {
 
   const templates = promptTemplates(targetSerial)
   const template = templates.find((candidate) => candidate.id === selected) ?? (templates[0] as PromptTemplate)
+  const command = server ? claudeCodeCommand(server) : null
+
+  // 복사 결과는 그때 복사한 내용에 대한 것이다. 템플릿·대상 기기·토큰이 바뀌어
+  // 복사할 내용이 달라지면 지운다. 숨긴 탭은 unmount되지 않으므로 여기서 지워야 한다.
+  const { reset: resetPromptCopy } = promptCopy
+  const { reset: resetCommandCopy } = commandCopy
+  useEffect(() => resetPromptCopy(), [template.body, resetPromptCopy])
+  useEffect(() => resetCommandCopy(), [command, resetCommandCopy])
 
   return (
     <div className="agent-tab">
@@ -45,12 +53,12 @@ export function AgentTab({ server, targetSerial }: AgentTabProps): JSX.Element {
           Claude Code 연결
         </h3>
 
-        {server ? (
+        {server && command ? (
           <>
             <p className="agent-help">테스트할 앱의 프로젝트 폴더에서 이 명령을 실행한다.</p>
             <pre className="command-block">{claudeCodeCommandMasked(server)}</pre>
             <div className="button-row">
-              <button type="button" className="btn btn-primary" onClick={() => void commandCopy.copy(claudeCodeCommand(server))}>
+              <button type="button" className="btn btn-primary" onClick={() => void commandCopy.copy(command)}>
                 명령 복사
               </button>
             </div>

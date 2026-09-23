@@ -110,4 +110,34 @@ describe('AgentTab prompts', () => {
     expect(preview).toContain('`emulator-5556`')
     expect(preview).not.toContain('`emulator-5554`')
   })
+
+  it('clears the copy result once the preview shows a different prompt', async () => {
+    const user = userEvent.setup()
+    stubClipboard(async () => {})
+    const { rerender } = render(<AgentTab server={server} targetSerial="emulator-5554" />)
+
+    await user.click(screen.getByRole('button', { name: '프롬프트 복사' }))
+    await waitFor(() => expect(screen.getByText('복사했다')).toBeDefined())
+
+    await user.click(screen.getByRole('radio', { name: '버그 재현' }))
+    expect(screen.queryByText('복사했다')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: '프롬프트 복사' }))
+    await waitFor(() => expect(screen.getByText('복사했다')).toBeDefined())
+
+    rerender(<AgentTab server={server} targetSerial="emulator-5556" />)
+    expect(screen.queryByText('복사했다')).toBeNull()
+  })
+
+  it('clears the command copy result when the token changes', async () => {
+    const user = userEvent.setup()
+    stubClipboard(async () => {})
+    const { rerender } = render(<AgentTab server={server} targetSerial={null} />)
+
+    await user.click(screen.getByRole('button', { name: '명령 복사' }))
+    await waitFor(() => expect(screen.getByText('복사했다')).toBeDefined())
+
+    rerender(<AgentTab server={{ ...server, token: 'new-token' }} targetSerial={null} />)
+    expect(screen.queryByText('복사했다')).toBeNull()
+  })
 })
