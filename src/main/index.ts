@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, MessageChannelMain, nativeTheme } from 'electron'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { createAdbClient } from './adb/adbClient'
@@ -9,7 +9,11 @@ import { createDeviceRegistry } from './device/registry'
 import { electronResizeImage } from './device/resizeImage'
 import { startMcpHttpServer } from './mcp/httpServer'
 import { defaultLocateSdkDeps, locateSdk } from './sdk/locateSdk'
+import { resolveScrcpyJar } from './stream/scrcpyJar'
+import { connectLoopback, createScrcpySession } from './stream/scrcpySession'
+import { createStreamManager } from './stream/streamManager'
 import { bootstrapApp, rendererSender, type BootstrappedApp } from './app/bootstrap'
+import { IPC_CHANNELS } from '../shared/types/ipc'
 
 let window: BrowserWindow | null = null
 let running: BootstrappedApp | null = null
@@ -58,6 +62,53 @@ app
         })
         const avd = createAvdController({ adb, emulatorPath: paths.emulator, spawn })
         return { registry, avd }
+      },
+      createStreamManager: (registry, paths) => {
+        const adb = createAdbClient(paths.adb)
+        const jarPath = resolveScrcpyJar({
+          isPackaged: app.isPackaged,
+          resourcesPath: process.resourcesPath,
+          appPath: app.getAppPath()
+        })
+        return createStreamManager({
+          createSession: (serial, handlers) => createScrcpySession({ serial, adb, jarPath, connect: connectLoopback }, handlers),
+          createChannel: () => {
+            const { port1, port2 } = new MessageChannelMain()
+            return {
+              local: {
+                postMessage: (message) => port1.postMessage(message),
+                on: (event: 'message' | 'close', listener: (event: { data: unknown }) => void) => {
+                  if (event === 'close') port1.on('close', () => listener({ data: undefined }))
+                  else port1.on('message', (message) => listener({ data: message.data }))
+                },
+                start: () => port1.start(),
+                close: () => port1.close()
+              },
+              remote: port2
+            }
+          },
+          postPort: (meta, remote) => {
+            // isDestroyed() 확인과 postMessage 호출 사이에 창이 닫힐 수 있다. streamManager.open()은
+            // 이 호출을 try/catch로 감싸지 않으므로 여기서 절대 던지지 않는다 — 실패하면 그냥
+            // 포트가 보이지 않을 뿐이고, 다음 open이 그 포트를 대체한다.
+            // 건네지 못한 포트는 닫는다. 그러면 local 쪽에 close가 와서 streamManager가 세션을 정리한다.
+            const port = remote as Electron.MessagePortMain
+            try {
+              if (window && !window.isDestroyed()) {
+                window.webContents.postMessage(IPC_CHANNELS.streamPort, meta, [port])
+                return
+              }
+            } catch (thrown) {
+              console.error('스트림 포트를 renderer에 건네지 못했다', thrown)
+            }
+            try {
+              port.close()
+            } catch {
+              // 이미 닫힌 포트다.
+            }
+          },
+          isConnected: (serial) => registry.serials().includes(serial)
+        })
       },
       startServer: (opts) => startMcpHttpServer({ ...opts, version: app.getVersion() })
     })

@@ -7,6 +7,10 @@ directories:
 files:
   - out/**
   - package.json
+# adb push가 읽을 수 있게 asar 밖(Contents/Resources)에 둔다. 경로는 scrcpyJar.ts의 resolveScrcpyJar.
+extraResources:
+  - from: vendor/scrcpy/scrcpy-server.jar
+    to: scrcpy-server.jar
 mac:
   category: public.app-category.developer-tools
   identity: null

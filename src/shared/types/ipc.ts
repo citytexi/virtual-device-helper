@@ -19,6 +19,10 @@ export const IPC_CHANNELS = {
   bootAvd: 'app:boot-avd',
   shutdownDevice: 'app:shutdown-device',
   captureScreenshot: 'app:capture-screenshot',
+  startStream: 'app:start-stream',
+  stopStream: 'app:stop-stream',
+  /** main → renderer. 스트림 포트 하나를 싣는다. preload가 main world로 다시 건넨다. */
+  streamPort: 'app:stream-port',
   event: 'app:event'
 } as const
 
@@ -73,5 +77,8 @@ export interface RendererApi {
   bootAvd(name: string): Promise<Outcome<void>>
   shutdownDevice(serial: string): Promise<Outcome<void>>
   captureScreenshot(serial: string): Promise<Outcome<ScreenshotResult>>
+  /** 이 기기로 스트림을 연다. 이전 스트림은 main이 닫는다. 포트는 IPC_CHANNELS.streamPort로 따로 온다. */
+  startStream(serial: string): Promise<Outcome<void>>
+  stopStream(): Promise<Outcome<void>>
   onEvent(callback: (event: MainEvent) => void): () => void
 }

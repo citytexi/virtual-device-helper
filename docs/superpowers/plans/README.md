@@ -13,6 +13,9 @@
 <!-- index:start -->
 | 계획 | 상태 | 내용 |
 |------|------|------|
+| [m2-1-stream-core](2026-09-23-m2-1-stream-core.md) | draft | scrcpy 프로토콜·세션·streamManager, startStream IPC와 포트 전달 |
+| [m2-2-renderer-stream](2026-09-23-m2-2-renderer-stream.md) | draft | WebCodecs 디코딩, 캔버스 입력·툴바, 스크린샷 강등 |
+| [m2-3-gesture-overlay](2026-09-23-m2-3-gesture-overlay.md) | draft | ui_tap·ui_swipe 오버레이, 완료 조건 검증과 문서 정리 |
 <!-- index:end -->
 
 ## 아카이브

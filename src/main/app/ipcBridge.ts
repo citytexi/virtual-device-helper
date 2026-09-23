@@ -9,6 +9,8 @@ export interface BridgeActions {
   bootAvd(name: string): Promise<void>
   shutdownDevice(serial: string): Promise<void>
   captureScreenshot(serial: string): Promise<ScreenshotResult>
+  startStream(serial: string): Promise<void>
+  stopStream(): Promise<void>
 }
 
 export type SendToRenderer = (channel: string, payload: MainEvent) => void
@@ -64,6 +66,8 @@ export function registerIpcBridge(
   ipcMain.handle(IPC_CHANNELS.bootAvd, withText('AVD 이름', (name) => actions.bootAvd(name)))
   ipcMain.handle(IPC_CHANNELS.shutdownDevice, withText('serial', (serial) => actions.shutdownDevice(serial)))
   ipcMain.handle(IPC_CHANNELS.captureScreenshot, withText('serial', (serial) => actions.captureScreenshot(serial)))
+  ipcMain.handle(IPC_CHANNELS.startStream, withText('serial', (serial) => actions.startStream(serial)))
+  ipcMain.handle(IPC_CHANNELS.stopStream, () => outcome(() => actions.stopStream()))
 
   state.onEvent((event) => send(IPC_CHANNELS.event, event))
 }
