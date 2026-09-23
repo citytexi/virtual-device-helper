@@ -13,6 +13,7 @@
 <!-- index:start -->
 | 계획 | 상태 | 내용 |
 |------|------|------|
+| [agent-guide](2026-09-23-agent-guide.md) | draft | agentGuide 문구 → MCP instructions → useCopy → 에이전트 탭 → 탭 전환 → README → 수동 검증 |
 <!-- index:end -->
 
 ## 아카이브
