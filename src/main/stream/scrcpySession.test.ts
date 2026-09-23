@@ -305,6 +305,65 @@ describe('createScrcpySession', () => {
     expect(h.connect.mock.calls.length).toBeLessThan(5)
   })
 
+  it('destroys the video socket if it finishes connecting after close() was already called', async () => {
+    const video = videoSocket()
+    const h = harness([video, new FakeSocket()])
+    // connect()의 첫 호출(비디오)을 잡아 둔 채로 close()를 먼저 부르고, 그 다음에야 연결이
+    // 실제로 끝나게 한다 — "close() 동안 소켓이 막 붙었다"를 결정론적으로 재현한다.
+    // 객체 프로퍼티에 담는 이유: 클로저 안에서만 바뀌는 지역 let은 TS가 이후 읽기 지점에서
+    // 좁혀 버려(never) 컴파일이 깨진다.
+    const gate: { release: (() => void) | null } = { release: null }
+    const originalConnect = h.connect.getMockImplementation() as () => Promise<FakeSocket>
+    let calls = 0
+    h.connect.mockImplementation(async () => {
+      calls += 1
+      if (calls === 1) {
+        await new Promise<void>((resolve) => {
+          gate.release = resolve
+        })
+      }
+      return originalConnect()
+    })
+
+    const startPromise = h.session.start()
+    await vi.waitFor(() => expect(gate.release).not.toBeNull())
+    await h.session.close()
+    gate.release?.()
+
+    const error = await startPromise.catch((thrown: unknown) => thrown)
+
+    expect(isDeviceError(error) && error.toolError.kind).not.toBe('device_unresponsive')
+    expect(video.destroy).toHaveBeenCalled()
+  })
+
+  it('destroys the control socket if it finishes connecting after close() was already called', async () => {
+    const control = new FakeSocket()
+    const h = harness([videoSocket(), control])
+    // 비디오는 정상적으로 붙게 두고, control로 가는 connect()의 두 번째 호출만 잡아 둔다.
+    const gate: { release: (() => void) | null } = { release: null }
+    const originalConnect = h.connect.getMockImplementation() as () => Promise<FakeSocket>
+    let calls = 0
+    h.connect.mockImplementation(async () => {
+      calls += 1
+      if (calls === 2) {
+        await new Promise<void>((resolve) => {
+          gate.release = resolve
+        })
+      }
+      return originalConnect()
+    })
+
+    const startPromise = h.session.start()
+    await vi.waitFor(() => expect(gate.release).not.toBeNull())
+    await h.session.close()
+    gate.release?.()
+
+    const error = await startPromise.catch((thrown: unknown) => thrown)
+
+    expect(isDeviceError(error) && error.toolError.kind).not.toBe('device_unresponsive')
+    expect(control.destroy).toHaveBeenCalled()
+  })
+
   it('reports an unexpected end exactly once', async () => {
     const video = videoSocket()
     const control = new FakeSocket()

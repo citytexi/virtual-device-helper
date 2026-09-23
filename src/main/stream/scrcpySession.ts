@@ -304,8 +304,11 @@ export function createScrcpySession(deps: ScrcpySessionDeps, handlers: SessionHa
 
       const deadline = now() + connectTimeoutMs
       const { socket, first } = await connectVideo(parsedPort, deadline)
-      if (closed) throw closedWhileStarting()
+      // closed 검사보다 대입이 먼저다 — port와 같은 순서다. connectVideo가 소켓을 들고 돌아온
+      // 시점에는 이미 실제로 연결이 됐으므로, closed였다고 그냥 던지면 이 소켓은 어디에도
+      // 저장되지 않은 채 cleanup()의 [video, control] 목록 밖에 남아 새는 채로 끝난다.
       video = socket
+      if (closed) throw closedWhileStarting()
       const parser = createVideoStreamParser({
         onDeviceName: () => {},
         onSession: (width, height) => {
@@ -329,8 +332,9 @@ export function createScrcpySession(deps: ScrcpySessionDeps, handlers: SessionHa
 
       // 서버는 비디오 연결을 받은 뒤 같은 소켓 이름으로 control 연결을 기다린다.
       const controlSocket = await connect(parsedPort)
-      if (closed) throw closedWhileStarting()
+      // 여기도 마찬가지로 대입이 먼저다 — 이미 연결된 control 소켓을 cleanup()이 찾을 수 있어야 한다.
       control = controlSocket
+      if (closed) throw closedWhileStarting()
       // control 소켓으로 오는 기기 메시지는 쓰지 않지만 읽어야 버퍼가 차지 않는다.
       controlSocket.on('data', () => {})
       controlSocket.on('error', () => {})
