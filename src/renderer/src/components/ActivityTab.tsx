@@ -27,7 +27,9 @@ export function ActivityTab({ records }: ActivityTabProps): JSX.Element {
           <strong>{record.tool}</strong>
           <code>{record.argsSummary}</code>
           <span>{record.durationMs}ms</span>
-          {record.ok ? null : <span>{record.errorKind}</span>}
+          <span>
+            {record.ok ? '성공' : record.errorKind ? `실패 ${record.errorKind}` : '실패'}
+          </span>
         </li>
       ))}
     </ul>

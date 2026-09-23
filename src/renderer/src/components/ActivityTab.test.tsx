@@ -48,4 +48,16 @@ describe('ActivityTab', () => {
     expect(screen.getByText(/no_device/)).toBeDefined()
     expect(screen.getByRole('listitem').getAttribute('data-ok')).toBe('false')
   })
+
+  it('shows a successful call as succeeded', () => {
+    render(<ActivityTab records={[record({ ok: true })]} />)
+
+    expect(screen.getByText('성공')).toBeDefined()
+  })
+
+  it('shows a failed call without an error kind as failed', () => {
+    render(<ActivityTab records={[record({ ok: false, errorKind: undefined })]} />)
+
+    expect(screen.getByText('실패')).toBeDefined()
+  })
 })
