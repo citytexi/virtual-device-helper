@@ -31,8 +31,10 @@
     "vitest": "^5.0.1"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "fast-xml-parser": "^5.11.1",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.5"
   }
 }
