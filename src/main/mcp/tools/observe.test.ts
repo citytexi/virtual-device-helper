@@ -6,7 +6,7 @@ import type { DeviceRegistry } from '../../device/registry'
 import type { Device, LogLine } from '../../../shared/types/device'
 import { parseLogcat } from '../../device/parsers/logcat'
 import { createToolHarness } from '../testHarness'
-import { LOG_READ_DEFAULT_LIMIT, LOG_READ_MAX_LIMIT } from './observe'
+import { LOG_READ_DEFAULT_LIMIT, LOG_READ_MAX_LIMIT, LOG_READ_RESPONSE_BUDGET_CHARS } from './observe'
 
 function harnessFor(device: Partial<Device>) {
   const full = { serial: 'emulator-5554', ...device } as Device
@@ -112,6 +112,35 @@ describe('log_read', () => {
     expect(formatted).toContain('x'.repeat(300))
     expect(formatted).not.toContain('x'.repeat(301))
     expect(formatted).toMatch(/…\(\+200자\)$/)
+
+    await harness.close()
+  })
+
+  it('caps a long message by code points, keeping a surrogate pair intact at the boundary', async () => {
+    // 이모지(😀)는 UTF-16으로 서로게이트 쌍 2유닛이지만 코드포인트로는 1개다.
+    // 299번째 'a' 다음에 이 이모지를 놓아 자르는 경계(300번째 코드포인트)에 걸치게
+    // 만든다 — .length/.slice(UTF-16 기준)로 잘랐다면 이 이모지의 반쪽(단독
+    // 서로게이트)만 남아 문자열이 깨졌을 자리다.
+    const longMessage = `${'a'.repeat(299)}😀${'b'.repeat(10)}`
+    expect(Array.from(longMessage)).toHaveLength(310)
+
+    const harness = await harnessFor({
+      readLogs: async () => ({
+        lines: [{ ...line, message: longMessage }],
+        truncated: false,
+        droppedCount: 0
+      })
+    })
+
+    const payload = (await harness.call('log_read')) as { lines: string[] }
+
+    expect(payload.lines).toHaveLength(1)
+    const formatted = payload.lines[0] as string
+
+    // 이모지가 온전히 남아 있어야 한다 — 반쪽 서로게이트가 아니다.
+    expect(formatted).toContain(`${'a'.repeat(299)}😀`)
+    expect(formatted).not.toContain('b')
+    expect(formatted).toMatch(/…\(\+10자\)$/)
 
     await harness.close()
   })
@@ -222,6 +251,46 @@ describe('log_read response size regression', () => {
     const text = (raw.content[0] as { text: string }).text
 
     expect(text.length).toBeLessThan(25_000)
+
+    await harness.close()
+  })
+
+  it('stays under the response budget when every line is near its own cap, dropping the oldest lines and merging droppedCount', async () => {
+    // 픽스처가 아니라 합성 데이터를 쓴다: 200줄 전부가 2000자짜리 메시지를 담으면
+    // 각 줄이 개별 상한(300 코드포인트)까지 잘려도 합치면 여전히 예산을 넘는다
+    // (리뷰어 실측: 대략 71,000자). tag에 순번을 담아 남은 줄이 최신(뒤쪽) 것인지
+    // 확인한다.
+    const lines: LogLine[] = Array.from({ length: LOG_READ_MAX_LIMIT }, (_, i) => ({
+      timestamp: '09-22 11:06:21.123',
+      level: 'D',
+      tag: `Tag${i}`,
+      pid: 1000 + i,
+      message: 'y'.repeat(2000)
+    }))
+
+    // AndroidDevice.readLogs가 이미 상한에 걸려 5줄을 버린 상태(truncated: true,
+    // droppedCount: 5)라고 가정한다 — tool 층의 예산 초과 드랍이 이 값 위에 더해져야
+    // 한다(요구사항 3: "droppedCount counts both limit-dropped and budget-dropped").
+    const deviceDroppedCount = 5
+    const harness = await harnessFor({
+      readLogs: async () => ({ lines, truncated: true, droppedCount: deviceDroppedCount })
+    })
+
+    const raw = await harness.raw('log_read', { limit: LOG_READ_MAX_LIMIT })
+    const text = (raw.content[0] as { text: string }).text
+    const payload = JSON.parse(text) as { lines: string[]; truncated: boolean; droppedCount: number }
+
+    expect(text.length).toBeLessThanOrEqual(LOG_READ_RESPONSE_BUDGET_CHARS)
+    expect(payload.truncated).toBe(true)
+
+    const budgetDroppedCount = LOG_READ_MAX_LIMIT - payload.lines.length
+    expect(budgetDroppedCount).toBeGreaterThan(0) // 실제로 예산 때문에 더 버려졌는지 확인
+    expect(payload.droppedCount).toBe(deviceDroppedCount + budgetDroppedCount)
+
+    // 남은 줄은 가장 최신(뒤쪽, 큰 인덱스) 것들이어야 한다.
+    const firstKeptIndex = LOG_READ_MAX_LIMIT - payload.lines.length
+    expect(payload.lines[0]).toContain(`Tag${firstKeptIndex}(`)
+    expect(payload.lines[payload.lines.length - 1]).toContain(`Tag${LOG_READ_MAX_LIMIT - 1}(`)
 
     await harness.close()
   })

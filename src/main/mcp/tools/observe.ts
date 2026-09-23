@@ -20,14 +20,29 @@ const serial = z
 export const LOG_READ_DEFAULT_LIMIT = DEFAULT_LOG_LIMIT
 export const LOG_READ_MAX_LIMIT = MAX_LOG_LIMIT
 
-/** 로그 한 줄의 message를 이 길이로 자른다. 줄 하나가 응답 예산을 통째로 먹는 것을 막는다. */
-const LOG_MESSAGE_MAX_CHARS = 300
+/**
+ * 로그 한 줄의 message를 이 만큼(코드포인트 기준)으로 자른다. 줄 하나가 응답 예산을
+ * 통째로 먹는 것을 막는다. UTF-16 코드유닛(`.length`)이 아니라 코드포인트로 세고
+ * 자른다 — `.length`나 `.slice`로 자르면 서로게이트 쌍(이모지 등) 딱 그 경계에서
+ * 반쪽만 남아 깨진 문자열이 될 수 있다.
+ */
+const LOG_MESSAGE_MAX_CODEPOINTS = 300
 
-/** message가 상한을 넘으면 잘라내고, 몇 자를 버렸는지 보이는 표식을 남긴다. */
+/**
+ * 이 tool이 돌려주는 텍스트 전체(직렬화된 JSON)의 상한. 줄 하나하나는
+ * `LOG_MESSAGE_MAX_CODEPOINTS`로 잘라도, 줄 수가 많으면(최대 `LOG_READ_MAX_LIMIT`줄)
+ * 합쳐서 여전히 에이전트가 inline으로 못 받을 만큼 커질 수 있다 — 실측: 200줄이
+ * 전부 상한 근처 메시지를 담으면 압축 포맷으로도 7만 자를 넘는다. 이 상한을 넘으면
+ * 가장 오래된 줄부터 버려서 맞춘다.
+ */
+export const LOG_READ_RESPONSE_BUDGET_CHARS = 20_000
+
+/** message가 상한을 넘으면 코드포인트 단위로 잘라내고, 몇 자를 버렸는지 보이는 표식을 남긴다. */
 function truncateMessage(message: string): string {
-  if (message.length <= LOG_MESSAGE_MAX_CHARS) return message
-  const overflow = message.length - LOG_MESSAGE_MAX_CHARS
-  return `${message.slice(0, LOG_MESSAGE_MAX_CHARS)}…(+${overflow}자)`
+  const codePoints = Array.from(message)
+  if (codePoints.length <= LOG_MESSAGE_MAX_CODEPOINTS) return message
+  const overflow = codePoints.length - LOG_MESSAGE_MAX_CODEPOINTS
+  return `${codePoints.slice(0, LOG_MESSAGE_MAX_CODEPOINTS).join('')}…(+${overflow}자)`
 }
 
 /**
@@ -37,6 +52,36 @@ function truncateMessage(message: string): string {
  */
 function formatLogLine(line: LogLine): string {
   return `${line.timestamp} ${line.level} ${line.tag}(${line.pid}): ${truncateMessage(line.message)}`
+}
+
+interface LogReadPayload {
+  lines: string[]
+  truncated: boolean
+  droppedCount: number
+}
+
+/**
+ * 직렬화된 JSON 텍스트 길이가 `LOG_READ_RESPONSE_BUDGET_CHARS`를 넘으면 가장
+ * 오래된 줄부터 버린다. `lines`는 이미 오래된 것이 앞, 최신이 뒤 순서다
+ * (`AndroidDevice.readLogs`가 자르는 방향과 같다 — "최신 쪽이 쓸모 있다") — 그래서
+ * 앞에서부터 하나씩 뗀다. 버린 만큼 droppedCount에 더하고 truncated를 true로 올린다.
+ * `AndroidDevice.readLogs`가 이미 잘라서 truncated/droppedCount가 차 있어도 그대로
+ * 이어받아 누적한다.
+ */
+function enforceResponseBudget(lines: string[], truncated: boolean, droppedCount: number): LogReadPayload {
+  let kept = lines
+  let trunc = truncated
+  let dropped = droppedCount
+
+  while (kept.length > 0) {
+    const length = JSON.stringify({ lines: kept, truncated: trunc, droppedCount: dropped }).length
+    if (length <= LOG_READ_RESPONSE_BUDGET_CHARS) break
+    kept = kept.slice(1)
+    dropped += 1
+    trunc = true
+  }
+
+  return { lines: kept, truncated: trunc, droppedCount: dropped }
 }
 
 export function registerObserveTools(server: McpServer, context: ToolContext): void {
@@ -74,7 +119,8 @@ export function registerObserveTools(server: McpServer, context: ToolContext): v
       description:
         `logcat을 읽는다. 기본 줄 수 제한이 있고(${LOG_READ_DEFAULT_LIMIT}) 인자로도 상한(${LOG_READ_MAX_LIMIT})을 넘을 수 없다. ` +
         '잘리면 truncated가 true로 온다 — 그때는 filter로 좁혀서 다시 불러라. lines는 한 줄당 문자열 하나로 온다 ' +
-        '("MM-DD HH:MM:SS.mmm L tag(pid): message" 형태). 긴 message는 잘리고 "…(+N자)"로 얼마나 잘렸는지 표시된다.',
+        '("MM-DD HH:MM:SS.mmm L tag(pid): message" 형태). 긴 message는 잘리고 "…(+N자)"로 얼마나 잘렸는지 표시된다. ' +
+        `줄 수가 상한 안이어도 응답 전체가 대략 ${LOG_READ_RESPONSE_BUDGET_CHARS}자를 넘으면 가장 오래된 줄부터 추가로 버리고 그만큼 truncated·droppedCount에 반영한다.`,
       inputSchema: {
         filter: z.string().optional().describe('태그나 메시지에 대한 부분일치 필터'),
         since: z.string().optional().describe('이 시각 이후만. 형식은 "MM-DD HH:mm:ss.SSS"'),
@@ -100,12 +146,9 @@ export function registerObserveTools(server: McpServer, context: ToolContext): v
         if (args.since !== undefined) opts.since = args.since
 
         const result = await context.registry.run(device.serial, () => device.readLogs(opts))
+        const formatted = result.lines.map(formatLogLine)
 
-        return {
-          lines: result.lines.map(formatLogLine),
-          truncated: result.truncated,
-          droppedCount: result.droppedCount
-        }
+        return enforceResponseBudget(formatted, result.truncated, result.droppedCount)
       })
   )
 
