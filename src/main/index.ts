@@ -64,6 +64,11 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
+let stopping: Promise<void> | null = null
+
 app.on('before-quit', () => {
-  void running?.stop()
+  // before-quit은 여러 번 올 수 있다. 정리는 한 번만 하고, 서버 close 실패가
+  // unhandled rejection으로 새지 않게 여기서 받는다.
+  if (stopping || !running) return
+  stopping = running.stop().catch((thrown) => console.error('종료 정리에 실패했다', thrown))
 })

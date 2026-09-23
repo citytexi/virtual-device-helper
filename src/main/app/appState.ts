@@ -1,6 +1,7 @@
 import type { AvdController } from '../device/avdController'
 import type { DeviceRegistry, RegistryEvent } from '../device/registry'
 import type { McpServerHandle } from '../mcp/httpServer'
+import type { AvdEntry } from '../../shared/types/device'
 import type { AppSnapshot, MainEvent, SdkStatus, ToolCallRecord, TrackingFailure } from '../../shared/types/ipc'
 
 const DEFAULT_TOOL_CALL_LIMIT = 500
@@ -56,6 +57,19 @@ export function createAppState(deps: AppStateDeps): AppState {
     }
   }
 
+  /**
+   * 스냅샷은 renderer가 첫 화면을 그리는 유일한 재료다. AVD 목록 하나를 못 읽었다고
+   * 스냅샷 전체를 실패시키면 기기·서버 정보까지 함께 사라진다. 빈 목록으로 대신한다.
+   */
+  async function listAvdsOrEmpty(): Promise<AvdEntry[]> {
+    try {
+      return await deps.avd.list()
+    } catch (thrown) {
+      console.error('스냅샷용 AVD 목록을 읽지 못했다', thrown)
+      return []
+    }
+  }
+
   deps.registry.on((event: RegistryEvent) => {
     const mainEvent = toMainEvent(event)
     if (mainEvent.type === 'tracking_failed') trackingFailure = mainEvent.failure
@@ -73,7 +87,7 @@ export function createAppState(deps: AppStateDeps): AppState {
       return {
         sdk: deps.sdk,
         server: endpoint(),
-        avds: deps.sdk.ok ? await deps.avd.list() : [],
+        avds: deps.sdk.ok ? await listAvdsOrEmpty() : [],
         devices: deps.registry.serials(),
         activeSerial: deps.registry.getActive(),
         toolCalls: [...toolCalls],

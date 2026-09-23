@@ -297,3 +297,35 @@ describe('createAppState avd refresh failures', () => {
     }
   })
 })
+
+describe('createAppState snapshot when the avd list fails', () => {
+  it('resolves with an empty avd list and keeps the other fields', async () => {
+    const p = parts()
+    ;(p.avd.list as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('emulator -list-avds가 실패했다'))
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      const state = createAppState({
+        sdk: { ok: true, sdkRoot: '/opt/sdk' },
+        registry: p.registry,
+        avd: p.avd,
+        server: p.server
+      })
+
+      const snapshot = await state.snapshot()
+
+      expect(snapshot).toEqual({
+        sdk: { ok: true, sdkRoot: '/opt/sdk' },
+        server: { url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' },
+        avds: [],
+        devices: ['emulator-5554'],
+        activeSerial: 'emulator-5554',
+        toolCalls: [],
+        trackingFailure: null
+      })
+      expect(errors).toHaveBeenCalled()
+    } finally {
+      errors.mockRestore()
+    }
+  })
+})

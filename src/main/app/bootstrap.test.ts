@@ -118,6 +118,10 @@ describe('bootstrapApp with an SDK', () => {
 
     expect(h.deps.createDeviceStack).toHaveBeenCalledWith(expect.objectContaining({ sdkRoot: '/opt/sdk' }))
     expect(h.stack.registry.start).toHaveBeenCalled()
+    // 상태가 먼저 구독해야 처음 붙어 있던 기기의 device_connected를 놓치지 않는다.
+    const onOrder = vi.mocked(h.stack.registry.on).mock.invocationCallOrder[0]!
+    const startOrder = vi.mocked(h.stack.registry.start).mock.invocationCallOrder[0]!
+    expect(onOrder).toBeLessThan(startOrder)
     expect(snapshot.sdk).toEqual({ ok: true, sdkRoot: '/opt/sdk' })
     expect(snapshot.server).toEqual({ url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' })
     expect(app.server).toBe(h.server)

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { deviceError } from '../../shared/types/errors'
 import { IPC_CHANNELS } from '../../shared/types/ipc'
 import type { AppState } from './appState'
 import { registerIpcBridge, type BridgeActions } from './ipcBridge'
@@ -63,9 +64,7 @@ describe('registerIpcBridge', () => {
   it('returns a serialisable error payload instead of throwing across the boundary', async () => {
     const h = harness()
     ;(h.actions.bootAvd as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-      Object.assign(new Error('그런 AVD가 없다'), {
-        toolError: { kind: 'command_failed', message: '그런 AVD가 없다', hint: 'device_list로 확인해라' }
-      })
+      deviceError('command_failed', '그런 AVD가 없다', 'device_list로 확인해라')
     )
 
     const result = await h.handlers.get(IPC_CHANNELS.bootAvd)?.({}, 'Nope')
@@ -73,6 +72,38 @@ describe('registerIpcBridge', () => {
     expect(result).toEqual({
       ok: false,
       error: { kind: 'command_failed', message: '그런 AVD가 없다', hint: 'device_list로 확인해라' }
+    })
+  })
+
+  it('wraps a plain Error in a generic command_failed payload, ignoring any toolError-like field', async () => {
+    const h = harness()
+    ;(h.actions.shutdownDevice as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      Object.assign(new Error('adb가 응답하지 않는다'), {
+        toolError: { kind: 'no_device', message: '가짜', hint: '가짜' }
+      })
+    )
+
+    const result = await h.handlers.get(IPC_CHANNELS.shutdownDevice)?.({}, 'emulator-5554')
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        kind: 'command_failed',
+        message: 'adb가 응답하지 않는다',
+        hint: '다시 시도하고, 반복되면 활동 탭에서 맥락을 확인해라'
+      }
+    })
+  })
+
+  it('stringifies a thrown non-Error value into the generic payload', async () => {
+    const h = harness()
+    ;(h.actions.bootAvd as ReturnType<typeof vi.fn>).mockRejectedValueOnce('문자열 실패')
+
+    const result = await h.handlers.get(IPC_CHANNELS.bootAvd)?.({}, 'Pixel_7_API_34')
+
+    expect(result).toEqual({
+      ok: false,
+      error: { kind: 'command_failed', message: '문자열 실패', hint: '다시 시도하고, 반복되면 활동 탭에서 맥락을 확인해라' }
     })
   })
 

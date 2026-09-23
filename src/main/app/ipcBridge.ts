@@ -14,21 +14,6 @@ export interface BridgeActions {
 export type SendToRenderer = (channel: string, payload: MainEvent) => void
 
 /**
- * 던져진 값에서 구조화된 툴 에러를 꺼낸다. DeviceError가 아니어도 모양이 맞는
- * toolError를 달고 있으면 그대로 쓴다. 번들이 나뉘어 DeviceError 클래스가 두 벌이
- * 되면 instanceof가 거짓이 되는데, 그때 kind와 hint를 버리지 않으려는 것이다.
- */
-function structuredError(thrown: unknown): ToolError | null {
-  if (isDeviceError(thrown)) return thrown.toolError
-  if (typeof thrown !== 'object' || thrown === null || !('toolError' in thrown)) return null
-  const candidate = (thrown as { toolError: unknown }).toolError
-  if (typeof candidate !== 'object' || candidate === null) return null
-  const { kind, message, hint } = candidate as Record<string, unknown>
-  if (typeof kind !== 'string' || typeof message !== 'string' || typeof hint !== 'string') return null
-  return candidate as ToolError
-}
-
-/**
  * 실패를 예외로 던지지 않는다. Electron IPC를 넘는 Error는 stack 문자열만 남고
  * 우리가 붙인 정보가 사라진다. 결과 객체로 바꿔 renderer가 이유를 보게 한다.
  */
@@ -36,8 +21,7 @@ async function outcome<T>(run: () => Promise<T> | T): Promise<Outcome<T>> {
   try {
     return { ok: true, value: await run() }
   } catch (thrown) {
-    const structured = structuredError(thrown)
-    if (structured) return { ok: false, error: structured }
+    if (isDeviceError(thrown)) return { ok: false, error: thrown.toolError }
     return {
       ok: false,
       error: {
