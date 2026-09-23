@@ -61,20 +61,32 @@ class FakeSocket {
   }
 }
 
+/**
+ * 실제 AdbStream처럼 stdout(onLine)과 stderr(onError의 details.stderr)를 따로 나른다.
+ * exit(lines)는 서버가 stderr에 남긴 치명적 메시지를 흉내 낸다 — 실제 adbClient는 그런
+ * 메시지를 onLine이 아니라 종료 코드가 0이 아닐 때 onError(classify(stderr))로,
+ * 그 뒤 onClose로 준다.
+ */
 function fakeServerStream() {
   const closeCallbacks: Array<(code: number | null) => void> = []
   const lineCallbacks: Array<(line: string) => void> = []
+  const errorCallbacks: Array<(error: ReturnType<typeof deviceError>) => void> = []
   const stream: AdbStream = {
     onLine: (cb) => lineCallbacks.push(cb),
     onData: () => {},
     onClose: (cb) => closeCallbacks.push(cb),
-    onError: () => {},
+    onError: (cb) => errorCallbacks.push(cb),
     close: vi.fn()
   }
   return {
     stream,
     exit(lines: string[] = []) {
-      for (const line of lines) lineCallbacks.forEach((cb) => cb(line))
+      if (lines.length > 0) {
+        const error = deviceError('command_failed', 'adb 명령이 실패했다', '첨부된 stderr를 확인해라', {
+          stderr: lines.join('\n')
+        })
+        errorCallbacks.forEach((cb) => cb(error))
+      }
       closeCallbacks.forEach((cb) => cb(1))
     }
   }
@@ -84,7 +96,7 @@ function ok(stdout = ''): ExecResult {
   return { stdout, stdoutRaw: Buffer.from(stdout), stderr: '', exitCode: 0 }
 }
 
-function harness(sockets: FakeSocket[], overrides: { exec?: AdbClient['exec'] } = {}) {
+function harness(sockets: FakeSocket[], overrides: { exec?: AdbClient['exec']; connectTimeoutMs?: number } = {}) {
   const server = fakeServerStream()
   const exec = vi.fn(
     overrides.exec ??
@@ -111,7 +123,7 @@ function harness(sockets: FakeSocket[], overrides: { exec?: AdbClient['exec'] } 
       randomScid: () => 0x1234abcd,
       sleep,
       now: () => clock,
-      connectTimeoutMs: 500
+      connectTimeoutMs: overrides.connectTimeoutMs ?? 500
     },
     handlers
   )
@@ -189,6 +201,18 @@ describe('createScrcpySession', () => {
     expect(h.exec).toHaveBeenLastCalledWith('emulator-5554', ['forward', '--remove', 'tcp:27183'])
   })
 
+  it('fails as unresponsive when video and control both connect but the server never sends session meta', async () => {
+    // dummy byte만 보내고 그 뒤로는 아무 것도 보내지 않는 비디오 소켓. control은 정상적으로 열려 있다.
+    const video = new FakeSocket([FIXTURE.subarray(0, 1)])
+    const h = harness([video, new FakeSocket()], { connectTimeoutMs: 20 })
+
+    const error = await h.session.start().catch((thrown: unknown) => thrown)
+
+    expect(isDeviceError(error) && error.toolError.kind).toBe('device_unresponsive')
+    expect(isDeviceError(error) && error.toolError.message).toContain('session')
+    expect(h.exec).toHaveBeenLastCalledWith('emulator-5554', ['forward', '--remove', 'tcp:27183'])
+  })
+
   it('fails at once with the server output when the server exits before listening', async () => {
     const h = harness([])
     h.connect.mockImplementation(async () => {
@@ -213,6 +237,19 @@ describe('createScrcpySession', () => {
     expect(h.handlers.onEnded).not.toHaveBeenCalled()
   })
 
+  it('fails start when the control socket closes before session meta ever arrives', async () => {
+    // dummy byte만 보내고 그 뒤로는 멈춰 있는 비디오 소켓 — session meta가 control 쪽 사건보다
+    // 먼저 오지 않게 한다. control은 곧바로 닫힌다(서버가 listen 전인 adb forward와 같은 모양).
+    const video = new FakeSocket([FIXTURE.subarray(0, 1)])
+    const control = new FakeSocket('close')
+    const h = harness([video, control])
+
+    const error = await h.session.start().catch((thrown: unknown) => thrown)
+
+    expect(isDeviceError(error) && error.toolError.message).toContain('control')
+    expect(h.handlers.onEnded).not.toHaveBeenCalled()
+  })
+
   it('fails start when a setup step fails and removes nothing it did not create', async () => {
     const h = harness([], {
       exec: async (_serial, args) => {
@@ -225,6 +262,47 @@ describe('createScrcpySession', () => {
 
     expect(h.exec).toHaveBeenCalledTimes(1)
     expect(h.adb.stream).not.toHaveBeenCalled()
+  })
+
+  it('does not proceed past an in-flight push when close() is called during it', async () => {
+    let resolvePush: () => void = () => {}
+    const pushGate = new Promise<void>((resolve) => {
+      resolvePush = resolve
+    })
+    const h = harness([], {
+      exec: async (_serial, args) => {
+        if (args[0] === 'push') await pushGate
+        return args[0] === 'forward' && args[1] === 'tcp:0' ? ok('27183\n') : ok()
+      }
+    })
+
+    const startPromise = h.session.start()
+    await h.session.close()
+    resolvePush()
+    const error = await startPromise.catch((thrown: unknown) => thrown)
+
+    expect(isDeviceError(error)).toBe(true)
+    expect(h.exec.mock.calls.map((call) => call[1])).toEqual([['push', '/repo/vendor/scrcpy/scrcpy-server.jar', DEVICE_JAR_PATH]])
+    expect(h.adb.stream).not.toHaveBeenCalled()
+  })
+
+  it('stops retrying and rejects promptly (not as unresponsive) when close() is called while the video socket is still connecting', async () => {
+    const h = harness(Array.from({ length: 200 }, () => new FakeSocket('close')))
+    // 정확히 첫 connect() 시도 도중에 close()가 오는 상황을 재현한다. 가짜 시계는 sleep()이
+    // 즉시 진행시키므로 vi.waitFor처럼 실제 시간에 기대는 방식은 재시도 루프가 이미 기한을
+    // 다 써버린 뒤에야 close()가 걸릴 수 있어 못 미덥다.
+    const originalConnect = h.connect.getMockImplementation() as () => Promise<FakeSocket>
+    let closePromise: Promise<void> | null = null
+    h.connect.mockImplementation(async () => {
+      if (!closePromise) closePromise = h.session.close()
+      return originalConnect()
+    })
+
+    const error = await h.session.start().catch((thrown: unknown) => thrown)
+    await closePromise
+
+    expect(isDeviceError(error) && error.toolError.kind).not.toBe('device_unresponsive')
+    expect(h.connect.mock.calls.length).toBeLessThan(5)
   })
 
   it('reports an unexpected end exactly once', async () => {

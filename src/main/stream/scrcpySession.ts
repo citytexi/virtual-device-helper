@@ -108,6 +108,39 @@ function firstChunk(socket: SessionSocket): Promise<Buffer | null> {
   })
 }
 
+/**
+ * promise를 ms 뒤 실시간 타이머와 경쟁시킨다. adb forward가 연결은 받았지만 서버가 그
+ * 이후로 아무 것도 보내지 않는 경우, promise 쪽만으로는 영영 끝나지 않는다. 이 타이머는
+ * 항상 `setTimeout`의 실제 시간을 쓴다 — 세션의 `now`/`sleep`은 테스트가 조작하는 가짜
+ * 시계라 재시도 사이 간격에는 맞지만, "얼마나 오래 응답이 없었는지"를 실제로 재는 이
+ * 용도에는 쓸 수 없다.
+ */
+function withRealDeadline<T>(promise: Promise<T>, ms: number, onTimeout: () => DeviceError): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      reject(onTimeout())
+    }, Math.max(0, ms))
+
+    promise.then(
+      (value) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error: unknown) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
+}
+
 export function createScrcpySession(deps: ScrcpySessionDeps, handlers: SessionHandlers): ScrcpySession {
   const { serial, adb, jarPath, connect } = deps
   const randomScid = deps.randomScid ?? (() => randomInt(0, 0x7fffffff))
@@ -123,16 +156,37 @@ export function createScrcpySession(deps: ScrcpySessionDeps, handlers: SessionHa
   let closed = false
   let ended = false
   let serverExited = false
+  let serverStderr = ''
   const serverOutput: string[] = []
 
   function outputTail(): string {
-    return serverOutput.join('\n')
+    const parts = [serverOutput.join('\n'), serverStderr].filter((part) => part.length > 0)
+    return parts.join('\n')
   }
 
   function end(error: DeviceError): void {
     if (!started || closed || ended) return
     ended = true
     handlers.onEnded(error)
+  }
+
+  /** start() 도중 close()가 불려서 그만둘 때 던지는 에러. 지금까지 연 자원은 catch에서 cleanup()이 치운다. */
+  function closedWhileStarting(): DeviceError {
+    return deviceError('command_failed', '세션이 시작 중에 닫혔다', '다시 연결해라', { serial })
+  }
+
+  function videoUnresponsiveError(): DeviceError {
+    return deviceError('device_unresponsive', `scrcpy 서버가 ${connectTimeoutMs}ms 안에 비디오 소켓을 열지 않았다`, '기기가 완전히 부팅됐는지 확인하고 다시 연결해라', {
+      serial,
+      output: outputTail()
+    })
+  }
+
+  function sessionMetaUnresponsiveError(): DeviceError {
+    return deviceError('device_unresponsive', `scrcpy 서버가 ${connectTimeoutMs}ms 안에 session 정보를 보내지 않았다`, '기기가 완전히 부팅됐는지 확인하고 다시 연결해라', {
+      serial,
+      output: outputTail()
+    })
   }
 
   async function cleanup(): Promise<void> {
@@ -161,9 +215,9 @@ export function createScrcpySession(deps: ScrcpySessionDeps, handlers: SessionHa
     }
   }
 
-  async function connectVideo(forwardedPort: number): Promise<{ socket: SessionSocket; first: Buffer }> {
-    const deadline = now() + connectTimeoutMs
+  async function connectVideo(forwardedPort: number, deadline: number): Promise<{ socket: SessionSocket; first: Buffer }> {
     for (;;) {
+      if (closed) throw closedWhileStarting()
       if (serverExited) {
         throw deviceError('command_failed', 'scrcpy 서버가 연결을 받기 전에 끝났다', '서버 출력을 확인하고 다시 연결해라', {
           serial,
@@ -179,20 +233,24 @@ export function createScrcpySession(deps: ScrcpySessionDeps, handlers: SessionHa
       }
 
       if (socket) {
+        const opened = socket
         // adb forward는 서버가 listen하기 전에도 연결을 받은 뒤 곧바로 닫는다.
         // 서버가 받은 연결만 dummy byte를 보내므로 첫 바이트가 곧 성공 신호다.
-        const first = await firstChunk(socket)
-        if (first) return { socket, first }
-        socket.destroy()
+        // 연결만 되고 그 뒤로 데이터도, close도, error도 안 오는 상대라면 firstChunk
+        // 혼자서는 영영 안 끝나므로, 남은 기한만큼 실시간 타이머로 묶는다.
+        let first: Buffer | null
+        try {
+          first = await withRealDeadline(firstChunk(opened), deadline - now(), videoUnresponsiveError)
+        } catch (thrown) {
+          opened.destroy()
+          throw thrown
+        }
+        if (first) return { socket: opened, first }
+        opened.destroy()
       }
 
       if (serverExited) continue
-      if (now() >= deadline) {
-        throw deviceError('device_unresponsive', `scrcpy 서버가 ${connectTimeoutMs}ms 안에 비디오 소켓을 열지 않았다`, '기기가 완전히 부팅됐는지 확인하고 다시 연결해라', {
-          serial,
-          output: outputTail()
-        })
-      }
+      if (now() >= deadline) throw videoUnresponsiveError()
       await sleep(CONNECT_RETRY_MS)
     }
   }
@@ -209,6 +267,7 @@ export function createScrcpySession(deps: ScrcpySessionDeps, handlers: SessionHa
 
     try {
       await adb.exec(serial, ['push', jarPath, DEVICE_JAR_PATH])
+      if (closed) throw closedWhileStarting()
 
       const scid = randomScid()
       const forwarded = await adb.exec(serial, ['forward', 'tcp:0', `localabstract:scrcpy_${scidHex(scid)}`])
@@ -219,6 +278,7 @@ export function createScrcpySession(deps: ScrcpySessionDeps, handlers: SessionHa
         })
       }
       port = parsedPort
+      if (closed) throw closedWhileStarting()
 
       const serverStream = adb.stream(serial, serverArgs(scid))
       server = serverStream
@@ -226,8 +286,15 @@ export function createScrcpySession(deps: ScrcpySessionDeps, handlers: SessionHa
         serverOutput.push(line)
         if (serverOutput.length > SERVER_OUTPUT_TAIL_LINES) serverOutput.shift()
       })
+      // stderr는 onLine에 안 실린다 — adbClient의 stream()은 stdout만 줄 단위로 흘리고,
+      // stderr는 실패했을 때 onError가 주는 DeviceError.details.stderr로만 온다. scrcpy의
+      // 버전 불일치·ClassNotFoundException 같은 치명적 메시지는 서버가 stderr(Ln.e/Ln.w)로
+      // 찍으므로, 여기서 받아 두지 않으면 실패 사유가 출력 꼬리에서 통째로 빠진다.
+      serverStream.onError((error) => {
+        const stderr = error.toolError.details?.stderr
+        if (typeof stderr === 'string' && stderr.trim().length > 0) serverStderr = stderr
+      })
       // onError 뒤에는 onClose가 반드시 온다. 종료 처리는 onClose 한곳에서 한다.
-      serverStream.onError(() => {})
       serverStream.onClose(() => {
         serverExited = true
         const error = deviceError('command_failed', 'scrcpy 서버가 끝났다', '다시 연결해라', { serial, output: outputTail() })
@@ -235,7 +302,9 @@ export function createScrcpySession(deps: ScrcpySessionDeps, handlers: SessionHa
         end(error)
       })
 
-      const { socket, first } = await connectVideo(parsedPort)
+      const deadline = now() + connectTimeoutMs
+      const { socket, first } = await connectVideo(parsedPort, deadline)
+      if (closed) throw closedWhileStarting()
       video = socket
       const parser = createVideoStreamParser({
         onDeviceName: () => {},
@@ -260,17 +329,22 @@ export function createScrcpySession(deps: ScrcpySessionDeps, handlers: SessionHa
 
       // 서버는 비디오 연결을 받은 뒤 같은 소켓 이름으로 control 연결을 기다린다.
       const controlSocket = await connect(parsedPort)
+      if (closed) throw closedWhileStarting()
       control = controlSocket
       // control 소켓으로 오는 기기 메시지는 쓰지 않지만 읽어야 버퍼가 차지 않는다.
       controlSocket.on('data', () => {})
       controlSocket.on('error', () => {})
       controlSocket.on('close', () => {
-        end(deviceError('command_failed', 'control 연결이 끊겼다', '다시 연결해라', { serial }))
+        const error = deviceError('command_failed', 'control 연결이 끊겼다', '다시 연결해라', { serial })
+        rejectReady(error)
+        end(error)
       })
 
       // 기기 이름·codec·첫 session meta는 control 연결까지 받은 뒤에 온다(DesktopConnection.open).
-      await ready
-      if (closed) throw deviceError('command_failed', '세션이 시작 중에 닫혔다', '다시 연결해라', { serial })
+      // 비디오·control 둘 다 붙었는데 그 뒤로 서버가 아무 것도 안 보내는 경우까지 같은
+      // 기한으로 묶는다 — 안 그러면 이 대기만 무한정 늘어진다.
+      await withRealDeadline(ready, deadline - now(), sessionMetaUnresponsiveError)
+      if (closed) throw closedWhileStarting()
       started = true
     } catch (thrown) {
       await cleanup()
