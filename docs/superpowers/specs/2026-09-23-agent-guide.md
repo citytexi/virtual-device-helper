@@ -171,8 +171,10 @@ export function useCopy(): { status: CopyStatus | null; copy(text: string): Prom
   - 모든 템플릿 본문과 `serverInstructions`에 토큰 문자열이 들어가지 않는다. 가짜 서버 상태의 토큰으로 검사한다.
   - 대상 serial이 있으면 본문에 그 serial이 들어가고, 없으면 `device_list` 안내가 들어간다.
   - `claudeCodeCommand`에는 URL과 토큰이 들어가고, `claudeCodeCommandMasked`에는 토큰이 없다.
-  - `serverInstructions`와 템플릿이 언급하는 툴 이름은 모두 실제로 등록된 툴이다. 하네스의 `listTools`와 대조한다.
-- **README 일치 테스트**: 하네스의 `listTools`로 얻은 모든 툴 이름이 README의 "에이전트로 테스트하기" 섹션에 나온다.
+- **툴 이름 일치 테스트**(`src/main/mcp/guideConsistency.test.ts`): 하네스의 `listTools`를 기준으로 두 방향을 본다.
+  shared 층은 main의 하네스를 import할 수 없어 이 테스트를 main 쪽에 둔다.
+  - 등록된 모든 툴 이름이 README의 "에이전트로 테스트하기" 섹션에 나온다.
+  - `serverInstructions`와 템플릿 본문이 언급하는 툴 이름(백틱 안의 `snake_case`)은 모두 등록된 툴이다.
 - **`createToolHarness` 경유 테스트**: 클라이언트가 `getInstructions()`로 `serverInstructions()`와 같은 값을 받는다.
 - **`WorkArea` 테스트**: 탭을 클릭하거나 화살표 키로 옮기면 패널이 바뀐다.
 - **`AgentTab` 테스트**
@@ -188,7 +190,7 @@ export function useCopy(): { status: CopyStatus | null; copy(text: string): Prom
 - `src/shared/agentGuide.ts`, `src/shared/agentGuide.test.ts` — 문구 생성과 그 테스트.
 - `src/main/mcp/httpServer.ts` — `McpServer` 생성에 `instructions`를 더한다.
 - `src/main/mcp/testHarness.ts` — 같은 옵션으로 만든다.
-- `src/main/mcp/readme.test.ts` — README 일치 테스트. MCP 툴 목록이 이 층에 있어 여기 둔다.
+- `src/main/mcp/guideConsistency.test.ts` — README·안내 문구와 등록된 툴 이름의 일치 테스트. MCP 툴 목록이 이 층에 있어 여기 둔다.
 - `src/renderer/src/hooks/useCopy.ts`와 테스트 — `EndpointCard`에서 뽑은 복사 로직.
 - `src/renderer/src/components/WorkArea.tsx` — 탭 전환.
 - `src/renderer/src/components/AgentTab.tsx`와 테스트 — 새 탭.
