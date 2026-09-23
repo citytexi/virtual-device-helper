@@ -3,6 +3,7 @@ import { networkInterfaces } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AvdController } from '../device/avdController'
 import type { DeviceRegistry } from '../device/registry'
+import { serverInstructions } from '../../shared/agentGuide'
 import { startMcpHttpServer, type McpServerHandle } from './httpServer'
 
 function fakeContext() {
@@ -174,6 +175,15 @@ describe('startMcpHttpServer authentication', () => {
     const response = await post(`${handle.url}`, { authorization: `Bearer ${handle.token}` }, initialize)
 
     expect(response.status).toBeLessThan(400)
+  })
+
+  it('sends the agent guide as instructions in the initialize response', async () => {
+    handle = await startMcpHttpServer({ context: fakeContext() })
+
+    const response = await post(`${handle.url}`, { authorization: `Bearer ${handle.token}` }, initialize)
+
+    // 응답은 SSE 한 줄에 JSON으로 온다. 줄바꿈은 \n으로 이스케이프된 채 들어 있다.
+    expect(response.text).toContain(JSON.stringify(serverInstructions()).slice(1, -1))
   })
 })
 

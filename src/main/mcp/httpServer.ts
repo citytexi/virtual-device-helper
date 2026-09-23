@@ -2,13 +2,14 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
+import { MCP_SERVER_NAME, serverInstructions } from '../../shared/agentGuide'
 import { registerTools } from './registerTools'
 import type { ToolContext } from './toolContext'
 
 export const DEFAULT_PORT = 9321
 export const MAX_PORT_ATTEMPTS = 20
 const MCP_PATH = '/mcp'
-const SERVER_INFO = { name: 'virtual-device-helper', version: '0.0.0' }
+const SERVER_INFO = { name: MCP_SERVER_NAME, version: '0.0.0' }
 
 export interface McpServerHandle {
   /** 클라이언트 설정에 그대로 넣는 주소. */
@@ -108,7 +109,8 @@ export async function startMcpHttpServer(opts: StartMcpHttpServerOpts): Promise<
     }
 
     // 상태를 두지 않는다. 기기 상태는 DeviceRegistry에 있어 세션에 둘 것이 없다.
-    const mcp = new McpServer(SERVER_INFO)
+    // instructions는 Claude Code 같은 클라이언트가 에이전트 컨텍스트에 넣는다 — 툴 사용 규칙이다.
+    const mcp = new McpServer(SERVER_INFO, { instructions: serverInstructions() })
     registerTools(mcp, opts.context)
 
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })

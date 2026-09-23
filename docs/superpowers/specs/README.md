@@ -17,6 +17,7 @@
 <!-- index:start -->
 | 스펙 | 상태 | 내용 |
 |------|------|------|
+| [agent-guide](2026-09-23-agent-guide.md) | implemented | Claude Code 연결 안내·프롬프트 템플릿을 README·앱 에이전트 탭·MCP instructions에 싣는다 |
 <!-- index:end -->
 
 ## 아카이브

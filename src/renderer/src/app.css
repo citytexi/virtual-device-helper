@@ -587,6 +587,11 @@ code {
   overflow-y: auto;
 }
 
+/* .tabpanel이 display를 정하게 되더라도 선택되지 않은 패널은 숨긴다. */
+.tabpanel[hidden] {
+  display: none;
+}
+
 .activity-list {
   display: flex;
   flex-direction: column;
@@ -641,6 +646,51 @@ code {
 
 .activity-row[data-ok='false'] .activity-result {
   color: var(--danger);
+}
+
+/* ── 에이전트 탭 ──────────────────────────────────────── */
+
+.agent-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-2);
+}
+
+.agent-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.agent-help {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* 명령과 프롬프트 미리보기. 긴 줄은 접어서 탭 폭 안에 둔다. */
+.command-block,
+.prompt-preview {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.prompt-preview {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+/* 상단 바의 테마 전환은 오른쪽으로 밀지만, 탭 안에서는 왼쪽에 둔다. */
+.agent-tab .segmented {
+  align-self: flex-start;
+  margin-left: 0;
 }
 
 /* ── SDK 안내 ─────────────────────────────────────────── */
