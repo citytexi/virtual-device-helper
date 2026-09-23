@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AdbClient, ExecResult } from '../adb/adbClient'
-import { createAndroidDevice, DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT } from './androidDevice'
+import { createAndroidDevice } from './androidDevice'
+import { DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT } from '../../shared/limits'
 
 /** args 배열을 공백으로 이어 붙인 문자열을 키로 응답을 고른다. */
 function fakeAdb(responses: Record<string, string | Buffer>): { adb: AdbClient; calls: string[][] } {

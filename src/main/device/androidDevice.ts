@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import type { AdbClient } from '../adb/adbClient'
 import { deviceError, isDeviceError } from '../../shared/types/errors'
+import { DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT } from '../../shared/limits'
 import type {
   Device,
   DeviceInfo,
@@ -18,15 +19,6 @@ import type { ResizeImage } from './resizeImage'
 
 /** 스크린샷 기본 축소 기준. 원본이 필요한 쪽은 사람이고, 사람은 앱 화면으로 본다. */
 export const DEFAULT_MAX_LONG_EDGE = 720
-export const DEFAULT_LOG_LIMIT = 100
-/**
- * 인자로도 넘을 수 없는 상한. 툴 하나가 에이전트의 문맥을 통째로 먹는 것을 막는다.
- * mcpTools 층(`observe.ts`)이 응답 크기를 소유하지만, 이 값은 그 층을 거치지 않고
- * `AndroidDevice.readLogs`를 직접 부르는 경로(테스트, 장차 M3의 renderer/IPC 경로)에도
- * 같은 안전판이 있어야 해서 여기 둔다. 위층은 바로 아래층만 부르므로 이 파일이
- * `observe.ts`를 import할 수는 없다 — 대신 `observe.ts`가 이 상수를 그대로 재사용한다.
- */
-export const MAX_LOG_LIMIT = 200
 
 const SCREENSHOT_TIMEOUT_MS = 60_000
 const DUMP_PATH = '/sdcard/window_dump.xml'
@@ -210,6 +202,9 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
   }
 
   async function readLogs(opts: LogOpts = {}): Promise<LogReadResult> {
+    // 줄 수 기본값과 상한은 mcpTools 층(`observe.ts`)과 같은 값이라 shared의 `limits.ts`에
+    // 있다. mcpTools를 거치지 않고 여기를 직접 부르는 경로(장차 M3의 renderer/IPC 경로,
+    // 테스트)에도 같은 안전판이 걸리도록 이 층에서도 상한을 적용한다.
     const limit = Math.min(opts.limit ?? DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT)
 
     const args = ['logcat', '-d', '-v', 'threadtime']

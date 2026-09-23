@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { runTool } from '../runTool'
 import type { ToolContext } from '../toolContext'
-import { DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT } from '../../device/androidDevice'
+import { DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT } from '../../../shared/limits'
 import type { LogLine } from '../../../shared/types/device'
 
 const serial = z
@@ -12,10 +12,10 @@ const serial = z
 
 /**
  * log_read가 limit을 생략했을 때 쓰는 기본 줄 수, 그리고 인자로도 넘을 수 없는 상한.
- * 응답 크기는 이 mcpTools 층이 소유하지만(스펙 "응답 크기 규칙"), 값 자체는
- * `AndroidDevice.readLogs`(androidDevice.ts)에 이미 있는 같은 이름의 안전판과 겹친다.
- * 위층은 바로 아래층만 부른다는 층 규칙 때문에 android쪽이 여기를 import할 수 없어서,
- * 이 파일이 그쪽 상수를 그대로 재사용해 값이 둘로 갈라지지 않게 한다.
+ * 응답 크기는 이 mcpTools 층이 소유하지만(스펙 "응답 크기 규칙"), 같은 값을
+ * `AndroidDevice.readLogs`도 안전판으로 쓴다. ADR-0005의 층 규칙상 이 층은 Android
+ * 구현(`androidDevice.ts`)을 import할 수 없으므로, 두 층이 함께 기대는 shared의
+ * `limits.ts`에서 가져와 값이 둘로 갈라지지 않게 한다.
  */
 export const LOG_READ_DEFAULT_LIMIT = DEFAULT_LOG_LIMIT
 export const LOG_READ_MAX_LIMIT = MAX_LOG_LIMIT
