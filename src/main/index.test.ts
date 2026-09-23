@@ -23,7 +23,8 @@ vi.mock('electron', () => {
     app: {
       whenReady,
       on: appOn,
-      quit: appQuit
+      quit: appQuit,
+      getVersion: () => '0.1.0'
     },
     BrowserWindow,
     ipcMain: {},
@@ -37,6 +38,9 @@ const bootstrapApp = vi.fn()
 const rendererSender = vi.fn(() => vi.fn())
 
 vi.mock('./app/bootstrap', () => ({ bootstrapApp, rendererSender }))
+
+const startMcpHttpServer = vi.fn()
+vi.mock('./mcp/httpServer', () => ({ startMcpHttpServer }))
 
 beforeEach(() => {
   vi.resetModules()
@@ -147,5 +151,21 @@ describe('main/index before-quit', () => {
     expect(consoleErrorSpy).toHaveBeenCalledWith('종료 정리에 실패했다', expect.any(Error))
 
     consoleErrorSpy.mockRestore()
+  })
+})
+
+describe('main/index MCP 서버 버전', () => {
+  it('MCP 서버에 앱 버전을 넘긴다', async () => {
+    whenReady.mockResolvedValue(undefined)
+    bootstrapApp.mockResolvedValue({ state: {}, server: null, stop: vi.fn() })
+
+    await import('./index')
+    await vi.waitFor(() => expect(bootstrapApp).toHaveBeenCalled())
+
+    const deps = bootstrapApp.mock.calls[0]![0] as { startServer: (opts: { context: unknown }) => unknown }
+    const context = {}
+    deps.startServer({ context })
+
+    expect(startMcpHttpServer).toHaveBeenCalledWith({ context, version: '0.1.0' })
   })
 })
