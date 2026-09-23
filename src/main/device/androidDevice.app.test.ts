@@ -105,8 +105,8 @@ describe('AndroidDevice.install', () => {
   })
 
   it('gives a specific message and an app_uninstall recovery hint for a signature mismatch (R6)', async () => {
-    // 실제 실기기 통합 테스트에서 관찰된 stderr 그대로다: 다른 서명 키로 설치된
-    // 패키지 위에 덮어쓰려 할 때 adb가 이 문구를 낸다.
+    // M1-5 검증의 첫 번째 실제 에이전트 실행(외부 Claude Code 세션)에서 관찰된 stderr다:
+    // 다른 서명 키로 설치된 패키지 위에 덮어쓰려 할 때 adb가 이 문구를 낸다.
     const stderr =
       'adb: failed to install /tmp/app.apk: Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package com.teamyg.parfait signatures do not match newer version; ignoring!]'
     const adb = {
