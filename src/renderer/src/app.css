@@ -1,0 +1,75 @@
+/*
+ * 최소 레이아웃 스타일이다. 디자인이 아니라 배치·가독성 결함(M1-5 acceptance에서
+ * 발견된)을 고치는 용도다 — 왼쪽 기기 패널, 오른쪽 작업 영역의 2단 구성, 활성
+ * 기기 표시, 실패 행 강조, 스크린샷 크기 제한, 다크/라이트 대응이 목적이다.
+ */
+
+:root {
+  color-scheme: light dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+.app-shell {
+  display: flex;
+  align-items: stretch;
+  height: 100vh;
+}
+
+/* 왼쪽 열: 기기 패널 + 스크린샷 + 엔드포인트 카드. 폭을 고정하고 독립적으로
+   스크롤한다. */
+.app-shell > aside {
+  flex: 0 0 320px;
+  width: 320px;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 12px;
+  border-right: 1px solid;
+}
+
+/* 스크린샷은 PNG 원본 픽셀 크기로 렌더링되면 왼쪽 열을 넘친다. 폭에 맞춰
+   축소하고 width/height 속성은 그대로 둬서 비율을 유지한다. */
+.app-shell > aside img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 오른쪽 열: 작업 영역(탭 구조). 나머지 폭을 채우고, 창 높이 전체를 차지하며
+   자체적으로 스크롤한다. */
+.app-shell > section[aria-label='작업 영역'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 12px;
+}
+
+/* 활성 기기 표시. aria-current만으로는 색맹이거나 스타일이 없는 환경에서
+   구분이 안 되므로, 테두리·배경과 함께 눈에 보이는 텍스트 마커도 DevicePanel
+   쪽에서 붙인다. */
+li[aria-current='true'] {
+  font-weight: bold;
+  border-left: 4px solid currentColor;
+  padding-left: 6px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+/* 실패한 활동 기록 행. 텍스트 색뿐 아니라 왼쪽 테두리로도 구분해서 색만으로
+   구별하지 않게 한다. */
+li[data-ok='false'] {
+  color: #c0392b;
+  border-left: 4px solid #c0392b;
+  padding-left: 6px;
+}

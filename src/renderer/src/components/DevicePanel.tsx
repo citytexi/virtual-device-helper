@@ -94,6 +94,8 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
                 {avd.name}
               </button>
 
+              {isActive ? <span>(대상)</span> : null}
+
               {avd.serial ? <span>{avd.serial}</span> : null}
 
               {avd.running && avd.serial ? (
