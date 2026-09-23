@@ -1,7 +1,7 @@
 ---
 id: agent-guide
 title: 에이전트 사용 안내와 프롬프트 템플릿
-status: draft
+status: implemented
 verified: 2026-09-23
 scope: [main, renderer, mcp, shared, docs]
 hosts: []
@@ -185,6 +185,23 @@ export function useCopy(): { status: CopyStatus | null; copy(text: string): Prom
 - **수동 확인**: 실제 앱을 켜고 에이전트 탭의 명령으로 `claude mcp add`를 실행한다. Claude Code에서 연결한 뒤
   스모크 테스트 프롬프트로 한 번 돌려, `instructions`가 전달되는지와 흐름이 끝까지 가는지 본다.
 
+## 검증 결과 (2026-09-23)
+
+- **단위 테스트**: `npm test` 전부 통과. `npm run typecheck` 에러 없음.
+- **연결**: 에이전트 탭의 명령과 같은 값으로 임시 폴더에서 `claude mcp add`를 실행했다.
+  `claude mcp list`에서 `virtual-device-helper: http://127.0.0.1:9321/mcp (HTTP) - ✔ Connected`로 보였다.
+  확인 뒤 `claude mcp remove virtual-device-helper`로 지웠다.
+- **instructions 전달**: 같은 폴더에서 `claude -p`로 "서버가 보낸 instructions를 그대로 인용하라"고 물었다.
+  `serverInstructions()`의 첫 문장과 규칙 목록이 글자 그대로 나왔다. Claude Code가 `instructions`를 에이전트
+  컨텍스트에 넣는 것을 관찰했다.
+- **화면**: 라이트·다크 모두에서 명령 블록과 미리보기가 읽혔다. 문서 높이가 창 높이와 같아 창 전체 스크롤은 없다.
+  화면 텍스트에 실제 토큰이 없음을 renderer에서 스냅샷의 토큰과 대조해 확인했다.
+- **관찰한 불편**: 에이전트 탭은 1440x900 창에서 패널 높이를 조금 넘어 탭 안에서 스크롤된다. "프롬프트 복사"
+  버튼이 미리보기 아래에 있어 처음 화면에서는 보이지 않는다.
+- **해 보지 않은 것**: 스모크 테스트 프롬프트로 실제 Android 프로젝트를 빌드·설치하는 흐름은 돌리지 않았다.
+  이 자리에 테스트할 Android 프로젝트가 없었고, 부팅된 에뮬레이터도 없었다. 시나리오 E2E와 버그 재현 템플릿도
+  실제로 돌리지 않았다.
+
 ## 파일 구성
 
 - `src/shared/agentGuide.ts`, `src/shared/agentGuide.test.ts` — 문구 생성과 그 테스트.
@@ -212,5 +229,5 @@ export function useCopy(): { status: CopyStatus | null; copy(text: string): Prom
 - **토큰 고정 여부**: 지금은 앱을 켤 때마다 토큰이 바뀌어 Claude Code에 다시 등록해야 한다. 앱 데이터 디렉토리에
   토큰을 저장해 재사용할지는 보안 트레이드오프다. 로컬 파일에 비밀이 남는 대신 재등록이 없어진다. 정하게 되면
   ADR로 남긴다.
-- **`instructions` 반영 범위**: Claude Code가 `instructions`를 컨텍스트에 넣는 것은 수동 확인에서 관찰한다.
-  넣지 않으면 템플릿에 규칙을 더 싣는 쪽으로 조정한다.
+- **템플릿의 실제 효과**: 프롬프트가 에이전트를 의도대로 이끄는지는 실제 Android 프로젝트로 돌려 봐야 안다.
+  처음 쓸 때 스모크 테스트부터 돌려 보고, 에이전트가 패키지명·APK 경로를 스스로 찾는지 본다.

@@ -1,7 +1,7 @@
 ---
 id: agent-guide
 title: 에이전트 사용 안내와 프롬프트 템플릿
-status: draft
+status: done
 type: work-order
 created: 2026-09-23
 updated: 2026-09-23
