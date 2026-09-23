@@ -35,7 +35,8 @@ M1의 IPC는 요청·응답(`ipcMain.handle`)과 단일 이벤트 채널(`app:ev
 스트림 세션마다 `MessageChannelMain`을 하나 만들고, 그 포트 한쪽을 renderer에 건넨다.
 
 - main은 세션을 열 때 채널을 만들고 `webContents.postMessage('stream:port', meta, [port])`로 보낸다.
-- 비디오 패킷, 세션 상태, 사람 입력 의도가 모두 이 포트를 오간다. 패킷의 `ArrayBuffer`는 transfer로 넘긴다.
+- 비디오 패킷, 세션 상태, 사람 입력 의도가 모두 이 포트를 오간다. `MessagePortMain`은 `ArrayBuffer`
+  transfer를 지원하지 않으므로 패킷은 structured clone으로 복사된다. 그래서 패킷은 정확한 크기의 새 버퍼로 만든다.
 - 세션을 닫으면 포트도 닫는다. 늦게 도착한 패킷은 닫힌 포트와 함께 사라진다.
 - preload는 포트를 main world로 넘기는 이 채널 하나만 연다. 범용 포트 통로는 만들지 않는다.
 
@@ -56,13 +57,13 @@ M1의 IPC는 요청·응답(`ipcMain.handle`)과 단일 이벤트 채널(`app:ev
 
 - 세션 하나에 포트 하나가 대응한다. 세션 수명과 통로 수명이 같아서 전환 시 섞임이 구조적으로 없다.
 - 비디오 트래픽이 `app:event`와 분리된다. 기기·툴 호출 이벤트가 패킷에 밀리지 않는다.
-- transfer로 넘기므로 패킷마다 복사하지 않는다.
 
 **트레이드오프**
 
 - contextIsolation 환경에서 `MessagePort`는 contextBridge를 못 넘는다. preload가
   `window.postMessage`로 main world에 다시 건네는 한 단계가 더 붙는다.
 - 요청·응답과 이벤트 외에 세 번째 IPC 형태가 생긴다.
+- 패킷마다 한 번 복사된다. 스트림이 `max_size=1024` H.264라 패킷이 수십 KB 수준이어서 받아들인다.
 
 **위험·방어**
 
