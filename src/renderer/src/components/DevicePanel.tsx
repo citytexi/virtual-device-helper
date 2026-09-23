@@ -32,9 +32,20 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
   async function run(label: string, action: () => Promise<Outcome<unknown>>): Promise<void> {
     setBusy(label)
     setFailure(null)
-    const result = await action()
-    setBusy(null)
-    if (!result.ok) setFailure(result.error)
+    try {
+      const result = await action()
+      if (!result.ok) setFailure(result.error)
+    } catch (thrown: unknown) {
+      // IPC 프라미스가 reject되는 경우(채널이 끊기는 등)는 정상 Outcome 경로를
+      // 타지 않는다. 여기서 잡지 않으면 busy가 영원히 남아 모든 버튼이 잠긴다.
+      setFailure({
+        kind: 'command_failed',
+        message: thrown instanceof Error ? thrown.message : String(thrown),
+        hint: '연결을 확인하고 다시 시도해라'
+      })
+    } finally {
+      setBusy(null)
+    }
   }
 
   const trackingNotice = snapshot.trackingFailure ? (
@@ -76,7 +87,7 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
                 onClick={() => {
                   if (avd.serial) void run('select', () => window.api.selectDevice(avd.serial as string))
                 }}
-                disabled={!avd.running}
+                disabled={!avd.running || busy !== null}
               >
                 {avd.name}
               </button>

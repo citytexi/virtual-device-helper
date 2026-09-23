@@ -176,6 +176,53 @@ describe('DevicePanel', () => {
     expect(alert.textContent).toMatch(/추적/)
   })
 
+  it('disables selecting another device while a boot or shutdown is pending', async () => {
+    // R16 defect 1: 다른 기기를 고르는 select 버튼이 busy 중에도 살아 있으면
+    // busy를 덮어써서 진행·실패 표시가 거짓말을 하게 된다.
+    let resolveShutdown: (() => void) | undefined
+    shutdownDevice.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveShutdown = () => resolve({ ok: true, value: undefined })
+        })
+    )
+    render(
+      <DevicePanel
+        snapshot={snapshot({
+          avds: [
+            { name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' },
+            { name: 'Pixel_Tablet', running: true, serial: 'emulator-5556' }
+          ],
+          devices: ['emulator-5554', 'emulator-5556']
+        })}
+      />
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /Pixel_7_API_34 종료/ }))
+
+    const selectButton = screen.getByRole('button', { name: 'Pixel_Tablet' })
+    expect(selectButton).toHaveProperty('disabled', true)
+
+    await userEvent.click(selectButton)
+    expect(selectDevice).not.toHaveBeenCalled()
+
+    resolveShutdown?.()
+    await waitFor(() => expect(selectButton).toHaveProperty('disabled', false))
+  })
+
+  it('shows a failure and re-enables the buttons when the boot promise rejects', async () => {
+    // R16 defect 2: IPC 프라미스가 reject되면 try/catch 없이는 busy가 영원히
+    // 남아 모든 버튼이 잠긴 채로 굳는다.
+    bootAvd.mockRejectedValueOnce(new Error('IPC 채널이 끊겼다'))
+    render(<DevicePanel snapshot={snapshot()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /Pixel_Tablet 부팅/ }))
+
+    await waitFor(() => expect(screen.getByText(/IPC 채널이 끊겼다/)).toBeDefined())
+    expect(screen.getByRole('button', { name: /Pixel_Tablet 부팅/ })).toHaveProperty('disabled', false)
+    expect(screen.getByRole('button', { name: /Pixel_7_API_34 종료/ })).toHaveProperty('disabled', false)
+  })
+
   it('shows the tracking failure alert even when there is no AVD at all', () => {
     render(
       <DevicePanel
