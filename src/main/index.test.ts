@@ -27,6 +27,7 @@ vi.mock('electron', () => {
     },
     BrowserWindow,
     ipcMain: {},
+    nativeTheme: { shouldUseDarkColors: false },
     dialog: { showErrorBox },
     nativeImage: { createFromBuffer: vi.fn(() => ({ resize: vi.fn(), getSize: vi.fn(() => ({})) })) }
   }

@@ -47,11 +47,14 @@ export function EndpointCard({ server }: EndpointCardProps): JSX.Element {
 
   if (!server) {
     return (
-      <section aria-label="MCP 엔드포인트">
-        <h2>MCP 엔드포인트</h2>
+      <section aria-label="MCP 엔드포인트" className="endpoint">
+        <h2 className="endpoint-label">
+          <span className="status-dot" data-state="off" aria-hidden="true" />
+          MCP
+        </h2>
         {/* SDK를 못 찾아서일 수도 있고, SDK는 찾았지만 서버가 뜨는 데 실패해서일
             수도 있다(원인은 main 로그에 남는다). 하나로 단정하지 않는다. */}
-        <p>
+        <p className="endpoint-message">
           서버가 떠 있지 않다. Android SDK를 찾지 못했거나, SDK는 찾았지만 서버가 뜨는 데
           실패했을 수 있다. main 프로세스 로그를 확인해라.
         </p>
@@ -60,27 +63,45 @@ export function EndpointCard({ server }: EndpointCardProps): JSX.Element {
   }
 
   return (
-    <section aria-label="MCP 엔드포인트">
-      <h2>MCP 엔드포인트</h2>
-      <p>{server.url}</p>
+    <section aria-label="MCP 엔드포인트" className="endpoint">
+      <h2 className="endpoint-label">
+        <span className="status-dot" data-state="on" aria-hidden="true" />
+        MCP
+      </h2>
+      <p className="endpoint-url mono">{server.url}</p>
 
       {/* 토큰은 기본으로 가린다. 화면 공유나 스크린샷에 그대로 찍히면 그 포트에
           붙을 수 있는 모든 권한이 새어 나간다. */}
-      {revealed ? <p>{server.token}</p> : null}
+      {revealed ? <p className="endpoint-token mono">{server.token}</p> : null}
 
-      <button type="button" onClick={() => setRevealed((current) => !current)}>
-        {revealed ? '토큰 숨기기' : '토큰 보기'}
-      </button>
+      <div className="button-row">
+        <button type="button" className="btn btn-ghost" onClick={() => setRevealed((current) => !current)}>
+          {revealed ? '토큰 숨기기' : '토큰 보기'}
+        </button>
 
-      <button type="button" onClick={() => void copy(server.token, setTokenCopyStatus)}>
-        토큰 복사
-      </button>
-      {tokenCopyStatus ? <p role="status">{statusText(tokenCopyStatus)}</p> : null}
+        <button type="button" className="btn" onClick={() => void copy(server.token, setTokenCopyStatus)}>
+          토큰 복사
+        </button>
 
-      <button type="button" onClick={() => void copy(configSnippet(server), setConfigCopyStatus)}>
-        설정 JSON 복사
-      </button>
-      {configCopyStatus ? <p role="status">{statusText(configCopyStatus)}</p> : null}
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => void copy(configSnippet(server), setConfigCopyStatus)}
+        >
+          설정 JSON 복사
+        </button>
+      </div>
+
+      {tokenCopyStatus ? (
+        <p role="status" className="copy-status" data-ok={String(tokenCopyStatus.ok)}>
+          {statusText(tokenCopyStatus)}
+        </p>
+      ) : null}
+      {configCopyStatus ? (
+        <p role="status" className="copy-status" data-ok={String(configCopyStatus.ok)}>
+          {statusText(configCopyStatus)}
+        </p>
+      ) : null}
     </section>
   )
 }

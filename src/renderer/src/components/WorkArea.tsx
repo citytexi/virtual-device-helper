@@ -12,14 +12,14 @@ export interface WorkAreaProps {
  */
 export function WorkArea({ snapshot }: WorkAreaProps): JSX.Element {
   return (
-    <section aria-label="작업 영역">
-      <div role="tablist">
-        <button type="button" role="tab" aria-selected="true" id="tab-activity" aria-controls="panel-activity">
+    <section aria-label="작업 영역" className="pane pane-work">
+      <div role="tablist" className="tablist">
+        <button type="button" role="tab" className="tab" aria-selected="true" id="tab-activity" aria-controls="panel-activity">
           활동
         </button>
       </div>
 
-      <div role="tabpanel" id="panel-activity" aria-labelledby="tab-activity">
+      <div role="tabpanel" className="tabpanel" id="panel-activity" aria-labelledby="tab-activity">
         <ActivityTab records={snapshot.toolCalls} />
       </div>
     </section>

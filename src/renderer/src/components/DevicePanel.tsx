@@ -21,7 +21,7 @@ function TrackingFailureNotice({ failure }: { failure: TrackingFailure }): JSX.E
       : '이유를 알 수 없다'
 
   return (
-    <p role="alert">
+    <p role="alert" className="notice notice-warn">
       기기 추적이 멈췄다. 목록이 오래된 것일 수 있다. {detail}
     </p>
   )
@@ -56,10 +56,10 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
 
   if (snapshot.avds.length === 0) {
     return (
-      <section aria-label="기기">
-        <h2>기기</h2>
+      <section aria-label="기기" className="device-panel">
+        <h2 className="pane-title">기기</h2>
         {trackingNotice}
-        <p>AVD가 없다. Android Studio의 Device Manager에서 하나 만들고 앱을 다시 켜라.</p>
+        <p className="empty">AVD가 없다. Android Studio의 Device Manager에서 하나 만들고 앱을 다시 켜라.</p>
       </section>
     )
   }
@@ -67,25 +67,33 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
   const target = targetSerial(snapshot)
 
   return (
-    <section aria-label="기기">
-      <h2>기기</h2>
+    <section aria-label="기기" className="device-panel">
+      <h2 className="pane-title">기기</h2>
 
       {trackingNotice}
-      {busy === 'boot' ? <p>부팅 중…</p> : null}
+      {busy === 'boot' ? <p className="notice notice-info">부팅 중…</p> : null}
       {failure ? (
-        <p role="alert">
+        <p role="alert" className="notice notice-error">
           {failure.message} — {failure.hint}
         </p>
       ) : null}
 
-      <ul>
+      <ul className="device-list">
         {snapshot.avds.map((avd) => {
           const isActive = avd.serial !== null && avd.serial === target
 
           return (
-            <li key={avd.name} aria-current={isActive ? true : undefined}>
+            <li
+              key={avd.name}
+              className="device-row"
+              aria-current={isActive ? true : undefined}
+              data-running={String(avd.running)}
+            >
+              <span className="status-dot" data-state={avd.running ? 'on' : 'off'} aria-hidden="true" />
+
               <button
                 type="button"
+                className="device-name"
                 onClick={() => {
                   if (avd.serial) void run('select', () => window.api.selectDevice(avd.serial as string))
                 }}
@@ -94,25 +102,29 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
                 {avd.name}
               </button>
 
-              {isActive ? <span>(대상)</span> : null}
+              {isActive ? <span className="badge">(대상)</span> : null}
 
-              {avd.serial ? <span className="device-serial">{avd.serial}</span> : null}
+              {avd.serial ? <span className="device-serial mono">{avd.serial}</span> : null}
 
               {avd.running && avd.serial ? (
                 <button
                   type="button"
+                  className="btn btn-danger device-action"
+                  aria-label={`${avd.name} 종료`}
                   onClick={() => void run('shutdown', () => window.api.shutdownDevice(avd.serial as string))}
                   disabled={busy !== null}
                 >
-                  {avd.name} 종료
+                  종료
                 </button>
               ) : (
                 <button
                   type="button"
+                  className="btn device-action"
+                  aria-label={`${avd.name} 부팅`}
                   onClick={() => void run('boot', () => window.api.bootAvd(avd.name))}
                   disabled={busy !== null}
                 >
-                  {avd.name} 부팅
+                  부팅
                 </button>
               )}
             </li>
