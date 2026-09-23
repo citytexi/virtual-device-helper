@@ -3,6 +3,7 @@ import { DevicePanel } from './components/DevicePanel'
 import { DeviceScreen } from './components/DeviceScreen'
 import { EndpointCard } from './components/EndpointCard'
 import { SdkMissing } from './components/SdkMissing'
+import { ThemeToggle } from './components/ThemeToggle'
 import { WorkArea } from './components/WorkArea'
 import { targetSerial, useAppState } from './state/useAppState'
 
@@ -14,14 +15,14 @@ export function App(): JSX.Element {
     // 중…"을 계속 보여주면 영원히 로딩 중인 것처럼 보인다. 에러를 그대로
     // 보여주고 재시작을 안내한다.
     return (
-      <main>
+      <main className="app-message">
         <p role="alert">앱 상태를 불러오지 못했다 — {error}. 앱을 다시 시작해라.</p>
       </main>
     )
   }
 
   if (loading || !snapshot) {
-    return <main>불러오는 중…</main>
+    return <main className="app-message">불러오는 중…</main>
   }
 
   if (!snapshot.sdk.ok) {
@@ -30,11 +31,19 @@ export function App(): JSX.Element {
 
   return (
     <main className="app-shell">
-      <aside>
-        <DevicePanel snapshot={snapshot} />
-        <DeviceScreen serial={targetSerial(snapshot)} />
+      <header className="app-header">
+        <h1 className="app-title">virtual-device-helper</h1>
         <EndpointCard server={snapshot.server} />
+        <ThemeToggle />
+      </header>
+
+      <aside className="pane pane-devices">
+        <DevicePanel snapshot={snapshot} />
       </aside>
+
+      <div className="pane pane-screen">
+        <DeviceScreen serial={targetSerial(snapshot)} />
+      </div>
 
       <WorkArea snapshot={snapshot} />
     </main>

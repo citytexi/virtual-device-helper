@@ -73,32 +73,38 @@ export function DeviceScreen({ serial }: DeviceScreenProps): JSX.Element {
 
   if (!serial) {
     return (
-      <section aria-label="기기 화면">
-        <p>기기를 선택해라. 왼쪽 목록에서 실행 중인 기기를 누르면 화면이 뜬다.</p>
+      <section aria-label="기기 화면" className="device-screen">
+        <p className="empty">기기를 선택해라. 왼쪽 목록에서 실행 중인 기기를 누르면 화면이 뜬다.</p>
       </section>
     )
   }
 
   return (
-    <section aria-label="기기 화면">
-      <button type="button" onClick={() => void capture(serial)} disabled={capturing}>
-        새로고침
-      </button>
+    <section aria-label="기기 화면" className="device-screen">
+      <div className="screen-toolbar">
+        <h2 className="pane-title">화면</h2>
+        <span className="device-serial mono">{serial}</span>
+        <button type="button" className="btn" onClick={() => void capture(serial)} disabled={capturing}>
+          새로고침
+        </button>
+      </div>
 
       {failure ? (
-        <p role="alert">
+        <p role="alert" className="notice notice-error">
           {failure.message} — {failure.hint}
         </p>
       ) : null}
 
-      {shot ? (
-        <img
-          src={`data:image/png;base64,${shot.base64}`}
-          alt={`${serial}의 화면`}
-          width={shot.width}
-          height={shot.height}
-        />
-      ) : null}
+      <div className="screen-frame" aria-busy={capturing}>
+        {shot ? (
+          <img
+            src={`data:image/png;base64,${shot.base64}`}
+            alt={`${serial}의 화면`}
+            width={shot.width}
+            height={shot.height}
+          />
+        ) : null}
+      </div>
     </section>
   )
 }

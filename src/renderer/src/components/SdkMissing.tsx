@@ -11,7 +11,7 @@ export interface SdkMissingProps {
  */
 export function SdkMissing({ searched }: SdkMissingProps): JSX.Element {
   return (
-    <main aria-label="Android SDK를 찾지 못했다">
+    <main aria-label="Android SDK를 찾지 못했다" className="app-message sdk-missing">
       <h1>Android SDK를 찾지 못했다</h1>
 
       <p>
@@ -25,7 +25,7 @@ export function SdkMissing({ searched }: SdkMissingProps): JSX.Element {
       </p>
 
       <h2>찾아본 경로</h2>
-      <ul>
+      <ul className="path-list mono">
         {searched.map((path) => (
           <li key={path}>{path}</li>
         ))}
