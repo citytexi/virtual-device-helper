@@ -1,0 +1,17 @@
+# macOS arm64 전용, 서명·공증 없음. 이유는 docs/adr/0009-unsigned-arm64-mac-distribution.md.
+appId: io.github.citytexi.virtual-device-helper
+productName: virtual-device-helper
+artifactName: ${productName}-${version}-${arch}.${ext}
+directories:
+  output: dist
+files:
+  - out/**
+  - package.json
+mac:
+  category: public.app-category.developer-tools
+  identity: null
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
