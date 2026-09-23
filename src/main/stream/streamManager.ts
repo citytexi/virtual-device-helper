@@ -17,6 +17,8 @@ export const RECONNECT_DELAYS_MS = [1000, 2000, 4000] as const
 export interface PortLike {
   postMessage(message: StreamDown): void
   on(event: 'message', listener: (event: { data: unknown }) => void): unknown
+  /** 반대쪽(renderer) 포트가 끊겼을 때. 창 닫힘·reload·크래시가 여기로 온다. */
+  on(event: 'close', listener: () => void): unknown
   start(): void
   close(): void
 }
@@ -43,6 +45,7 @@ interface Entry {
   serial: string
   sessionId: string
   port: PortLike
+  /** 시작 중인 세션도 여기 붙는다. 그래야 closeEntry가 시작을 중단시킬 수 있다. */
   session: ScrcpySession | null
 }
 
@@ -152,13 +155,21 @@ export function createStreamManager(deps: StreamManagerDeps): StreamManager {
   /** 세션 하나를 시작한다. 실패하면 던진다. 시작하는 사이 기기가 바뀌었으면 조용히 닫는다. */
   async function startSession(entry: Entry): Promise<void> {
     const session = deps.createSession(entry.serial, handlersFor(entry))
-    // start()는 실패하면 스스로 정리하고 던진다.
-    await session.start()
+    // start() 전에 붙여 둔다. 시작하는 사이 stop·open·끊김이 closeEntry를 부르면 이 세션이
+    // 닫히고, start()는 closedWhileStarting으로 던진다. 호출자는 current 가드로 조용히 물러난다.
+    entry.session = session
+    try {
+      // start()는 실패하면 스스로 정리하고 던진다.
+      await session.start()
+    } catch (thrown) {
+      if (entry.session === session) entry.session = null
+      throw thrown
+    }
     if (current !== entry) {
+      if (entry.session === session) entry.session = null
       await session.close()
       return
     }
-    entry.session = session
     post(entry, { type: 'status', status: { state: 'streaming' } })
   }
 
@@ -206,6 +217,12 @@ export function createStreamManager(deps: StreamManagerDeps): StreamManager {
       channel.local.on('message', (event) => {
         const intent = toControlIntent(event.data)
         if (intent && current === entry) entry.session?.sendControl(intent)
+      })
+      // renderer가 포트를 놓으면 소비자가 없다. 재시도 없이 닫는다. 이미 밀려난 entry면 무시한다.
+      channel.local.on('close', () => {
+        closeIfCurrent(entry).catch(() => {
+          // 세션 close는 스스로 정리하고 던지지 않는다. 여기는 만일을 위한 방어다.
+        })
       })
       channel.local.start()
       // 시작 실패도 이 포트로 알리므로 세션보다 먼저 보낸다.

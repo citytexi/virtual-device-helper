@@ -9,14 +9,22 @@ class FakePort implements PortLike {
   readonly start = vi.fn()
   readonly close = vi.fn()
   private listener: ((event: { data: unknown }) => void) | null = null
+  private closeListener: (() => void) | null = null
   postMessage(message: StreamDown): void {
     this.sent.push(message)
   }
-  on(_event: 'message', listener: (event: { data: unknown }) => void): void {
-    this.listener = listener
+  on(event: 'message', listener: (event: { data: unknown }) => void): void
+  on(event: 'close', listener: () => void): void
+  on(event: 'message' | 'close', listener: ((event: { data: unknown }) => void) | (() => void)): void {
+    if (event === 'close') this.closeListener = listener as () => void
+    else this.listener = listener as (event: { data: unknown }) => void
   }
   receive(data: unknown): void {
     this.listener?.({ data })
+  }
+  /** renderer 쪽 포트가 끊긴 것처럼 close 이벤트를 낸다. */
+  disconnect(): void {
+    this.closeListener?.()
   }
   statuses(): string[] {
     return this.sent.flatMap((m) => (m.type === 'status' ? [m.status.state] : []))
@@ -30,7 +38,7 @@ interface FakeSession extends ScrcpySession {
   sendControl: Mock<(intent: ControlIntent) => void>
 }
 
-function harness(opts: { startResults?: Array<'ok' | 'fail'>; connected?: () => boolean } = {}) {
+function harness(opts: { startResults?: Array<'ok' | 'fail' | 'pending'>; connected?: () => boolean } = {}) {
   const results = [...(opts.startResults ?? [])]
   const sessions: FakeSession[] = []
   const ports: FakePort[] = []
@@ -42,13 +50,22 @@ function harness(opts: { startResults?: Array<'ok' | 'fail'>; connected?: () => 
   const manager = createStreamManager({
     createSession: (serial, handlers) => {
       const outcome = results.shift() ?? 'ok'
+      // 'pending'은 close()가 불릴 때까지 끝나지 않는 start다. 실제 세션처럼 시작 중 닫히면 던진다.
+      let abortStart: (() => void) | null = null
       const session: FakeSession = {
         serial,
         handlers,
         start: vi.fn(async () => {
           if (outcome === 'fail') throw deviceError('device_unresponsive', 'no server', 'retry')
+          if (outcome === 'pending') {
+            await new Promise<void>((_resolve, reject) => {
+              abortStart = () => reject(deviceError('command_failed', '세션이 시작 중에 닫혔다', '다시 연결해라'))
+            })
+          }
         }),
-        close: vi.fn(async () => {}),
+        close: vi.fn(async () => {
+          abortStart?.()
+        }),
         sendControl: vi.fn()
       }
       sessions.push(session)
@@ -227,6 +244,71 @@ describe('createStreamManager', () => {
     h.ports[0]?.receive('garbage')
 
     expect(h.sessions[0]?.sendControl).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes a session that is still starting when stop is called', async () => {
+    const h = harness({ startResults: ['pending'] })
+    const opening = h.manager.open('emulator-5554')
+    await vi.waitFor(() => expect(h.sessions[0]?.start).toHaveBeenCalled())
+
+    await h.manager.stop()
+    await opening
+
+    expect(h.sessions[0]?.close).toHaveBeenCalled()
+    expect(h.ports[0]?.close).toHaveBeenCalled()
+    expect(h.ports[0]?.statuses()).toEqual(['connecting'])
+  })
+
+  it('closes the starting session of the previous device when another device opens', async () => {
+    const h = harness({ startResults: ['pending', 'ok'] })
+    const openingA = h.manager.open('A')
+    await vi.waitFor(() => expect(h.sessions[0]?.start).toHaveBeenCalled())
+
+    await h.manager.open('B')
+    await openingA
+
+    expect(h.sessions[0]?.close).toHaveBeenCalled()
+    expect(h.ports[0]?.statuses()).toEqual(['connecting'])
+    expect(h.ports[1]?.statuses()).toEqual(['connecting', 'streaming'])
+    expect(h.sessions[1]?.close).not.toHaveBeenCalled()
+  })
+
+  it('closes the session without reconnecting when the renderer side of the port goes away', async () => {
+    const h = harness()
+    await h.manager.open('emulator-5554')
+
+    h.ports[0]?.disconnect()
+
+    await vi.waitFor(() => expect(h.sessions[0]?.close).toHaveBeenCalled())
+    expect(h.ports[0]?.close).toHaveBeenCalled()
+    expect(h.sleeps).toEqual([])
+    expect(h.sessions).toHaveLength(1)
+  })
+
+  it('closes a starting session when the renderer side of the port goes away', async () => {
+    const h = harness({ startResults: ['pending'] })
+    const opening = h.manager.open('emulator-5554')
+    await vi.waitFor(() => expect(h.sessions[0]?.start).toHaveBeenCalled())
+
+    h.ports[0]?.disconnect()
+    await opening
+
+    expect(h.sessions[0]?.close).toHaveBeenCalled()
+    expect(h.ports[0]?.statuses()).toEqual(['connecting'])
+  })
+
+  it('ignores a close from a superseded port', async () => {
+    const h = harness()
+    await h.manager.open('A')
+    await h.manager.open('B')
+
+    h.ports[0]?.disconnect()
+    await new Promise((r) => setImmediate(r))
+
+    expect(h.sessions[1]?.close).not.toHaveBeenCalled()
+    expect(h.ports[1]?.close).not.toHaveBeenCalled()
+    h.ports[1]?.receive({ type: 'key', key: 'home' })
+    expect(h.sessions[1]?.sendControl).toHaveBeenCalledWith({ type: 'key', key: 'home' })
   })
 
   it('ignores stale session events after the device changed', async () => {
