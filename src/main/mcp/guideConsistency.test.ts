@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { promptTemplates, serverInstructions } from '../../shared/agentGuide'
 import type { AvdController } from '../device/avdController'
@@ -53,6 +55,46 @@ describe('agent guide consistency', () => {
 
     for (const name of texts.flatMap(mentionedToolNames)) {
       expect(registered, `unknown tool mentioned: ${name}`).toContain(name)
+    }
+  })
+})
+
+const README = resolve(__dirname, '../../../README.md')
+
+/**
+ * README에서 `heading` 제목 아래 본문만 떼어 낸다. 같은 수준 이상의 다음 제목 전까지다.
+ * 툴 표는 "### 툴" 아래만 본다 — "자주 나는 실패" 표의 에러 kind(`no_device` 등)도
+ * 백틱 snake_case라 섹션 전체를 보면 툴로 오인한다.
+ */
+function readmeSection(heading: string): string {
+  const text = readFileSync(README, 'utf8')
+  const start = text.indexOf(`\n${heading}\n`)
+  if (start === -1) throw new Error(`README에 "${heading}" 제목이 없다`)
+  const level = heading.split(' ')[0] as string
+  const rest = text.slice(start + heading.length + 2)
+  const next = new RegExp(`\\n#{1,${level.length}} `)
+  const end = rest.search(next)
+  return end === -1 ? rest : rest.slice(0, end)
+}
+
+describe('README agent section', () => {
+  it('has the agent section with a tool table under it', () => {
+    expect(readmeSection('## 에이전트로 테스트하기')).toContain('### 툴')
+  })
+
+  it('lists every registered tool in the tool table', async () => {
+    const table = readmeSection('### 툴')
+
+    for (const name of await registeredToolNames()) {
+      expect(table, `README 툴 표에 빠진 툴: ${name}`).toContain(`\`${name}\``)
+    }
+  })
+
+  it('names only registered tools in the tool table', async () => {
+    const registered = new Set(await registeredToolNames())
+
+    for (const name of mentionedToolNames(readmeSection('### 툴'))) {
+      expect(registered, `README 툴 표가 없는 툴을 언급한다: ${name}`).toContain(name)
     }
   })
 })
