@@ -1,0 +1,724 @@
+/*
+ * renderer 전체 스타일. 색·간격·글꼴은 :root 토큰으로만 쓴다.
+ *
+ * 테마: 기본은 라이트 토큰이다. OS가 다크이면 prefers-color-scheme 블록이,
+ * 사용자가 ThemeToggle로 고르면 :root[data-theme]가 토큰을 덮는다. 'system'을
+ * 고르면 data-theme이 없으므로 OS 설정을 따른다.
+ *
+ * 레이아웃: 상단 바 + 3단(기기 목록 · 기기 화면 · 작업 영역). 창 전체는
+ * 스크롤하지 않고, 목록과 작업 영역만 각자 스크롤한다. 기기 화면은 가운데 열
+ * 높이에 맞춰 줄어든다 — 폰 스크린샷이 세로로 길어 창 아래로 넘치던 문제를 막는다.
+ *
+ * 상태는 색만으로 구분하지 않는다. 실패 행은 테두리, 활성 기기는 배지 텍스트,
+ * 실행 여부는 점 모양(채움/빈 원)을 함께 쓴다.
+ */
+
+:root {
+  color-scheme: light;
+
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --surface-muted: #e2e8f0;
+  --border: #cbd5e1;
+  --text: #0f172a;
+  --text-muted: #475569;
+  --accent: #15803d;
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --on-accent: #ffffff;
+  --danger: #b91c1c;
+  --danger-soft: color-mix(in srgb, var(--danger) 10%, transparent);
+  --warn: #a16207;
+  --warn-soft: color-mix(in srgb, var(--warn) 12%, transparent);
+  --focus: #2563eb;
+  --shadow: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 3px rgb(15 23 42 / 0.08);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo',
+    'Malgun Gothic', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Cascadia Mono', monospace;
+
+  --radius: 8px;
+  --radius-sm: 6px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --header-h: 56px;
+}
+
+/* 다크 토큰. OS가 다크이고 사용자가 라이트를 고르지 않았을 때, 또는 사용자가
+   다크를 골랐을 때 적용한다. 두 블록은 같은 값이다. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --bg: #0b1120;
+    --surface: #111a2e;
+    --surface-muted: #1b2540;
+    --border: #2a3654;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --accent: #22c55e;
+    --on-accent: #052e16;
+    --danger: #f87171;
+    --warn: #fbbf24;
+    --focus: #60a5fa;
+    --shadow: none;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #0b1120;
+  --surface: #111a2e;
+  --surface-muted: #1b2540;
+  --border: #2a3654;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --accent: #22c55e;
+  --on-accent: #052e16;
+  --danger: #f87171;
+  --warn: #fbbf24;
+  --focus: #60a5fa;
+  --shadow: none;
+}
+
+/* ── 기본 ─────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+p,
+ul {
+  margin: 0;
+}
+
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+.mono,
+code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ── 버튼 ─────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 30px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--surface-muted);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 85%, var(--text));
+}
+
+.btn-danger {
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--border));
+  color: var(--danger);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.button-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* ── 공용 조각 ────────────────────────────────────────── */
+
+.pane-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.empty {
+  color: var(--text-muted);
+}
+
+.badge {
+  padding: 1px var(--space-2);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* 실행 중이면 채운 점, 아니면 빈 원. 색이 안 보여도 모양으로 구분된다. */
+.status-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-dot[data-state='on'] {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.status-dot[data-state='off'] {
+  border: 1.5px solid var(--text-muted);
+}
+
+.notice {
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.notice-error {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.notice-warn {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.notice-info {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ── 셸 ───────────────────────────────────────────────── */
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 260px minmax(320px, 1fr) minmax(360px, 440px);
+  grid-template-rows: var(--header-h) minmax(0, 1fr);
+  grid-template-areas:
+    'header header header'
+    'devices screen work';
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-header {
+  grid-area: header;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.app-title {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pane {
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.pane-devices {
+  grid-area: devices;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.pane-screen {
+  grid-area: screen;
+  display: flex;
+  overflow: hidden;
+}
+
+.pane-work {
+  grid-area: work;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+/* 로딩·에러·SDK 안내처럼 셸 없이 보여주는 화면. */
+.app-message {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px var(--space-4);
+}
+
+/* ── MCP 엔드포인트 (상단 바) ─────────────────────────── */
+
+.endpoint {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
+.endpoint-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.endpoint-url,
+.endpoint-token {
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.endpoint-token {
+  max-width: 260px;
+}
+
+.endpoint-message {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.copy-status {
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.copy-status[data-ok='false'] {
+  color: var(--danger);
+}
+
+/* ── 테마 전환 ────────────────────────────────────────── */
+
+.segmented {
+  display: inline-flex;
+  margin-left: auto;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+
+.segmented-option {
+  position: relative;
+  cursor: pointer;
+}
+
+/* 라디오는 시각적으로만 숨기고 접근성 트리·키보드 탐색에는 남긴다. */
+.segmented-option input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.segmented-option span {
+  display: block;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.segmented-option input:checked + span {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--shadow);
+}
+
+.segmented-option input:focus-visible + span {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* ── 기기 목록 ────────────────────────────────────────── */
+
+.device-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.device-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.device-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+/* 활성 기기. 테두리·배경 외에 DevicePanel이 '(대상)' 배지 텍스트도 붙인다. */
+.device-row[aria-current='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.device-name {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.device-name:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.device-name:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+/* 1행: 점 · 이름 · 부팅/종료. 2행: 대상 배지 · 일련번호. */
+.device-row .device-action {
+  grid-column: 3;
+  grid-row: 1;
+  height: 26px;
+  padding: 0 10px;
+}
+
+.device-row .badge,
+.device-row .device-serial {
+  grid-row: 2;
+}
+
+.device-row .badge {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.device-row .badge + .device-serial {
+  grid-column: 3;
+}
+
+.device-row .device-serial {
+  grid-column: 2 / 4;
+  color: var(--text-muted);
+}
+
+.device-serial {
+  white-space: nowrap;
+}
+
+/* ── 기기 화면 ────────────────────────────────────────── */
+
+.device-screen {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 0;
+}
+
+.device-screen > .empty {
+  margin: auto;
+}
+
+.screen-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.screen-toolbar .device-serial {
+  color: var(--text-muted);
+}
+
+.screen-toolbar .btn {
+  margin-left: auto;
+}
+
+.screen-frame {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+/* 열 높이·폭 안에 비율을 유지한 채 맞춘다. width/height 속성은 원본 비율을
+   브라우저에 알려 주는 용도로 그대로 둔다. */
+.screen-frame img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  transition: opacity 150ms ease;
+}
+
+.screen-frame[aria-busy='true'] img {
+  opacity: 0.6;
+}
+
+/* ── 작업 영역 · 활동 ─────────────────────────────────── */
+
+.tablist {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab[aria-selected='true'] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+}
+
+.tabpanel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* .tabpanel이 display를 정하게 되더라도 선택되지 않은 패널은 숨긴다. */
+.tabpanel[hidden] {
+  display: none;
+}
+
+.activity-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  grid-template-areas:
+    'time tool duration result'
+    'args args args args';
+  align-items: baseline;
+  gap: 2px var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
+}
+
+.activity-time {
+  grid-area: time;
+  color: var(--text-muted);
+}
+
+.activity-tool {
+  grid-area: tool;
+  font-weight: 600;
+}
+
+.activity-duration {
+  grid-area: duration;
+  color: var(--text-muted);
+}
+
+.activity-result {
+  grid-area: result;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.activity-args {
+  grid-area: args;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* 실패 행. 색뿐 아니라 왼쪽 테두리와 '실패' 텍스트로도 구분한다. */
+.activity-row[data-ok='false'] {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.activity-row[data-ok='false'] .activity-result {
+  color: var(--danger);
+}
+
+/* ── 에이전트 탭 ──────────────────────────────────────── */
+
+.agent-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-2);
+}
+
+.agent-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.agent-help {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* 명령과 프롬프트 미리보기. 긴 줄은 접어서 탭 폭 안에 둔다. */
+.command-block,
+.prompt-preview {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.prompt-preview {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+/* 상단 바의 테마 전환은 오른쪽으로 밀지만, 탭 안에서는 왼쪽에 둔다. */
+.agent-tab .segmented {
+  align-self: flex-start;
+  margin-left: 0;
+}
+
+/* ── SDK 안내 ─────────────────────────────────────────── */
+
+.sdk-missing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sdk-missing h1 {
+  font-size: 20px;
+}
+
+.sdk-missing h2 {
+  margin-top: var(--space-2);
+  font-size: 14px;
+}
+
+.path-list {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

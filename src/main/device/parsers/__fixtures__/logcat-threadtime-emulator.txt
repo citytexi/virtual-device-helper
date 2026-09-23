@@ -1,0 +1,214 @@
+--------- beginning of main
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.systemui is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.server.power.batterysaver is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.widget.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.media.editing.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.media.codec.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.server.powerstats is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.graphics.egl.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.media.audioserver is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.server.deviceidle is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.nfc is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.permission.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.service.voice.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.content.pm is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.server.power.hint is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.os is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.service.dreams is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.graphics.libgui.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.hardware.usb.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.provider is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.server.job is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.internal.foldables.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.internal.telephony.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.webkit is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.credentials.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.server.display.feature.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.server.notification is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.appwidget.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.frameworks.sensorservice.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.printspooler.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.window.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.adaptiveauth is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.net.wifi.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.media.tv.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.server.usb.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.os.vibrator is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.hardware.devicestate.feature.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.server.usage is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.server is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.wm.shell is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.view.inputmethod is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.graphics.hwui.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.server.backup is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.internal.pm.pkg.component.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.view.accessibility is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.google.wear.sdk is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: android.media.audio is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.server.am is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.media.playback.flags is mapped to system
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.art.flags is mapped to com.android.art
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.libcore is mapped to com.android.art
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.media.extractor.flags is mapped to com.android.media
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.media.mainline.flags is mapped to com.android.media
+09-23 10:22:50.852 18868 18868 I AconfigPackage: com.android.wifi.flags is mapped to com.android.wifi
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.org.conscrypt.flags is mapped to com.android.conscrypt
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.healthfitness.flags is mapped to com.android.healthfitness
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.google.android.input.twoshay.flags is mapped to vendor
+09-23 10:22:50.853 18868 18868 I AconfigPackage: libgooglecamerahal.flags is mapped to vendor
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.ipsec.flags is mapped to com.android.ipsec
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.nfc.module.flags is mapped to com.android.nfcservices
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.adservices.ondevicepersonalization.flags is mapped to com.android.ondevicepersonalization
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.bluetooth.flags is mapped to com.android.bt
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.devicelock.flags is mapped to com.android.devicelock
+09-23 10:22:50.853 18868 18868 I AconfigPackage: android.os.profiling is mapped to com.android.profiling
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.os.statsd.flags is mapped to com.android.os.statsd
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.cellbroadcastreceiver.flags is mapped to com.android.cellbroadcast
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.adservices.flags is mapped to com.android.adservices
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.sdksandbox.flags is mapped to com.android.adservices
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.uwb.flags is mapped to com.android.uwb
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.ranging.flags is mapped to com.android.uwb
+09-23 10:22:50.853 18868 18868 I AconfigPackage: android.graphics.pdf.flags is mapped to com.android.mediaprovider
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.providers.media.flags is mapped to com.android.mediaprovider
+09-23 10:22:50.853 18868 18868 I AconfigPackage: android.graphics.pdf.flags.readonly is mapped to com.android.mediaprovider
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.net.ct.flags is mapped to com.android.tethering
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.net.flags is mapped to com.android.tethering
+09-23 10:22:50.853 18868 18868 I AconfigPackage: android.net.vcn is mapped to com.android.tethering
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.nearby.flags is mapped to com.android.tethering
+09-23 10:22:50.853 18868 18868 I AconfigPackage: android.net.http is mapped to com.android.tethering
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.net.thread.flags is mapped to com.android.tethering
+09-23 10:22:50.853 18868 18868 I AconfigPackage: com.android.system.virtualmachine.flags is mapped to com.android.virt
+09-23 10:22:50.853 18868 18868 E FeatureFlagsImplExport: android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+09-23 10:22:50.854 18868 18868 D UiAutomationConnection: Created on user UserHandle{0}
+09-23 10:22:50.854 18868 18868 I UiAutomation: Initialized for user 0 on display 0
+09-23 10:22:50.854 18868 18868 W UiAutomation: Created with deprecatead constructor, assumes DEFAULT_DISPLAY
+--------- beginning of system
+09-23 10:22:50.855   720  1986 D AccessibilityManagerService: changeCurrentUserForTestAutomationIfNeededLocked(0): ignoring because device doesn't support visible background users
+09-23 10:22:50.855   720  1986 I UiAutomationManager: Registering UiTestAutomationService (id=com.android.server.accessibility/UiAutomation, flags=0x0) when called by user 0
+09-23 10:22:50.855   720  1986 V AccessibilityManagerService: onUserStateChangedLocked for userId: 0, forceUpdate: false
+09-23 10:22:50.855   720  1986 W MagnificationConnectionManager: requestConnection duplicated request: connect=false, mConnectionState=DISCONNECTED
+09-23 10:22:50.856  1571  1595 I AiAiEcho: Settings changed for uri: content://settings/secure/accessibility_enabled
+09-23 10:22:50.856   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.856   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.856   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.856   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.856   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.856   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.856   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.856   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.856   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.856   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.856   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.856   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.856   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.856   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.856   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.857   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.857   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.857  1571  1738 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+09-23 10:22:50.857   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.857  1571  1738 I AiAiEcho: EchoTargets: 
+09-23 10:22:50.857  1571  1738 I AiAiEcho: Filtered by AiAi flag check: 
+09-23 10:22:50.857  1571  1738 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+09-23 10:22:50.857   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.857   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.857   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.857   720   720 D BatterySaverPolicy: accessibility changed to true, updating policy.
+09-23 10:22:50.857  1571  1738 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+09-23 10:22:50.857  1571  1738 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+09-23 10:22:50.857  1571  1738 I AiAiEcho: EchoTargets: 
+09-23 10:22:50.857  1571  1738 I AiAiEcho: Filtered by AiAi flag check: 
+09-23 10:22:50.857  1571  1738 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+09-23 10:22:50.857  1571  1738 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+09-23 10:22:50.857  1571  1738 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface lockscreen with targets# 0 (types=[])
+09-23 10:22:50.857   720  1213 V AccessibilityManagerService: onUserStateChangedLocked for userId: 0, forceUpdate: false
+09-23 10:22:50.857  1571  1738 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+09-23 10:22:50.858   720  1213 W MagnificationConnectionManager: requestConnection duplicated request: connect=false, mConnectionState=DISCONNECTED
+09-23 10:22:50.858  1571  1595 I AiAiEcho: Settings changed for uri: content://settings/secure/accessibility_enabled
+09-23 10:22:50.858  1571  1738 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+09-23 10:22:50.858  1571  1738 I AiAiEcho: EchoTargets: 
+09-23 10:22:50.858  1571  1738 I AiAiEcho: Filtered by AiAi flag check: 
+09-23 10:22:50.858  1571  1738 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+09-23 10:22:50.858  1571  1738 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+09-23 10:22:50.858  1571  1738 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+09-23 10:22:50.858  1571  1738 I AiAiEcho: EchoTargets: 
+09-23 10:22:50.858  1571  1738 I AiAiEcho: Filtered by AiAi flag check: 
+09-23 10:22:50.858  1571  1738 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+09-23 10:22:50.858  1571  1738 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+09-23 10:22:50.858  1571  1738 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface lockscreen with targets# 0 (types=[])
+09-23 10:22:50.858  1571  1738 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+09-23 10:22:50.859   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.859   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.859   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.859   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.859   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.859   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.859   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.859   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.859   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.859   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.859  1134  1134 D SsBaseTemplateCard: No text view can be set up
+09-23 10:22:50.859  1134  1134 D SsBaseTemplateCard: Passed-in item info is null
+09-23 10:22:50.859  1134  1134 D SsBaseTemplateCard: Passed-in item info is null
+09-23 10:22:50.859  1134  1134 D SsBaseTemplateCard: Passed-in item info is null
+09-23 10:22:50.859  1134  1134 I SsBaseTemplateCard: Secondary card pane is null
+09-23 10:22:50.859   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.859   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.859   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.859   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:50.859  1134  1134 D SsBaseTemplateCard: No text view can be set up
+09-23 10:22:50.859  1134  1134 D SsBaseTemplateCard: Passed-in item info is null
+09-23 10:22:50.859  1134  1134 D SsBaseTemplateCard: Passed-in item info is null
+09-23 10:22:50.859  1134  1134 D SsBaseTemplateCard: Passed-in item info is null
+09-23 10:22:50.859  1134  1134 I SsBaseTemplateCard: Secondary card pane is null
+09-23 10:22:50.861   983   983 W PageIndicator: Total number of pages invalid: 0. Assuming 1 page.
+09-23 10:22:50.861   983   983 W PageIndicator: Total number of pages invalid: 0. Assuming 1 page.
+09-23 10:22:50.876  1128  1329 D SatelliteController: iisInCarrierRoamingNbIotNtn: satellite is disabled
+09-23 10:22:51.869 18868 18868 W AccessibilityNodeInfoDumper: Fetch time: 4ms
+09-23 10:22:51.869   720  1264 V AccessibilityManagerService: onUserStateChangedLocked for userId: 0, forceUpdate: false
+09-23 10:22:51.870   720  1264 W MagnificationConnectionManager: requestConnection duplicated request: connect=false, mConnectionState=DISCONNECTED
+09-23 10:22:51.870   720  1264 D AccessibilityManagerService: restoreCurrentUserForTestAutomationIfNeededLocked(): ignoring because device doesn't support visible background users
+09-23 10:22:51.870   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.870   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.870   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.870   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.870   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.870   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.871   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.871 18868 18868 D AndroidRuntime: Shutting down VM
+09-23 10:22:51.871  1571  1595 I AiAiEcho: Settings changed for uri: content://settings/secure/accessibility_enabled
+09-23 10:22:51.871 18868 18877 W IPCThreadState: call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+09-23 10:22:51.871 18868 18878 W IPCThreadState: call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+09-23 10:22:51.871   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.871   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.871   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.871   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.871   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.871   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.871   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.871  1571  1738 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+09-23 10:22:51.872  1571  1738 I AiAiEcho: EchoTargets: 
+09-23 10:22:51.872  1571  1738 I AiAiEcho: Filtered by AiAi flag check: 
+09-23 10:22:51.872  1571  1738 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+09-23 10:22:51.872  1571  1738 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+09-23 10:22:51.872   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.872   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.872   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.872   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.872   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.872   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.872   720   720 W IPCThreadState: Sending oneway calls to frozen process.
+09-23 10:22:51.872  1571  1738 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+09-23 10:22:51.872  1571  1738 I AiAiEcho: EchoTargets: 
+09-23 10:22:51.872  1571  1738 I AiAiEcho: Filtered by AiAi flag check: 
+09-23 10:22:51.872  1571  1738 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+09-23 10:22:51.872   720   720 D BatterySaverPolicy: accessibility changed to false, updating policy.
+09-23 10:22:51.872  1571  1738 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+09-23 10:22:51.872  1571  1738 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface lockscreen with targets# 0 (types=[])
+09-23 10:22:51.872  1571  1738 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+09-23 10:22:51.874  1134  1134 D SsBaseTemplateCard: No text view can be set up
+09-23 10:22:51.874  1134  1134 D SsBaseTemplateCard: Passed-in item info is null
+09-23 10:22:51.874  1134  1134 D SsBaseTemplateCard: Passed-in item info is null
+09-23 10:22:51.874  1134  1134 D SsBaseTemplateCard: Passed-in item info is null
+09-23 10:22:51.874  1134  1134 I SsBaseTemplateCard: Secondary card pane is null
+09-23 10:22:51.875   983   983 W PageIndicator: Total number of pages invalid: 0. Assuming 1 page.
