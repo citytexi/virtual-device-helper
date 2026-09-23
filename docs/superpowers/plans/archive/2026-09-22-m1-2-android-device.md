@@ -1,14 +1,14 @@
 ---
 id: m1-2-android-device
 title: M1-2 — Android 기기 구현체
-status: draft
+status: done
 type: work-order
 created: 2026-09-22
-updated: 2026-09-22
+updated: 2026-09-23
 owner: virtual-device-helper 팀
 scope: [main, android, shared]
 hosts: [macos]
-archived_reason:
+archived_reason: M1 구현 완료. 설치 충돌 힌트와 런처 해석은 M1-5 검증 중에 고쳤다.
 related_adr: [ADR-0003, ADR-0004, ADR-0005, ADR-0007]
 related_spec: m1-device-core-mcp-server
 related_architecture:
@@ -33,7 +33,7 @@ tags: [plan, m1, android]
 
 **Tech Stack:** TypeScript, Vitest, fast-xml-parser, Electron `nativeImage`
 
-**Spec:** [`../specs/2026-09-22-m1-device-core-mcp-server.md`](../specs/2026-09-22-m1-device-core-mcp-server.md)
+**Spec:** [`../specs/2026-09-22-m1-device-core-mcp-server.md`](../../specs/archive/2026-09-22-m1-device-core-mcp-server.md)
 
 **계획 순서:** [M1-1](2026-09-22-m1-1-foundation-and-adb.md) → M1-2(이 문서) →
 [M1-3](2026-09-22-m1-3-mcp-server.md) → [M1-4](2026-09-22-m1-4-electron-shell-ui.md) →
@@ -52,7 +52,7 @@ tags: [plan, m1, android]
 - **축이 셋이고 섞지 않는다:** 호스트 OS(windows/macos) · 타깃 디바이스(android/ios) ·
   Electron 프로세스(main/renderer/preload).
 - **층 방향 규칙:** 위층은 바로 아래층만 부른다. `AndroidDevice`는 `AdbClient`만 보고,
-  `DeviceRegistry`는 `Device` 인터페이스만 본다 ([ADR-0005](../../adr/0005-device-interface-abstraction.md)).
+  `DeviceRegistry`는 `Device` 인터페이스만 본다 ([ADR-0005](../../../adr/0005-device-interface-abstraction.md)).
 - **adb 출력 파싱은 이 계획 밖으로 새지 않는다.** 위층은 raw stdout·stderr를 해석하지 않는다.
 - **파싱 테스트는 실제 출력을 픽스처로 떠서 한다.** 손으로 지어낸 샘플로 검증하면 현실에서 깨진다.
 - **M1의 호스트는 macOS, 타깃은 Android 하나다.** iOS·Windows 코드를 미리 쓰지 않는다.
@@ -250,7 +250,7 @@ EOF
 
 > 이 파서가 이 프로젝트에서 가장 값어치 있는 코드다. 원본 XML은 화면 하나가 수만 토큰이라
 > 에이전트에게 줄 수 없다. 요약의 품질이 `ui_find`의 쓸모를 정한다
-> ([ADR-0004](../../adr/0004-hybrid-mcp-tool-surface.md)).
+> ([ADR-0004](../../../adr/0004-hybrid-mcp-tool-surface.md)).
 
 - [ ] **Step 1: 실제 덤프를 픽스처로 뜬다**
 

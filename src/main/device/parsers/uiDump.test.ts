@@ -32,6 +32,12 @@ const landscapeSample = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?
 const realFixture = readFileSync(join(__dirname, '__fixtures__', 'window-dump.xml'), 'utf8')
 const realScreen = { width: 1080, height: 2340 }
 
+// 실제 에뮬레이터(emulator-5554, Pixel_7_API_36, 화면 1080x2400)의 홈 화면 덤프.
+const emulatorFixture = readFileSync(
+  join(__dirname, '__fixtures__', 'window-dump-emulator.xml'),
+  'utf8'
+)
+
 describe('parseUiDump', () => {
   it('returns the center point of each node so it can be tapped directly', () => {
     const nodes = parseUiDump(sample)
@@ -123,5 +129,17 @@ describe('parseUiDump', () => {
     const nodes = parseUiDump(landscapeSample)
 
     expect(nodes.some((node) => node.text === '화면 밖')).toBe(false)
+  })
+
+  it('parses the real emulator fixture into a non-empty, compressed summary with no leaked XML', () => {
+    const nodes = parseUiDump(emulatorFixture)
+
+    expect(nodes.length).toBeGreaterThan(0)
+    // 요약 JSON이 원본 XML보다 확실히 작아야 한다. 이게 ui_find의 존재 이유다.
+    const summaryJson = JSON.stringify(nodes)
+    expect(summaryJson.length).toBeLessThan(emulatorFixture.length)
+    // 원본 태그·속성이 요약으로 새어 나오면 안 된다.
+    expect(summaryJson).not.toContain('<node')
+    expect(summaryJson).not.toContain('resource-id')
   })
 })

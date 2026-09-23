@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import type { AdbClient } from '../adb/adbClient'
-import { deviceError } from '../../shared/types/errors'
+import { deviceError, isDeviceError } from '../../shared/types/errors'
+import { DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT } from '../../shared/limits'
 import type {
   Device,
   DeviceInfo,
@@ -18,9 +19,6 @@ import type { ResizeImage } from './resizeImage'
 
 /** 스크린샷 기본 축소 기준. 원본이 필요한 쪽은 사람이고, 사람은 앱 화면으로 본다. */
 export const DEFAULT_MAX_LONG_EDGE = 720
-export const DEFAULT_LOG_LIMIT = 200
-/** 인자로도 넘을 수 없는 상한. 툴 하나가 에이전트의 문맥을 통째로 먹는 것을 막는다. */
-export const MAX_LOG_LIMIT = 2000
 
 const SCREENSHOT_TIMEOUT_MS = 60_000
 const DUMP_PATH = '/sdcard/window_dump.xml'
@@ -52,6 +50,83 @@ function escapeInputText(text: string): string {
   // 기기 셸은 mksh다. #은 단어 첫머리에서 주석을 열어 뒤를 통째로 삼키고, ~는 틸드
   // 확장, {}는 중괄호 확장을 부른다. 앞의 메타문자들과 같은 이유로 여기서 막는다.
   return text.replace(/(["#$&'()*;<>?\[\\\]`{|}~])/g, '\\$1').replace(/ /g, '%s')
+}
+
+/**
+ * `pm install`이 기존 패키지와 충돌할 때 adb stderr에 남기는 실패 코드다. 이 둘은
+ * 흔한 재현 경로(다른 키로 서명된 빌드를 그 위에 덮어쓰거나, versionCode를
+ * 내려서 설치)가 있고 복구 경로도 같아서(`app_uninstall` 후 재설치) 여기서
+ * 같이 다룬다. ToolErrorKind를 늘리지 않는다 — 공개 인터페이스 변경은 ADR-0004가
+ * 관장한다. 대신 `kind: 'command_failed'`를 유지하고 message·hint·details.reason으로
+ * 구분한다.
+ */
+const INSTALL_CONFLICT_REASONS = ['INSTALL_FAILED_UPDATE_INCOMPATIBLE', 'INSTALL_FAILED_VERSION_DOWNGRADE'] as const
+type InstallConflictReason = (typeof INSTALL_CONFLICT_REASONS)[number]
+
+const INSTALL_CONFLICT_HINT =
+  'app_uninstall로 기존 앱을 지운 뒤 app_install을 다시 불러라. app_uninstall은 앱 데이터도 함께 지운다'
+
+/** stderr에서 충돌한 패키지명을 뽑는다. 못 찾으면 null — 메시지는 패키지명 없이도 뜻이 통한다. */
+function extractInstallConflictPackage(stderr: string): string | null {
+  const match =
+    /Existing package (\S+) signatures/.exec(stderr) ?? /[Pp]ackage (\S+) (?:new version|signatures)/.exec(stderr)
+  return match ? (match[1] as string).replace(/[.,;:]+$/, '') : null
+}
+
+function installConflictMessage(reason: InstallConflictReason, pkg: string | null): string {
+  if (reason === 'INSTALL_FAILED_UPDATE_INCOMPATIBLE') {
+    return pkg
+      ? `기기에 이미 설치된 ${pkg}가 다른 서명 키로 서명돼 있어 그 위에 덮어설치할 수 없다`
+      : '기기에 이미 설치된 패키지가 다른 서명 키로 서명돼 있어 그 위에 덮어설치할 수 없다'
+  }
+  return pkg
+    ? `설치하려는 APK의 versionCode가 기기에 이미 설치된 ${pkg}보다 낮아 다운그레이드로 설치할 수 없다`
+    : '설치하려는 APK의 versionCode가 기기에 이미 설치된 버전보다 낮아 다운그레이드로 설치할 수 없다'
+}
+
+/**
+ * adb install 실패를 다시 던진다. adbClient의 classify는 모든 adb 명령에 공통인
+ * 실패(no_device 등)만 분류하고, INSTALL_FAILED_* 코드는 install에만 있는 의미라
+ * 여기 Android 도메인 층에서 읽는다.
+ */
+function rethrowInstallFailure(error: unknown): never {
+  if (isDeviceError(error) && error.toolError.kind === 'command_failed') {
+    const stderr = typeof error.toolError.details?.stderr === 'string' ? error.toolError.details.stderr : ''
+    const reason = INSTALL_CONFLICT_REASONS.find((candidate) => stderr.includes(candidate))
+    if (reason) {
+      const pkg = extractInstallConflictPackage(stderr)
+      throw deviceError('command_failed', installConflictMessage(reason, pkg), INSTALL_CONFLICT_HINT, {
+        reason,
+        stderr
+      })
+    }
+  }
+  throw error
+}
+
+/**
+ * `am start -n`에 넘길 수 있는 컴포넌트 이름의 문자 집합. 패키지명·클래스명(중첩 클래스의
+ * `$` 포함)과 구분자 `/`만 허용한다.
+ */
+const COMPONENT_PATTERN = /^[A-Za-z0-9_.$/]+$/
+
+/**
+ * 컴포넌트 이름을 원격 셸에 안전하게 넘길 형태로 바꾼다. `adb shell`은 인자를 공백으로
+ * 이어 붙여 기기 셸이 다시 해석하므로(`escapeInputText`와 같은 이유), 그대로 넘기면
+ * 중첩 클래스의 `$Inner`가 변수 확장으로 사라지고 `;` 같은 문자는 다른 명령을 부른다.
+ * 허용 문자 밖이면 거부하고, 허용된 이름은 작은따옴표로 감싼다. 허용 문자 집합에
+ * 작은따옴표가 없으므로 감싼 뒤 따옴표가 깨질 일은 없다.
+ */
+function quoteComponent(component: string): string {
+  if (!COMPONENT_PATTERN.test(component)) {
+    throw deviceError(
+      'command_failed',
+      `실행할 컴포넌트 이름에 쓸 수 없는 문자가 있다: ${component}`,
+      'activity에는 영문자·숫자·_·.·$만 써라(예: .MainActivity, .Outer$Inner). 패키지명은 빼고 넘겨도 된다',
+      { component }
+    )
+  }
+  return `'${component}'`
 }
 
 export interface AndroidDeviceDeps {
@@ -152,6 +227,9 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
   }
 
   async function readLogs(opts: LogOpts = {}): Promise<LogReadResult> {
+    // 줄 수 기본값과 상한은 mcpTools 층(`observe.ts`)과 같은 값이라 shared의 `limits.ts`에
+    // 있다. mcpTools를 거치지 않고 여기를 직접 부르는 경로(장차 M3의 renderer/IPC 경로,
+    // 테스트)에도 같은 안전판이 걸리도록 이 층에서도 상한을 적용한다.
     const limit = Math.min(opts.limit ?? DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT)
 
     const args = ['logcat', '-d', '-v', 'threadtime']
@@ -217,7 +295,11 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     const args = ['install']
     if (opts.reinstall) args.push('-r')
     args.push(apkPath)
-    await adb.exec(serial, args, { timeoutMs: 180_000 })
+    try {
+      await adb.exec(serial, args, { timeoutMs: 180_000 })
+    } catch (error) {
+      rethrowInstallFailure(error)
+    }
 
     const after = await listPackages()
     const added = after.filter((pkg) => !before.has(pkg))
@@ -228,9 +310,12 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     if (added.length === 1) return added[0] as string
     if (added.length === 0 && opts.reinstall) return null
 
-    throw deviceError('command_failed', '설치 후 패키지명을 특정하지 못했다', 'app_list 대신 패키지명을 직접 지정해 실행해라', {
-      added
-    })
+    throw deviceError(
+      'command_failed',
+      '설치 후 패키지명을 특정하지 못했다',
+      '패키지명을 알고 있다면 그 값을 그대로 app_launch에 넘겨 실행해라',
+      { added }
+    )
   }
 
   async function uninstall(pkg: string): Promise<void> {
@@ -238,17 +323,98 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     await adb.exec(serial, ['uninstall', pkg])
   }
 
+  /**
+   * `monkey -p <pkg> -c android.intent.category.LAUNCHER 1`로 기본 액티비티를 찾던
+   * 예전 방식은 API 36 실기기(emulator-5554)에서 exit 251로 죽어 항상 command_failed를
+   * 냈다. `cmd package resolve-activity`는 같은 정보를 셸을 흉내 내지 않고 직접 준다.
+   * 출력 마지막 줄 중 `${pkg}/`로 시작하는 줄이 컴포넌트다. 런처 액티비티가 없으면
+   * "No activity found"만 온다. 런처 액티비티를 하나로 정하지 못하면 시스템의 선택 화면
+   * (`android/com.android.internal.app.ResolverActivity`)이 올 수 있는데, 이 패키지의
+   * 컴포넌트가 아니므로 역시 "런처 액티비티 없음"으로 다룬다.
+   */
+  async function resolveLauncherComponent(pkg: string): Promise<string> {
+    const output = await shell([
+      'cmd',
+      'package',
+      'resolve-activity',
+      '--brief',
+      '-c',
+      'android.intent.category.LAUNCHER',
+      pkg
+    ])
+    const lines = output
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+    const component = [...lines].reverse().find((line) => line.startsWith(`${pkg}/`))
+
+    if (!component) {
+      throw deviceError(
+        'command_failed',
+        `${pkg}에 런처 액티비티가 없다`,
+        'app_launch를 부를 때 activity를 직접 지정해라',
+        { pkg, stdout: output }
+      )
+    }
+
+    return component
+  }
+
+  /**
+   * am start 출력(성공 stdout이든 실패 stderr든)에서 "Error"로 시작하는 줄을 모두
+   * 뽑는다. 관찰된 실패는 "Error type 3"와 "Error: Activity class ... does not
+   * exist." 두 줄로 오는데, 뒤쪽이 실제 원인이라 둘 다 남겨 메시지에서 잘리지 않게 한다.
+   */
+  function findErrorLine(text: string): string | null {
+    const lines = text.match(/^Error.*$/gm)
+    return lines && lines.length > 0 ? lines.map((line) => line.trim()).join(' ') : null
+  }
+
+  /**
+   * `am start`가 존재하지 않는 액티비티로 실패하면 관찰된 모양은 exit 1과 stderr의
+   * "Error type 3" / "Error: Activity class ... does not exist."였다. 그 경우 adbClient가
+   * command_failed로 던지고 여기서 stderr의 Error 줄을 메시지로 올린다. exit 0으로 끝나면서
+   * stdout에 Error 줄을 남기는 경우는 관찰한 적이 없지만, 성공으로 잘못 보고하지 않도록
+   * 방어적으로 같은 검사를 한다.
+   */
+  async function startComponent(component: string): Promise<void> {
+    let output: string
+
+    try {
+      const result = await adb.exec(serial, ['shell', 'am', 'start', '-n', quoteComponent(component)])
+      output = [result.stdout, result.stderr].filter((chunk) => chunk.length > 0).join('\n')
+    } catch (error) {
+      if (isDeviceError(error) && error.toolError.kind === 'command_failed') {
+        const stderr = typeof error.toolError.details?.stderr === 'string' ? error.toolError.details.stderr : ''
+        const errorLine = findErrorLine(stderr)
+        if (errorLine) {
+          throw deviceError(
+            'command_failed',
+            `${component} 실행이 실패했다: ${errorLine}`,
+            '액티비티 이름이 맞는지 확인하거나 activity를 직접 지정해서 app_launch를 다시 불러라',
+            { component, stderr }
+          )
+        }
+      }
+      throw error
+    }
+
+    const errorLine = findErrorLine(output)
+    if (errorLine) {
+      throw deviceError(
+        'command_failed',
+        `${component} 실행이 실패했다: ${errorLine}`,
+        '액티비티 이름이 맞는지 확인하거나 activity를 직접 지정해서 app_launch를 다시 불러라',
+        { component, output }
+      )
+    }
+  }
+
   async function launch(pkg: string, activity?: string): Promise<void> {
     await requirePackage(pkg)
 
-    if (activity) {
-      const component = `${pkg}/${activity}`
-      await shell(['am', 'start', '-n', component])
-      return
-    }
-
-    // 런처 인텐트를 모를 때 monkey가 기본 액티비티를 대신 찾아 준다.
-    await shell(['monkey', '-p', pkg, '-c', 'android.intent.category.LAUNCHER', '1'])
+    const component = activity ? `${pkg}/${activity}` : await resolveLauncherComponent(pkg)
+    await startComponent(component)
   }
 
   async function stop(pkg: string): Promise<void> {

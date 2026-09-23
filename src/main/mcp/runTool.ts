@@ -23,8 +23,14 @@ function isContentPayload(value: unknown): value is { content: ToolContent[] } {
   return typeof value === 'object' && value !== null && Array.isArray((value as { content?: unknown }).content)
 }
 
+/**
+ * 들여쓰기 없는 compact JSON을 쓴다. pretty-print(`null, 2`)는 키 이름을 줄마다
+ * 반복하고 공백을 넣어 응답을 눈에 띄게 부풀린다 — log_read처럼 배열이 큰 툴에서는
+ * 이 차이가 에이전트가 결과를 inline으로 못 받는 정도까지 간다. 에이전트는 JSON을
+ * 파싱해서 읽지 눈으로 들여쓰기를 보지 않으므로 가독성 손실은 없다.
+ */
 export function jsonResult(payload: unknown): ToolResult {
-  return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] }
+  return { content: [{ type: 'text', text: JSON.stringify(payload) }] }
 }
 
 /**
@@ -94,7 +100,7 @@ export async function runTool(
     })
 
     const result: ToolResult = {
-      content: [{ type: 'text', text: JSON.stringify(toolError, null, 2) }],
+      content: [{ type: 'text', text: JSON.stringify(toolError) }],
       isError: true
     }
     return result as CallToolResult

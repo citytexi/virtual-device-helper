@@ -56,6 +56,18 @@ describe('DevicePanel', () => {
     expect(screen.getByRole('listitem', { current: true })).toBeDefined()
   })
 
+  it('shows a visible text marker on the active row, not just aria-current', () => {
+    // R7: aria-current만으로는 색맹이거나 스타일이 없는 환경에서 활성 기기를 알
+    // 수 없다. 색에 기대지 않는 텍스트 마커가 있어야 한다.
+    render(<DevicePanel snapshot={snapshot()} />)
+
+    const activeItem = screen.getByRole('listitem', { current: true })
+    expect(activeItem.textContent).toContain('(대상)')
+
+    const inactiveItem = screen.getByText('Pixel_Tablet').closest('li')
+    expect(inactiveItem?.textContent).not.toContain('(대상)')
+  })
+
   it('marks the active device using the derived target when activeSerial is not explicitly set', () => {
     // R2: 명시적 activeSerial이 없어도 기기가 하나뿐이면 그것이 대상이다 (targetSerial).
     render(<DevicePanel snapshot={snapshot({ activeSerial: null })} />)

@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 import type { RendererApi } from '../../shared/types/ipc'
 
 declare global {

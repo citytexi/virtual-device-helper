@@ -1,16 +1,16 @@
 ---
 id: m1-device-core-mcp-server
 title: M1 — 기기 코어와 MCP 서버
-status: draft
-verified: 2026-09-22
+status: implemented
+verified: 2026-09-23
 scope: [main, renderer, preload, mcp, android, build]
 hosts: [macos]
 supersedes:
 superseded_by:
-related_adr: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007]
+related_adr: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008]
 related_spec:
 related_architecture:
-related_plan:
+related_plan: [m1-1-foundation-and-adb, m1-2-android-device, m1-3-mcp-server, m1-4-electron-shell-ui, m1-5-integration-verification]
 related_code:
 tags: [spec, m1, mcp, android]
 ---
@@ -56,7 +56,7 @@ Android 에뮬레이터를 제어하는 MCP 서버를 Electron 앱 안에 만든
 
 ## 구조
 
-main 프로세스를 여섯 층으로 쌓는다. 근거는 [ADR-0005](../../adr/0005-device-interface-abstraction.md).
+main 프로세스를 여섯 층으로 쌓는다. 근거는 [ADR-0005](../../../adr/0005-device-interface-abstraction.md).
 
 | 층 | 책임 | 아는 것 |
 |---|---|---|
@@ -120,7 +120,7 @@ interface Device {
 ### MCP 툴
 
 이름은 `<대상>_<동작>` 한 결이다. 모든 툴이 `serial`을 선택 인자로 받는다. 근거는
-[ADR-0004](../../adr/0004-hybrid-mcp-tool-surface.md).
+[ADR-0004](../../../adr/0004-hybrid-mcp-tool-surface.md).
 
 **기기 수명주기**
 
@@ -145,6 +145,16 @@ interface Device {
 | `app_reset_and_launch` | `pkg`, `serial?` | — |
 
 `app_reset_and_launch`는 force-stop → 데이터 삭제 → 실행 → 첫 화면 안정 대기를 한 번에 한다.
+안정 판정은 `app.ts`의 `waitForSettle`이 UI 덤프의 요소 구성이 연속 두 번 같은지로 본다. 이 기준은
+실제 앱으로 검증하지 못했다(아래 "열린 질문").
+
+`app_launch`에서 `activity`를 생략하면 `androidDevice.ts`의 `resolveLauncherComponent`가
+`cmd package resolve-activity --brief -c android.intent.category.LAUNCHER <pkg>`로 런처 액티비티를
+찾아 `am start -n`으로 띄운다. 처음에 쓰던 `monkey` 방식은 API 36 에뮬레이터에서 실패했다(검증 결과 참고).
+
+`device_boot`는 `avdController.ts`에서 `sys.boot_completed`가 `1`이 될 때까지 기다린다. 검증에서는 이것만으로
+부팅 직후 `screenshot`이 완성된 홈 화면을 찍었다. 부팅 직후 곧바로 설치하는 경우(패키지 매니저 준비)는
+확인하지 못했다.
 
 **UI**
 
@@ -172,10 +182,21 @@ interface Device {
   `content-desc`, `resource-id` 꼬리, 클래스 짧은 이름, 중심 좌표, 클릭 가능 여부를 가진다.
   화면 밖이거나 보이지 않는 노드는 버린다. `query`를 주면 텍스트·id 부분일치로 더 거른다.
   에이전트는 받은 중심 좌표를 `ui_tap`에 그대로 넣는다.
+  버리는 기준은 `uiDump.ts`의 `parseUiDump`에 있다. 크기가 없는 노드, 중심이 화면 밖인 노드, 그리고
+  텍스트·`content-desc`·`resource-id`가 모두 없고 누를 수도 없는 노드(레이아웃 컨테이너)를 버리고,
+  남은 노드는 트리 없이 평평하게 늘어놓는다. 검증에서는 이 기준만으로 에이전트가 필요한 요소(런처
+  아이콘, 설정 검색창, `EditText`)를 찾았고, 컨테이너를 따로 접을 필요는 관찰되지 않았다.
 - **`screenshot`은 기본으로 축소한다.** 긴 변 기준으로 줄여 보낸다. `scale`로 올릴 수 있으나
   기본값이 작다. 원본 해상도가 필요한 쪽은 사람이고, 사람은 앱 화면으로 본다.
 - **`log_read`는 기본 limit과 상한을 함께 가진다.** 인자로도 상한을 넘을 수 없다. 잘렸으면
-  잘렸다는 사실과 남은 양을 함께 돌려준다.
+  잘렸다는 사실과 남은 양을 함께 돌려준다. 줄 수만으로는 크기가 막히지 않으므로 세 가지를 더 한다.
+  각 줄은 객체가 아니라 `MM-DD HH:MM:SS.mmm L tag(pid): message` 한 문자열이고(`observe.ts`의
+  `formatLogLine`), 응답 JSON은 들여쓰지 않는다. 긴 메시지는 코드포인트 단위로 잘라 `…(+N자)`로
+  표시한다(`LOG_MESSAGE_MAX_CODEPOINTS`). 직렬화한 응답 전체의 UTF-8 바이트 수가
+  `LOG_READ_RESPONSE_BUDGET_BYTES`를 넘으면 가장 오래된 줄부터 더 버리고 그만큼 `truncated`·`droppedCount`에
+  넣는다. 기본값과 상한은 `src/shared/limits.ts`의 `DEFAULT_LOG_LIMIT`·`MAX_LOG_LIMIT`이고 `observe.ts`에서는
+  `LOG_READ_DEFAULT_LIMIT`·`LOG_READ_MAX_LIMIT`으로 쓴다. 근거는 검증에서 들여쓴 JSON 응답이 클라이언트의
+  인라인 한도를 넘었던 관찰이고, 결정과 기각한 대안은 [ADR-0008](../../../adr/0008-log-read-response-shape.md)에 있다.
 
 ## 동작 / 상태
 
@@ -213,12 +234,12 @@ interface Device {
 ### 포트와 토큰
 
 기본 포트가 점유되어 있으면 다음 빈 포트로 넘어간다. 실제로 열린 포트를 UI에 표시한다.
-토큰은 앱 실행 시 무작위로 만든다. 세부는 [ADR-0001](../../adr/0001-mcp-transport-http-in-app.md).
+토큰은 앱 실행 시 무작위로 만든다. 세부는 [ADR-0001](../../../adr/0001-mcp-transport-http-in-app.md).
 
 ### SDK 탐색
 
 앱 시작 시 `ANDROID_HOME` → `ANDROID_SDK_ROOT` → macOS 기본 위치 → `PATH` 순으로 찾는다.
-못 찾으면 안내 화면을 띄운다. 세부는 [ADR-0003](../../adr/0003-no-bundled-android-sdk.md).
+못 찾으면 안내 화면을 띄운다. 세부는 [ADR-0003](../../../adr/0003-no-bundled-android-sdk.md).
 
 ### 상태의 단일 출처
 
@@ -239,6 +260,11 @@ renderer가 자기만의 기기 상태를 따로 추론하지 않는다.
 | APK 경로 오류 | 경로가 없거나 `.apk`가 아니다 | 경로 확인 |
 | 기기 무응답 | 타임아웃, 어떤 명령이었는지 | 재시도 또는 `device_shutdown` 후 재부팅 |
 | 명령 실패 | 원문 stderr 첨부 | 명령별로 다름 |
+
+`app_install`의 서명·버전 충돌(`INSTALL_FAILED_UPDATE_INCOMPATIBLE`·`INSTALL_FAILED_VERSION_DOWNGRADE`)은
+`kind`를 `command_failed`로 둔 채 구체적인 메시지, `details.reason`, 그리고 `app_uninstall` 뒤 다시
+설치하라는 힌트(앱 데이터가 지워진다는 경고 포함)를 단다. `androidDevice.ts`의 `rethrowInstallFailure`가
+맡는다. `ToolErrorKind`를 늘리지 않은 것은 ADR-0004의 공개 인터페이스를 건드리지 않기 위해서다.
 
 응답 잘림은 위 표에 넣지 않는다. 에러가 아니라 성공 응답의 필드다. `log_read`는 `truncated`와
 버려진 줄 수를 함께 돌려주고, 에이전트는 `limit`·`filter`로 좁혀 다시 부른다.
@@ -281,7 +307,7 @@ preload는 `contextBridge`로 **좁은 API만** 노출한다. 임의 채널을 �
 - 코드는 버린다. M2에서 처음부터 다시 쓴다.
 - M1 끝이 아니라 초반에 한다. 실패하면 M2 설계를 통째로 다시 해야 하고, 늦게 알수록 비싸다.
 - 실패 시 후퇴안: main에서 ffmpeg 디코딩, 또는 screencap 폴링. 둘 다 M2의 모양이 달라지며
-  [ADR-0002](../../adr/0002-screen-streaming-via-scrcpy-server.md)를 대체한다.
+  [ADR-0002](../../../adr/0002-screen-streaming-via-scrcpy-server.md)를 대체한다.
 
 ### 스파이크 결과 (2026-09-22)
 
@@ -341,11 +367,76 @@ M1이 끝났다는 것은 아래가 성립한다는 뜻이다.
 
 **스파이크.** WebCodecs 디코딩 가능 여부에 대한 답이 나와 있고, 그 답이 M2 설계의 전제로 기록되어 있다.
 
+### 검증 결과 (2026-09-23)
+
+환경: macOS 호스트, AVD Pixel_7_API_36(API 36, `emulator-5554`), 클라이언트 Claude Code 2.1.280을
+`claude -p`와 `--strict-mcp-config`로 이 앱의 MCP 설정만 붙였다. APK는 다른 프로젝트의 앱
+(`com.teamyg.parfait`)이다. 에이전트에게 준 지시문은 M1-5 계획에 적힌 문구 그대로다. 그 문구는 위 완료 조건의 "로그인 화면
+이메일 칸" 대신 "첫 화면에서 텍스트 입력 칸 하나에 `test@example.com`을 넣고"라고 적혀 있다. 이 앱의 첫
+화면은 온보딩과 외부(카카오) 로그인 버튼뿐이라 어느 문구가 말하는 입력 칸도 없었다.
+
+- **에이전트 경로: 부분 성공.** 수정 뒤의 실행에서 원래 APK로 `app_install` → `app_launch` → `ui_find` →
+  `screenshot` → `log_read`가 사람 개입 없이 성공했다. 에이전트는 첫 화면에 `EditText`가 없다고 보고하고
+  외부 로그인을 누르지 않았으므로 `ui_tap`·`ui_text`는 원래 APK로 검증하지 못했다. 대신 설정 앱 검색창으로
+  `app_launch` → `ui_find` → `ui_tap` → `ui_text test@example.com` → `screenshot`이 사람 개입 없이 성공했다.
+  그 전의 실행에서 세 가지 결함이 나와 고쳤다. `app_install`의 서명 충돌이 일반 힌트만 달고 와서
+  에이전트가 사람에게 물었고(`b38b1db`에서 복구 힌트 추가), `app_launch`가 `monkey` 방식으로 API 36
+  에뮬레이터에서 exit 251로 실패했으며(에이전트는 런처 아이콘을 `ui_tap`해 스스로 우회했다.
+  `60ea4f0`에서 resolve-activity로 교체), `log_read`의 들여쓴 JSON 응답(약 56KB)을 Claude Code가
+  인라인하지 않았다(`ece1be9`·`eff1106`에서 압축 포맷·상한 축소·총량 예산. 수정 뒤 limit 200 요청이
+  약 20.3KB, 기본 limit이 약 12.2KB로 인라인됐다). 활동 탭은 사람이 앞의 두 실행(`60ea4f0`·`ece1be9`·`c62dec0`
+  수정 전)에 대해서만 봤다. 호출이 최신순으로, 실패는 `command_failed`와 함께 빨간색으로 쌓였고 순서가
+  에이전트 기록과 맞았다. 그 뒤 실행의 활동 탭은 눈으로 확인하지 않았다.
+- **사람 경로: 부분 성공.** AVD 목록이 보이고, 앱에서 종료·부팅하면 상태와 화면이 바뀌고, 스크린샷이
+  뜨고, 엔드포인트 카드의 설정 JSON을 그대로 외부 에이전트 설정으로 붙여 연결했다. 처음에는 스타일이
+  없어 2단 구성과 활성 기기 표시가 보이지 않았다. 최소 CSS(`97cca64`, `b375082`)로 2단 구성, 활성 행
+  표시, 활동 행 간격, serial 줄 바꿈을 고쳤다. 간격·줄 바꿈 수정은 사람이 명시적으로 확인하지 않았다.
+  새로고침으로 갱신되는지, 기기를 바꾸면 화면이 바뀌는지(에뮬레이터가 한 대뿐이었다), SDK를 못 찾을
+  때의 안내 화면은 확인하지 않았다.
+- **실패 경로.** 없는 serial의 `no_device`는 `details.candidates`를 달고 왔고 에이전트가 그 목록의 serial로
+  다시 불러 복구했다. 기기가 없을 때의 `no_device`는 `device_list` → `device_boot` 힌트를 달고 왔고,
+  에이전트는 `device_list`까지 부른 뒤 AVD가 여럿이라 어느 것을 부팅할지 사람에게 물었다. AVD 이름을
+  주자 `device_boot` → `screenshot`이 성공했다. `package_not_found`·`apk_path_invalid`는 다음 행동을
+  말하는 힌트를 달고 왔다(복구할 대상이 없어 복구는 해당 없음). `log_read`의 limit이 상한을 넘으면 MCP
+  입력 스키마가 -32602로 거부하고, 메시지가 상한을 말한다. 기기가 둘인데 `serial`을 뺀 경우는 에뮬레이터
+  두 대를 띄우지 않아 관찰하지 못했다.
+- **보안 기본값: 전부 확인.** 토큰 없음 401, 틀린 토큰 401, `Origin` 헤더는 틀린 토큰이든 올바른 토큰이든
+  403(`Origin` 검사가 먼저다), LAN 주소(`192.168.0.28:9321`) 접속은 연결 실패, `lsof`로 본 리슨 주소는
+  `127.0.0.1:9321`뿐이다. 올바른 토큰의 `initialize`는 200이었다.
+- **종료.** SIGTERM 한 번에 MCP 서버는 닫히지만 Electron 프로세스가 끝나지 않아 고아 프로세스가 남았다.
+  `before-quit`에서 `preventDefault` 뒤 같은 틱의 마이크로태스크에서 `app.quit()`을 다시 부르면 생기는
+  현상이었고, `c62dec0`에서 재종료를 `setImmediate`로 미뤄 고쳤다. 빌드한 앱에서 SIGTERM 한 번으로
+  `will-quit`까지 가고 exit 0으로 끝나는 것을 확인했다.
+- **실기기 통합 테스트.** `npm run test:integration`이 실제 에뮬레이터(`emulator-5554`)로 `adbClient`를
+  돌려 통과했다. 기본 `npm test`에는 들어가지 않는다. 에뮬레이터 출력으로 뜬 파서 픽스처를 실기기
+  픽스처 옆에 더했다.
+
+**남은 결함과 확인하지 못한 것.**
+
+- `app_reset_and_launch`의 첫 화면 안정 판정(`waitForSettle`)은 어떤 실제 실행에서도 불리지 않았다.
+- `ui_find`의 노드 상한(`UI_FIND_MAX_NODES`)에 닿는 화면을 만나지 못했다. 관찰한 가장 큰 응답은 홈 화면
+  약 6.8KB였고, `query` 없이 부른 검색 화면의 설정 앱도 상한에 훨씬 못 미치는 노드 수였다. 상한에서의 `truncated: true`는 실기기로 관찰하지 못했다.
+- 오래된 adb에서 설치 실패가 stdout에 찍히고 exit 0으로 끝나는 경우는 다루지 않는다. 이 기계의 adb에서는
+  관찰되지 않았다(충돌은 non-zero exit와 stderr로 왔다). 그 경우 `AndroidDevice.install`의 패키지 목록
+  비교가 새 패키지를 찾지 못해 이름을 지어내지는 않지만, 설치 실패가 실패로 보고되지는 않는다.
+- `app_launch`의 컴포넌트 이름은 영문자·숫자·`_`·`.`·`$`·`/`만 받고 작은따옴표로 감싸 원격 셸에 넘긴다
+  (`androidDevice.ts`의 `quoteComponent`). 중첩 클래스(`$`)를 담은 `activity`로 실기기에서 `app_launch`를
+  불러 본 적은 없고, 단위 테스트로만 확인했다.
+- 에뮬레이터가 없고 AVD가 여럿이면 에이전트가 부팅할 AVD를 스스로 고르지 않고 사람에게 묻는다. 결함이라기보다
+  관찰이다 — 힌트가 어느 AVD를 고르라고 말하지 않는다.
+- 서버 시작 실패의 이유가 renderer에 보이지 않는다(M1-4에서 넘어온 항목).
+- 앱 종료 시 `stop()`에 시간 제한이 없다. `stop`이 끝나지 않으면 종료도 끝나지 않는다. 실제로 멈춘 적은 없다.
+- HTTP 수준의 `tools/call`에는 자동화된 통합 테스트가 없다. 실제 클라이언트로 손으로만 확인했다.
+- 실제 실행에서 한 번도 불리지 않은 툴: `app_reset_and_launch`, `ui_swipe`, `ui_key`, `app_stop`,
+  `app_clear_data`, `app_grant_permission`, `app_uninstall`, MCP를 통한 `device_shutdown`(앱의 종료
+  버튼으로는 해 봤다).
+- `log_read`의 `filter`는 태그·메시지 텍스트에만 걸린다. 에이전트가 로그 레벨로 거르기를 원했다.
+- UI는 최소 CSS뿐이고 디자인이 아니다.
+
 ## 열린 질문
 
-- `app_reset_and_launch`의 "첫 화면 안정" 판정 기준. 고정 대기, UI 덤프 변화 관찰, 또는 로그
-  신호 중 무엇을 쓸지는 실제 앱으로 시도해 보고 정한다.
-- `ui_find` 요약에서 버릴 노드의 기준. 보이지 않는 노드 제거만으로 충분한지, 컨테이너 노드도
-  접어야 하는지는 실제 덤프를 보고 정한다.
-- `device_boot`의 부팅 완료 판정. `sys.boot_completed` 하나로 충분한지, 패키지 매니저 준비까지
-  봐야 하는지 확인이 필요하다.
+- `app_reset_and_launch`의 "첫 화면 안정" 판정 기준. 지금은 UI 덤프의 요소 구성이 연속 두 번 같으면
+  안정으로 보지만(`app.ts`의 `waitForSettle`), 실제 앱으로 돌려 보지 못했다. 스플래시가 길거나 애니메이션이
+  도는 앱에서 충분한지는 아직 모른다.
+- `device_boot` 직후 곧바로 `app_install`을 해도 되는지. `sys.boot_completed`만으로 부팅 직후 스크린샷은
+  충분했지만, 패키지 매니저 준비까지 봐야 하는지는 확인하지 못했다.

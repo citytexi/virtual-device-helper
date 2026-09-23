@@ -15,7 +15,7 @@ describe('runTool success', () => {
     const result = await runTool(sink, 'device_list', { serial: null }, async () => ({ devices: [] }))
 
     expect(result.isError).toBeUndefined()
-    expect(result.content[0]).toEqual({ type: 'text', text: JSON.stringify({ devices: [] }, null, 2) })
+    expect(result.content[0]).toEqual({ type: 'text', text: JSON.stringify({ devices: [] }) })
   })
 
   it('passes a pre-built content array straight through', async () => {
@@ -111,7 +111,7 @@ describe('runTool sink isolation', () => {
     const result = await runTool(sink, 'device_list', {}, async () => ({ devices: [] }))
 
     expect(result.isError).toBeUndefined()
-    expect(result.content[0]).toEqual({ type: 'text', text: JSON.stringify({ devices: [] }, null, 2) })
+    expect(result.content[0]).toEqual({ type: 'text', text: JSON.stringify({ devices: [] }) })
   })
 
   it('still returns the original structured error when the sink throws on a failed call, without rejecting', async () => {

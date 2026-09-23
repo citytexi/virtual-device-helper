@@ -101,7 +101,20 @@ describe('main/index before-quit', () => {
     expect(appQuit).not.toHaveBeenCalled()
 
     resolveStop?.()
-    await vi.waitFor(() => expect(appQuit).toHaveBeenCalledTimes(1))
+
+    // stop()이 resolve된 직후의 마이크로태스크 큐 안에서는 아직 quit을 부르지
+    // 않는다 — 같은 틱에서 재호출하면 Electron이 종료를 끝까지 못 마치는
+    // 현상이 관찰됐다(SIGTERM으로 시작된 종료에서 window-all-closed까지만
+    // 오고 will-quit/quit이 오지 않음). 마이크로태스크만 여러 번 비워서
+    // 확인한다(setTimeout 기반 폴링을 쓰면 매크로태스크가 먼저 돌아버린다).
+    for (let i = 0; i < 5; i += 1) {
+      await Promise.resolve()
+    }
+    expect(appQuit).not.toHaveBeenCalled()
+
+    // 매크로태스크(setImmediate)로 한 틱 미룬 뒤에는 quit이 불린다.
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(appQuit).toHaveBeenCalledTimes(1)
 
     // 두 번째 before-quit(정리가 끝난 뒤 app.quit()이 다시 보낸 것): 이번엔
     // 막지 않고 그대로 종료되게 둔다. 다시 stop을 부르지도 않는다(루프 방지).

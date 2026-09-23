@@ -451,7 +451,8 @@ def cmd_lint(args):
 
 # --------------------------------------------------------------------------- links
 
-SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "out"}
+# .superpowers/는 gitignore된 SDD 작업 트리다. 문서가 아니므로 링크 검사에서 뺀다.
+SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "out", ".superpowers"}
 FENCE = re.compile(r"```.*?```", re.S)
 INLINE_CODE = re.compile(r"`[^`\n]*`")
 LINK = re.compile(r"(?<!\])\]\(\s*([^)\s]+?)\s*(?:\s+\"[^\"]*\")?\)")

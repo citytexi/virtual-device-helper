@@ -1,14 +1,14 @@
 ---
 id: m1-1-foundation-and-adb
 title: M1-1 — 프로젝트 기반과 adb 경계
-status: draft
+status: done
 type: work-order
 created: 2026-09-22
-updated: 2026-09-22
+updated: 2026-09-23
 owner: virtual-device-helper 팀
 scope: [build, main, shared, android]
 hosts: [macos]
-archived_reason:
+archived_reason: M1 구현 완료. 기반·adbClient와 scrcpy 스파이크(ADR-0002 유지)까지 끝났다.
 related_adr: [ADR-0002, ADR-0003, ADR-0005, ADR-0006]
 related_spec: m1-device-core-mcp-server
 related_architecture:
@@ -32,7 +32,7 @@ tags: [plan, m1, build, adb]
 
 **Tech Stack:** TypeScript, electron-vite, Electron, electron-builder, React, Vitest
 
-**Spec:** [`../specs/2026-09-22-m1-device-core-mcp-server.md`](../specs/2026-09-22-m1-device-core-mcp-server.md)
+**Spec:** [`../specs/2026-09-22-m1-device-core-mcp-server.md`](../../specs/archive/2026-09-22-m1-device-core-mcp-server.md)
 
 **계획 순서:** M1-1(이 문서) → [M1-2](2026-09-22-m1-2-android-device.md) →
 [M1-3](2026-09-22-m1-3-mcp-server.md) → [M1-4](2026-09-22-m1-4-electron-shell-ui.md) →
@@ -51,9 +51,9 @@ tags: [plan, m1, build, adb]
 - **축이 셋이고 섞지 않는다:** 호스트 OS(windows/macos) · 타깃 디바이스(android/ios) ·
   Electron 프로세스(main/renderer/preload).
 - **층 방향 규칙:** 위층은 바로 아래층만 부른다. 상위 층이 `adbClient`를 직접 부르면 안 된다
-  ([ADR-0005](../../adr/0005-device-interface-abstraction.md)).
+  ([ADR-0005](../../../adr/0005-device-interface-abstraction.md)).
 - **Android SDK를 번들하지 않는다.** 호스트 설치분을 찾아 쓴다
-  ([ADR-0003](../../adr/0003-no-bundled-android-sdk.md)).
+  ([ADR-0003](../../../adr/0003-no-bundled-android-sdk.md)).
 - **M1의 호스트는 macOS, 타깃은 Android 하나다.** iOS·Windows 코드를 미리 쓰지 않는다.
 - 의존성 버전은 설치 시점의 최신 안정판을 쓰고 `package-lock.json`으로 고정한다. 임의의 버전
   번호를 지어내지 않는다.
@@ -1497,7 +1497,7 @@ shasum -a 256 vendor/scrcpy/scrcpy-server.jar >> vendor/scrcpy/VERSION
 ```
 
 `vendor/scrcpy/scrcpy-server.jar`은 커밋한다. 버전을 우리가 고정해야 파서가 깨지지 않는다
-([ADR-0002](../../adr/0002-screen-streaming-via-scrcpy-server.md)).
+([ADR-0002](../../../adr/0002-screen-streaming-via-scrcpy-server.md)).
 
 - [ ] **Step 3: 에뮬레이터를 띄우고 jar을 푸시해 소켓이 열리는지 확인한다**
 
@@ -1617,7 +1617,7 @@ Expected: 캔버스에 기기 화면 한 장이 뜨고 로그에 `frame drawn`�
 - M2 설계의 전제: <한 문단>
 ```
 
-실패했으면 [ADR-0002](../../adr/0002-screen-streaming-via-scrcpy-server.md)의
+실패했으면 [ADR-0002](../../../adr/0002-screen-streaming-via-scrcpy-server.md)의
 `status`를 `superseded`로 바꾸고 후퇴안 ADR을 새로 만든다.
 
 Run: `python3 docs/script/docs.py lint && python3 docs/script/docs.py links`

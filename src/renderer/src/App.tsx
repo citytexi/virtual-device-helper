@@ -29,7 +29,7 @@ export function App(): JSX.Element {
   }
 
   return (
-    <main>
+    <main className="app-shell">
       <aside>
         <DevicePanel snapshot={snapshot} />
         <DeviceScreen serial={targetSerial(snapshot)} />

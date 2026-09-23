@@ -4,6 +4,10 @@ import { describe, expect, it } from 'vitest'
 import { parseLogcat } from './logcat'
 
 const fixture = readFileSync(join(__dirname, '__fixtures__', 'logcat-threadtime.txt'), 'utf8')
+const emulatorFixture = readFileSync(
+  join(__dirname, '__fixtures__', 'logcat-threadtime-emulator.txt'),
+  'utf8'
+)
 
 describe('parseLogcat', () => {
   it('splits a threadtime line into its fields', () => {
@@ -49,5 +53,12 @@ describe('parseLogcat', () => {
 
     expect(lines.length).toBeGreaterThan(0)
     expect(lines.every((line) => ['V', 'D', 'I', 'W', 'E', 'F'].includes(line.level))).toBe(true)
+  })
+
+  it('parses the real emulator fixture and gives every line a non-empty tag', () => {
+    const lines = parseLogcat(emulatorFixture)
+
+    expect(lines.length).toBeGreaterThan(0)
+    expect(lines.every((line) => line.tag.length > 0)).toBe(true)
   })
 })
