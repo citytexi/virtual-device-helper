@@ -1,0 +1,109 @@
+import { useState } from 'react'
+import type { JSX } from 'react'
+import type { AppSnapshot, Outcome, TrackingFailure } from '../../../shared/types/ipc'
+import type { ToolError } from '../../../shared/types/errors'
+import { targetSerial } from '../state/useAppState'
+
+export interface DevicePanelProps {
+  snapshot: AppSnapshot
+}
+
+/**
+ * 기기 추적(adb track-devices)이 멎었을 때 보여주는 경고. main이 죽었다는 뜻이
+ * 아니라 목록이 그 순간부터 더 이상 갱신되지 않는다는 뜻이라 role="alert"로
+ * 눈에 띄게 두되, 원인(error)이 있으면 메시지·힌트를, 없으면 종료 코드를 보여준다.
+ */
+function TrackingFailureNotice({ failure }: { failure: TrackingFailure }): JSX.Element {
+  const detail = failure.error
+    ? `${failure.error.message} — ${failure.error.hint}`
+    : `(종료 코드: ${failure.exitCode})`
+
+  return (
+    <p role="alert">
+      기기 추적이 멈췄다. 목록이 오래된 것일 수 있다. {detail}
+    </p>
+  )
+}
+
+export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [failure, setFailure] = useState<ToolError | null>(null)
+
+  async function run(label: string, action: () => Promise<Outcome<unknown>>): Promise<void> {
+    setBusy(label)
+    setFailure(null)
+    const result = await action()
+    setBusy(null)
+    if (!result.ok) setFailure(result.error)
+  }
+
+  const trackingNotice = snapshot.trackingFailure ? (
+    <TrackingFailureNotice failure={snapshot.trackingFailure} />
+  ) : null
+
+  if (snapshot.avds.length === 0) {
+    return (
+      <section aria-label="기기">
+        <h2>기기</h2>
+        {trackingNotice}
+        <p>AVD가 없다. Android Studio의 Device Manager에서 하나 만들고 앱을 다시 켜라.</p>
+      </section>
+    )
+  }
+
+  const target = targetSerial(snapshot)
+
+  return (
+    <section aria-label="기기">
+      <h2>기기</h2>
+
+      {trackingNotice}
+      {busy === 'boot' ? <p>부팅 중…</p> : null}
+      {failure ? (
+        <p role="alert">
+          {failure.message} — {failure.hint}
+        </p>
+      ) : null}
+
+      <ul>
+        {snapshot.avds.map((avd) => {
+          const isActive = avd.serial !== null && avd.serial === target
+
+          return (
+            <li key={avd.name} aria-current={isActive ? true : undefined}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (avd.serial) void run('select', () => window.api.selectDevice(avd.serial as string))
+                }}
+                disabled={!avd.running}
+              >
+                {avd.name}
+              </button>
+
+              {avd.serial ? <span>{avd.serial}</span> : null}
+
+              {avd.running && avd.serial ? (
+                <button
+                  type="button"
+                  onClick={() => void run('shutdown', () => window.api.shutdownDevice(avd.serial as string))}
+                  disabled={busy !== null}
+                >
+                  {avd.name} 종료
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void run('boot', () => window.api.bootAvd(avd.name))}
+                  disabled={busy !== null}
+                >
+                  {avd.name} 부팅
+                </button>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
