@@ -1,7 +1,7 @@
 ---
 id: m2-live-streaming         # 파일명에서 날짜 접두사를 뺀 slug
 title: M2 — 실시간 스트리밍과 사람 입력
-status: draft                   # draft | in-progress | implemented | superseded
+status: in-progress             # draft | in-progress | implemented | superseded
 verified: 2026-09-23          # 코드와 대조해 확인한 날짜
 scope: [main, renderer, preload, shared, streaming, android]
 hosts: []                       # windows | macos — 호스트 OS마다 동작이 갈릴 때만 채운다
