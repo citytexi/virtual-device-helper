@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import type { AdbClient } from '../adb/adbClient'
-import { deviceError } from '../../shared/types/errors'
+import { deviceError, isDeviceError } from '../../shared/types/errors'
 import type {
   Device,
   DeviceInfo,
@@ -52,6 +52,58 @@ function escapeInputText(text: string): string {
   // 기기 셸은 mksh다. #은 단어 첫머리에서 주석을 열어 뒤를 통째로 삼키고, ~는 틸드
   // 확장, {}는 중괄호 확장을 부른다. 앞의 메타문자들과 같은 이유로 여기서 막는다.
   return text.replace(/(["#$&'()*;<>?\[\\\]`{|}~])/g, '\\$1').replace(/ /g, '%s')
+}
+
+/**
+ * `pm install`이 기존 패키지와 충돌할 때 adb stderr에 남기는 실패 코드다. 이 둘은
+ * 흔한 재현 경로(다른 키로 서명된 빌드를 그 위에 덮어쓰거나, versionCode를
+ * 내려서 설치)가 있고 복구 경로도 같아서(`app_uninstall` 후 재설치) 여기서
+ * 같이 다룬다. ToolErrorKind를 늘리지 않는다 — 공개 인터페이스 변경은 ADR-0004가
+ * 관장한다. 대신 `kind: 'command_failed'`를 유지하고 message·hint·details.reason으로
+ * 구분한다.
+ */
+const INSTALL_CONFLICT_REASONS = ['INSTALL_FAILED_UPDATE_INCOMPATIBLE', 'INSTALL_FAILED_VERSION_DOWNGRADE'] as const
+type InstallConflictReason = (typeof INSTALL_CONFLICT_REASONS)[number]
+
+const INSTALL_CONFLICT_HINT =
+  'app_uninstall로 기존 앱을 지운 뒤 app_install을 다시 불러라. app_uninstall은 앱 데이터도 함께 지운다'
+
+/** stderr에서 충돌한 패키지명을 뽑는다. 못 찾으면 null — 메시지는 패키지명 없이도 뜻이 통한다. */
+function extractInstallConflictPackage(stderr: string): string | null {
+  const match =
+    /Existing package (\S+) signatures/.exec(stderr) ?? /[Pp]ackage (\S+) (?:new version|signatures)/.exec(stderr)
+  return match ? (match[1] as string).replace(/[.,;:]+$/, '') : null
+}
+
+function installConflictMessage(reason: InstallConflictReason, pkg: string | null): string {
+  if (reason === 'INSTALL_FAILED_UPDATE_INCOMPATIBLE') {
+    return pkg
+      ? `기기에 이미 설치된 ${pkg}가 다른 서명 키로 서명돼 있어 그 위에 덮어설치할 수 없다`
+      : '기기에 이미 설치된 패키지가 다른 서명 키로 서명돼 있어 그 위에 덮어설치할 수 없다'
+  }
+  return pkg
+    ? `설치하려는 APK의 versionCode가 기기에 이미 설치된 ${pkg}보다 낮아 다운그레이드로 설치할 수 없다`
+    : '설치하려는 APK의 versionCode가 기기에 이미 설치된 버전보다 낮아 다운그레이드로 설치할 수 없다'
+}
+
+/**
+ * adb install 실패를 다시 던진다. adbClient의 classify는 모든 adb 명령에 공통인
+ * 실패(no_device 등)만 분류하고, INSTALL_FAILED_* 코드는 install에만 있는 의미라
+ * 여기 Android 도메인 층에서 읽는다.
+ */
+function rethrowInstallFailure(error: unknown): never {
+  if (isDeviceError(error) && error.toolError.kind === 'command_failed') {
+    const stderr = typeof error.toolError.details?.stderr === 'string' ? error.toolError.details.stderr : ''
+    const reason = INSTALL_CONFLICT_REASONS.find((candidate) => stderr.includes(candidate))
+    if (reason) {
+      const pkg = extractInstallConflictPackage(stderr)
+      throw deviceError('command_failed', installConflictMessage(reason, pkg), INSTALL_CONFLICT_HINT, {
+        reason,
+        stderr
+      })
+    }
+  }
+  throw error
 }
 
 export interface AndroidDeviceDeps {
@@ -217,7 +269,11 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     const args = ['install']
     if (opts.reinstall) args.push('-r')
     args.push(apkPath)
-    await adb.exec(serial, args, { timeoutMs: 180_000 })
+    try {
+      await adb.exec(serial, args, { timeoutMs: 180_000 })
+    } catch (error) {
+      rethrowInstallFailure(error)
+    }
 
     const after = await listPackages()
     const added = after.filter((pkg) => !before.has(pkg))

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AdbClient, ExecResult } from '../adb/adbClient'
+import { DeviceError, deviceError } from '../../shared/types/errors'
 import { createAndroidDevice } from './androidDevice'
 
 function fakeAdb(responses: Record<string, string> = {}): { adb: AdbClient; calls: string[][] } {
@@ -77,6 +78,65 @@ describe('AndroidDevice.install', () => {
     const device = makeDevice(adb)
 
     await expect(device.install('/tmp/app.apk', { reinstall: true })).resolves.toBeNull()
+  })
+
+  it('gives a specific message and an app_uninstall recovery hint for a signature mismatch (R6)', async () => {
+    // 실제 실기기 통합 테스트에서 관찰된 stderr 그대로다: 다른 서명 키로 설치된
+    // 패키지 위에 덮어쓰려 할 때 adb가 이 문구를 낸다.
+    const stderr =
+      'adb: failed to install /tmp/app.apk: Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package com.teamyg.parfait signatures do not match newer version; ignoring!]'
+    const adb = {
+      exec: vi.fn(async (_serial: string | null, args: string[]): Promise<ExecResult> => {
+        if (args[0] === 'install') {
+          throw deviceError('command_failed', `adb 명령이 실패했다: ${args.join(' ')}`, '첨부된 stderr를 확인해라', {
+            stderr,
+            args
+          })
+        }
+        return { stdout: '', stdoutRaw: Buffer.alloc(0), stderr: '', exitCode: 0 }
+      }),
+      stream: vi.fn()
+    } as unknown as AdbClient
+    const device = makeDevice(adb)
+
+    const error = await device.install('/tmp/app.apk').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(DeviceError)
+    const toolError = (error as DeviceError).toolError
+    expect(toolError.kind).toBe('command_failed')
+    expect(toolError.message).toContain('com.teamyg.parfait')
+    expect(toolError.hint).toContain('app_uninstall')
+    expect(toolError.hint).toContain('app_install')
+    expect(toolError.details?.reason).toBe('INSTALL_FAILED_UPDATE_INCOMPATIBLE')
+    expect(toolError.details?.stderr).toBe(stderr)
+  })
+
+  it('gives the same recovery hint for a version downgrade conflict (R6)', async () => {
+    const stderr =
+      'adb: failed to install /tmp/app.apk: Failure [INSTALL_FAILED_VERSION_DOWNGRADE: Downgrade detected: Package com.example.app new version code 3 is lower than current 5]'
+    const adb = {
+      exec: vi.fn(async (_serial: string | null, args: string[]): Promise<ExecResult> => {
+        if (args[0] === 'install') {
+          throw deviceError('command_failed', `adb 명령이 실패했다: ${args.join(' ')}`, '첨부된 stderr를 확인해라', {
+            stderr,
+            args
+          })
+        }
+        return { stdout: '', stdoutRaw: Buffer.alloc(0), stderr: '', exitCode: 0 }
+      }),
+      stream: vi.fn()
+    } as unknown as AdbClient
+    const device = makeDevice(adb)
+
+    const error = await device.install('/tmp/app.apk').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(DeviceError)
+    const toolError = (error as DeviceError).toolError
+    expect(toolError.kind).toBe('command_failed')
+    expect(toolError.message).toContain('com.example.app')
+    expect(toolError.hint).toContain('app_uninstall')
+    expect(toolError.details?.reason).toBe('INSTALL_FAILED_VERSION_DOWNGRADE')
+    expect(toolError.details?.stderr).toBe(stderr)
   })
 })
 
