@@ -6,7 +6,7 @@ import type { DeviceRegistry } from '../../device/registry'
 import type { Device, LogLine } from '../../../shared/types/device'
 import { parseLogcat } from '../../device/parsers/logcat'
 import { createToolHarness } from '../testHarness'
-import { LOG_READ_DEFAULT_LIMIT, LOG_READ_MAX_LIMIT, LOG_READ_RESPONSE_BUDGET_CHARS } from './observe'
+import { LOG_READ_DEFAULT_LIMIT, LOG_READ_MAX_LIMIT, LOG_READ_RESPONSE_BUDGET_BYTES } from './observe'
 
 function harnessFor(device: Partial<Device>) {
   const full = { serial: 'emulator-5554', ...device } as Device
@@ -280,7 +280,7 @@ describe('log_read response size regression', () => {
     const text = (raw.content[0] as { text: string }).text
     const payload = JSON.parse(text) as { lines: string[]; truncated: boolean; droppedCount: number }
 
-    expect(text.length).toBeLessThanOrEqual(LOG_READ_RESPONSE_BUDGET_CHARS)
+    expect(Buffer.byteLength(text, 'utf8')).toBeLessThanOrEqual(LOG_READ_RESPONSE_BUDGET_BYTES)
     expect(payload.truncated).toBe(true)
 
     const budgetDroppedCount = LOG_READ_MAX_LIMIT - payload.lines.length
@@ -290,6 +290,45 @@ describe('log_read response size regression', () => {
     // 남은 줄은 가장 최신(뒤쪽, 큰 인덱스) 것들이어야 한다.
     const firstKeptIndex = LOG_READ_MAX_LIMIT - payload.lines.length
     expect(payload.lines[0]).toContain(`Tag${firstKeptIndex}(`)
+    expect(payload.lines[payload.lines.length - 1]).toContain(`Tag${LOG_READ_MAX_LIMIT - 1}(`)
+
+    await harness.close()
+  })
+})
+
+describe('log_read response budget in UTF-8 bytes', () => {
+  it('measures the budget in UTF-8 bytes, so Korean-heavy lines under the budget in characters are still trimmed', async () => {
+    // 한글은 UTF-8에서 한 글자가 3바이트다. 클라이언트가 받는 것은 바이트이므로 문자 수로
+    // 재면 한글 로그는 예산의 세 배 가까이 새어 나간다. 줄 수와 길이를 골라 문자 수로는
+    // 예산 안이지만 바이트로는 예산을 넘는 입력을 만든다.
+    const lines: LogLine[] = Array.from({ length: LOG_READ_MAX_LIMIT }, (_, i) => ({
+      timestamp: '09-23 10:15:00.000',
+      level: 'I',
+      tag: `Tag${i}`,
+      pid: 2000 + i,
+      message: '로그인 화면에서 이메일 입력 칸을 찾지 못했다 다시 시도한다'
+    }))
+    const untrimmed = JSON.stringify({
+      lines: lines.map((line) => `${line.timestamp} ${line.level} ${line.tag}(${line.pid}): ${line.message}`),
+      truncated: false,
+      droppedCount: 0
+    })
+    // 전제: 문자 수로는 예산 안, 바이트로는 예산 밖.
+    expect(untrimmed.length).toBeLessThanOrEqual(LOG_READ_RESPONSE_BUDGET_BYTES)
+    expect(Buffer.byteLength(untrimmed, 'utf8')).toBeGreaterThan(LOG_READ_RESPONSE_BUDGET_BYTES)
+
+    const harness = await harnessFor({
+      readLogs: async () => ({ lines, truncated: false, droppedCount: 0 })
+    })
+
+    const raw = await harness.raw('log_read', { limit: LOG_READ_MAX_LIMIT })
+    const text = (raw.content[0] as { text: string }).text
+    const payload = JSON.parse(text) as { lines: string[]; truncated: boolean; droppedCount: number }
+
+    expect(Buffer.byteLength(text, 'utf8')).toBeLessThanOrEqual(LOG_READ_RESPONSE_BUDGET_BYTES)
+    expect(payload.truncated).toBe(true)
+    expect(payload.lines.length).toBeLessThan(LOG_READ_MAX_LIMIT)
+    expect(payload.droppedCount).toBe(LOG_READ_MAX_LIMIT - payload.lines.length)
     expect(payload.lines[payload.lines.length - 1]).toContain(`Tag${LOG_READ_MAX_LIMIT - 1}(`)
 
     await harness.close()
