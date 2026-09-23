@@ -85,5 +85,12 @@ app.on('before-quit', (event) => {
   if (!running || stopping) return
   event.preventDefault()
   stopping = running.stop().catch((thrown) => console.error('종료 정리에 실패했다', thrown))
-  void stopping.then(() => app.quit())
+  void stopping.then(() => {
+    // SIGTERM으로 시작된 종료를 preventDefault로 막은 뒤, 같은 틱(마이크로태스크)
+    // 안에서 app.quit()을 다시 부르면 Electron이 종료를 끝까지 못 마친다(관찰됨:
+    // before-quit이 두 번 온 뒤 window-all-closed까지만 오고 will-quit·quit은
+    // 오지 않음). setImmediate로 매크로태스크까지 한 틱 미뤄서 다시 불러야
+    // 정상적으로 종료된다.
+    setImmediate(() => app.quit())
+  })
 })
