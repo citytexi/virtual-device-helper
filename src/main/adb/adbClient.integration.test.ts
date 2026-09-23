@@ -22,11 +22,34 @@ beforeAll(async () => {
     (entry) => entry.state === 'device'
   )
 
-  if (devices.length === 0) {
-    throw new Error('에뮬레이터를 하나 띄운 뒤 다시 실행해라')
+  // 여러 기기가 붙어 있을 때 devices[0]을 그냥 집으면 실기기를 실수로 건드릴 수
+  // 있다. VDH_TEST_SERIAL이 있으면 그걸 쓰되 실제로 연결돼 있는지 확인하고,
+  // 없으면 연결된 emulator-* 기기가 정확히 하나일 때만 그걸 쓴다. 물리 기기는
+  // 암묵적으로 고르지 않는다.
+  const envSerial = process.env.VDH_TEST_SERIAL
+  if (envSerial) {
+    if (!devices.some((entry) => entry.serial === envSerial)) {
+      throw new Error(
+        `VDH_TEST_SERIAL=${envSerial}인데 연결된 기기 목록에 없다. 연결된 기기: ${
+          devices.map((entry) => entry.serial).join(', ') || '(없음)'
+        }`
+      )
+    }
+    serial = envSerial
+  } else {
+    const emulators = devices.filter((entry) => entry.serial.startsWith('emulator-'))
+    if (emulators.length === 0) {
+      throw new Error('연결된 에뮬레이터가 없다. 에뮬레이터를 하나 띄우거나 VDH_TEST_SERIAL로 대상을 지정해라')
+    }
+    if (emulators.length > 1) {
+      throw new Error(
+        `연결된 에뮬레이터가 여럿이다: ${emulators
+          .map((entry) => entry.serial)
+          .join(', ')}. VDH_TEST_SERIAL로 대상을 지정해라`
+      )
+    }
+    serial = emulators[0]?.serial as string
   }
-
-  serial = devices[0]?.serial as string
 })
 
 describe('adbClient against a real emulator', () => {
@@ -51,11 +74,20 @@ describe('adbClient against a real emulator', () => {
   })
 
   it('streams lines from a long-running command', async () => {
+    // 고정 3초 대기는 조용한 에뮬레이터에서 로그가 하나도 안 쌓이면 흔들린다.
+    // 첫 줄이 오거나 15초가 지나면 멈춘다 — 로그가 쏟아지는 경우 3초보다 훨씬
+    // 빨리 끝나고, 조용한 경우에도 실패 전에 최대 15초는 기다려 준다.
     const lines: string[] = []
     const stream = adb.stream(serial, ['logcat', '-v', 'threadtime'])
-    stream.onLine((line) => lines.push(line))
 
-    await new Promise((resolve) => setTimeout(resolve, 3_000))
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, 15_000)
+      stream.onLine((line) => {
+        lines.push(line)
+        clearTimeout(timer)
+        resolve()
+      })
+    })
     stream.close()
 
     expect(lines.length).toBeGreaterThan(0)
