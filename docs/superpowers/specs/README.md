@@ -17,6 +17,7 @@
 <!-- index:start -->
 | 스펙 | 상태 | 내용 |
 |------|------|------|
+| [m2-live-streaming](2026-09-23-m2-live-streaming.md) | draft | 활성 기기 한 대 scrcpy 스트리밍, 에이전트 동작 오버레이, 최소한의 사람 입력 |
 <!-- index:end -->
 
 ## 아카이브
