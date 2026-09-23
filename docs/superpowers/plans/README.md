@@ -18,6 +18,7 @@
 | [m1-3-mcp-server](2026-09-22-m1-3-mcp-server.md) | draft | MCP 툴 20개, 응답 크기 상한, 루프백 HTTP 서버와 보안 기본값 (7 tasks) |
 | [m1-4-electron-shell-ui](2026-09-22-m1-4-electron-shell-ui.md) | draft | IPC 계약과 preload, main 조립, 기기 패널·화면 영역·활동 탭·엔드포인트 카드 (7 tasks) |
 | [m1-5-integration-verification](2026-09-22-m1-5-integration-verification.md) | draft | 실기기 통합 테스트, 완료 조건 검증, 문서 정리 (4 tasks) |
+| [m1-acceptance-log](2026-09-23-m1-acceptance-log.md) | in-progress | M1-5 Task 2·3의 완료 조건 관찰 기록. Task 4에서 스펙으로 옮긴 뒤 지운다 |
 <!-- index:end -->
 
 ## 아카이브
