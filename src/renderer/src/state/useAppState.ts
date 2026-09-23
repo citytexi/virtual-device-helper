@@ -14,7 +14,9 @@ function reduce(snapshot: AppSnapshot, event: MainEvent): AppSnapshot {
     case 'avds_changed':
       return { ...snapshot, avds: event.avds }
     case 'tool_call':
-      return { ...snapshot, toolCalls: [...snapshot.toolCalls, event.record] }
+      return snapshot.toolCalls.some((call) => call.id === event.record.id)
+        ? snapshot
+        : { ...snapshot, toolCalls: [...snapshot.toolCalls, event.record] }
     case 'server_changed':
       return { ...snapshot, server: event.server }
     case 'tracking_failed':
@@ -26,19 +28,44 @@ function reduce(snapshot: AppSnapshot, event: MainEvent): AppSnapshot {
  * main이 유일한 진실원이다. 여기서는 스냅샷을 한 번 받고 이벤트로 갱신만 한다.
  * renderer가 자기만의 기기 상태를 따로 추론하지 않는다.
  */
-export function useAppState(): { snapshot: AppSnapshot | null; loading: boolean } {
+export function useAppState(): {
+  snapshot: AppSnapshot | null
+  loading: boolean
+  error: string | null
+} {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
-
-    void window.api.getSnapshot().then((initial) => {
-      if (alive) setSnapshot(initial)
-    })
+    // getSnapshot()이 아직 안 끝났는데 이벤트가 먼저 도착할 수 있다. 그때 그냥
+    // 버리면 그 이벤트는 영영 반영되지 않아 renderer가 main과 계속 어긋난 채
+    // 남는다. 그래서 스냅샷이 오기 전까지는 이벤트를 순서대로 버퍼에 쌓아 두고,
+    // 스냅샷이 도착하면 그 위에 버퍼를 순서대로 재생한다. tool_call 리듀서가
+    // id로 중복을 걸러내므로 스냅샷에 이미 실린 레코드가 버퍼에도 있어도
+    // 두 번 쌓이지 않는다.
+    const buffer: MainEvent[] = []
 
     const off = window.api.onEvent((event) => {
-      setSnapshot((current) => (current ? reduce(current, event) : current))
+      setSnapshot((current) => {
+        if (current === null) {
+          buffer.push(event)
+          return current
+        }
+        return reduce(current, event)
+      })
     })
+
+    window.api
+      .getSnapshot()
+      .then((initial) => {
+        if (!alive) return
+        setSnapshot(buffer.reduce(reduce, initial))
+      })
+      .catch((thrown: unknown) => {
+        if (!alive) return
+        setError(thrown instanceof Error ? thrown.message : String(thrown))
+      })
 
     return () => {
       alive = false
@@ -46,7 +73,7 @@ export function useAppState(): { snapshot: AppSnapshot | null; loading: boolean 
     }
   }, [])
 
-  return { snapshot, loading: snapshot === null }
+  return { snapshot, loading: snapshot === null && error === null, error }
 }
 
 /**
