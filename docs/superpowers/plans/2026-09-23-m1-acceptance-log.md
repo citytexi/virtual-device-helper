@@ -170,3 +170,74 @@ MCP가 붙었고 스펙 표의 툴이 전부 목록에 보였다. 호출 순서�
 - 설정 JSON: 복사한 JSON을 그대로 외부 에이전트(`claude -p`) 설정으로 썼고 연결됐다.
 - 기기를 바꾸면 화면도 바뀌나: 에뮬레이터가 한 대뿐이라 확인하지 못했다.
 - SDK를 못 찾을 때의 안내 화면: 안 해 봤다.
+
+## 실패 경로
+
+에뮬레이터 `emulator-5554` 한 대만 띄운 상태에서 확인했다(실행 5·7·8). 에뮬레이터 두 대를 띄운
+상태는 만들지 않았다 — 계획대로 존재하지 않는 serial로 대신했다.
+
+| 상황 | 기대 kind | 실제 kind | 힌트가 다음 행동을 말했나 | 에이전트가 복구했나 |
+|---|---|---|---|---|
+| 기기 없음 (`adb emu kill` 뒤 `screenshot`) | no_device | no_device, "연결된 기기가 없다" | 예 — "device_list로 AVD를 확인하고 device_boot로 부팅해라" | 부분 — `device_list`까지 부르고, AVD가 여럿이라 어느 것을 부팅할지 사람에게 물었다. 스스로 고르지 않았다 |
+| 없는 serial (`device_info` serial `emulator-9999`) | no_device | no_device, "그런 기기가 없다: emulator-9999", `details.candidates` `["emulator-5554"]` | 예 — "device_list로 현재 연결된 기기를 확인해라" | 예 — `device_list` 뒤 `device_info emulator-5554` 성공(`sdk_gphone64_arm64`, API 36, 1080x2400) |
+| 없는 패키지 (`app_launch com.example.does.not.exist`) | package_not_found | package_not_found | 예 — "app_install로 먼저 설치해라" | 해당 없음 — 설치할 APK가 없으니 복구하지 않은 것이 맞다 |
+| 잘못된 APK 경로 (`app_install /tmp/nope.apk`) | apk_path_invalid | apk_path_invalid | 예 — "경로를 확인해라. 상대 경로면 절대 경로로 바꿔라" | 해당 없음 — 올바른 경로가 없다 |
+
+기기 없음의 후속(실행 8): 지시문에 AVD 이름을 주자("Pixel_7_API_36 을 부팅하고 ... 찍어줘")
+`device_boot avd Pixel_7_API_36`이 기기 정보(`emulator-5554`, API 36, 1080x2400)를 돌려줬고, 이어
+`screenshot serial emulator-5554`가 완성된 홈 화면을 돌려줬다(324x720 PNG, base64 약 213KB, 인라인으로
+들어갔다). 에뮬레이터 quickboot 스냅샷 덕에 실행 전체가 18초였다. 부팅 직후 설치(패키지 매니저 준비)는
+안 해 봤다.
+
+기기가 둘인데 `serial`을 빼는 경우(후보 목록 에러)는 에뮬레이터 두 대를 띄우지 않아 관찰하지 못했다.
+
+## 응답 상한
+
+| 툴 | 요청 | 실제 반환량 | truncated |
+|---|---|---|---|
+| log_read (수정 전) | limit 999999 | MCP 입력 스키마가 거부: "MCP error -32602: Input validation error: ... Too big: expected number to be <=2000 at limit". `kind`·`hint`는 없지만 메시지가 상한을 말한다 | — |
+| log_read (수정 전) | 위 거부 뒤 에이전트가 limit 2000으로 재시도 | 2000줄, 457,731자 / 14,006줄의 들여쓴 JSON. Claude Code가 인라인을 거부했다("exceeds maximum allowed tokens", 파일로 저장) | true, `droppedCount` 2430 |
+| log_read (`ece1be9`·`eff1106` 뒤, 실행 6) | limit 200 | 159줄(총량 예산에서 더 잘렸다), 약 20.3KB. 인라인으로 들어갔다 | true, `droppedCount` 5485 |
+| log_read (`ece1be9`·`eff1106` 뒤, 실행 6) | 기본 limit | 100줄, 약 12.2KB. 인라인으로 들어갔다. 한 줄이 "…(+44자)"로 잘렸다 | — (`droppedCount`는 두 호출 사이에 서로 맞았다) |
+| ui_find | 긴 목록 화면(검색 화면으로 열린 설정 앱, `query` 없음) | 21개 노드. XML 없음 | false — 60개 상한(`UI_FIND_MAX_NODES`)에 닿는 화면을 만나지 못해 상한 동작은 관찰하지 못했다 |
+
+## 보안
+
+`curl`로 직접 찔렀다. 앱을 재시작해 토큰이 바뀐 뒤에도 `127.0.0.1:9321`에만 열려 있었다.
+
+| 검사 | 기대 | 실제 |
+|---|---|---|
+| 토큰 없음 | 401 | 401 |
+| 틀린 토큰 | 401 | 401 |
+| 틀린 토큰 + `Origin: https://evil.example` | 403 | 403 (`Origin` 검사가 토큰 검사보다 먼저다) |
+| 올바른 토큰 + `Origin` 헤더 | 403 | 403 |
+| LAN 주소 접속 (`192.168.0.28:9321`) | 연결 실패 | 연결 실패 (curl code 000) |
+| 루프백 바인드 | `127.0.0.1`만 | `lsof`로 `127.0.0.1:9321`만 |
+
+대조로, 올바른 토큰으로 `initialize`를 보내면 200과 `serverInfo` `virtual-device-helper`가 왔다.
+
+## 종료 결함
+
+사용자가 Electron 창이 두 개인 것을 알아챘다. 컨트롤러의 재시작(`pkill -f "electron-vite dev"` 뒤
+`pkill -f ".../node_modules/electron"`)에서 살아남은 이전 인스턴스였다. 부모가 1인 고아 프로세스였고,
+MCP 서버는 닫혀 9321에서 듣지 않았지만 프로세스는 살아 있었다. 첫 `pkill`이 닿았는지는 알 수 없다.
+
+재현: 앱의 Electron main에 SIGTERM 한 번을 보내면 MCP 서버는 닫히지만 프로세스가 끝나지 않았다
+(dev와 빌드한 `out/main` 둘 다). 계측한 빌드에서는 `before-quit`, 1ms 뒤 `before-quit`,
+`window-all-closed`까지만 오고 `will-quit`·`quit`은 오지 않았다. 최소 Electron 재현에서
+`before-quit`에서 `preventDefault`한 뒤 같은 틱의 마이크로태스크(`Promise.resolve`)에서 `app.quit()`을
+다시 부르면 SIGTERM에서 멈췄고, `setImmediate`·`setTimeout 0`·200ms 지연이면 끝났다. `app.quit()`으로
+시작한 종료(Cmd+Q)는 즉시 다시 불러도 끝났다.
+
+- 수정: `c62dec0` — `src/main/index.ts`의 `before-quit`이 `stop`이 끝난 뒤 재종료를 `setImmediate`로 미룬다.
+- 확인: 빌드한 앱에 SIGTERM 한 번 → `before-quit` 두 번 → `will-quit` → 프로세스 exit 0 → `quit`.
+- 남은 것: `stop()` 자체에 시간 제한은 없다. `stop`이 끝나지 않으면 종료도 끝나지 않는다(관찰한 적은 없다).
+
+## 실행하지 않은 것
+
+아래는 어느 에이전트 실행에서도 불리지 않았다.
+
+- `app_reset_and_launch` — 첫 화면 안정 판정(`app.ts`의 `waitForSettle`)을 실제 앱으로 돌려 보지 않았다.
+- `ui_swipe`, `ui_key`, `app_stop`, `app_clear_data`, `app_grant_permission`, `app_uninstall`
+- MCP를 통한 `device_shutdown` (사람 경로의 종료 버튼으로는 해 봤다)
+- `ui_find` 60개 상한
