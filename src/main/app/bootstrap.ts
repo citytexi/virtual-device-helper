@@ -164,9 +164,16 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
     state,
     server,
     async stop() {
-      await stream.stop()
-      registry.stop()
-      await server?.close()
+      // 스트림 정리가 던져도 기기 추적과 MCP 서버는 멈춰야 한다. 에러는 호출자에게 그대로 넘긴다.
+      try {
+        await stream.stop()
+      } finally {
+        try {
+          registry.stop()
+        } finally {
+          await server?.close()
+        }
+      }
     }
   }
 }

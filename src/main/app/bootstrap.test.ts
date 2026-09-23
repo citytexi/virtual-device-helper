@@ -243,6 +243,17 @@ describe('bootstrapApp with an SDK', () => {
     expect(h.stream.stop).toHaveBeenCalled()
   })
 
+  it('still stops tracking and closes the server when stopping the stream throws', async () => {
+    const h = harness()
+    h.stream.stop.mockRejectedValueOnce(new Error('boom'))
+    const app = await bootstrapApp(h.deps)
+
+    await expect(app.stop()).rejects.toThrow('boom')
+
+    expect(h.stack.registry.stop).toHaveBeenCalled()
+    expect(h.server.close).toHaveBeenCalled()
+  })
+
   it('refuses a stream without an SDK and never builds a stream manager', async () => {
     const h = harness({ located: missing })
     await bootstrapApp(h.deps)

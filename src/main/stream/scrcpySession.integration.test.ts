@@ -34,18 +34,21 @@ describe('scrcpy session on a real device', () => {
       { onSession: (w, h) => sessions.push([w, h]), onPacket: (p) => packets.push(p), onEnded }
     )
 
-    await session.start()
-    await vi.waitFor(() => expect(packets.some((p) => p.key)).toBe(true), { timeout: 15_000 })
-    expect(packets[0]?.config).toBe(true)
-    expect(Math.max(...(sessions[0] ?? [0]))).toBeLessThanOrEqual(1024)
+    // 중간에 실패해도 forward·기기 서버가 남지 않게 close를 보장한다. close는 여러 번 불러도 된다.
+    try {
+      await session.start()
+      await vi.waitFor(() => expect(packets.some((p) => p.key)).toBe(true), { timeout: 15_000 })
+      expect(packets[0]?.config).toBe(true)
+      expect(Math.max(...(sessions[0] ?? [0]))).toBeLessThanOrEqual(1024)
 
-    await adb.exec(serial, ['shell', 'am', 'start', '-a', 'android.settings.SETTINGS'])
-    await vi.waitFor(async () => expect(await topActivity()).toMatch(/settings/i), { timeout: 10_000 })
+      await adb.exec(serial, ['shell', 'am', 'start', '-a', 'android.settings.SETTINGS'])
+      await vi.waitFor(async () => expect(await topActivity()).toMatch(/settings/i), { timeout: 10_000 })
 
-    session.sendControl({ type: 'key', key: 'home' })
-    await vi.waitFor(async () => expect(await topActivity()).toMatch(/launcher/i), { timeout: 10_000 })
-
-    await session.close()
+      session.sendControl({ type: 'key', key: 'home' })
+      await vi.waitFor(async () => expect(await topActivity()).toMatch(/launcher/i), { timeout: 10_000 })
+    } finally {
+      await session.close()
+    }
     const { stdout } = await adb.exec(null, ['forward', '--list'])
     expect(stdout).not.toMatch(/localabstract:scrcpy_/)
     expect(onEnded).not.toHaveBeenCalled()
