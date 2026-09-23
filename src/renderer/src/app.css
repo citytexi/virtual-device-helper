@@ -587,6 +587,11 @@ code {
   overflow-y: auto;
 }
 
+/* .tabpanel이 display를 정하게 되더라도 선택되지 않은 패널은 숨긴다. */
+.tabpanel[hidden] {
+  display: none;
+}
+
 .activity-list {
   display: flex;
   flex-direction: column;
