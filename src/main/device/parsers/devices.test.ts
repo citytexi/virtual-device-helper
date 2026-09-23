@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { parseDevices } from './devices'
 
 const fixture = readFileSync(join(__dirname, '__fixtures__', 'devices-l.txt'), 'utf8')
+const emulatorFixture = readFileSync(join(__dirname, '__fixtures__', 'devices-l-emulator.txt'), 'utf8')
 
 describe('parseDevices', () => {
   it('skips the "List of devices attached" header', () => {
@@ -52,5 +53,13 @@ describe('parseDevices', () => {
     const entries = parseDevices(fixture)
 
     expect(entries).toEqual([{ serial: 'RFCXC00V8AZ', state: 'device', model: 'SM_A356N' }])
+  })
+
+  it('parses the real emulator fixture into a device entry in state "device"', () => {
+    const entries = parseDevices(emulatorFixture)
+    const emulator = entries.find((entry) => entry.serial === 'emulator-5554')
+
+    expect(emulator).toBeDefined()
+    expect(emulator?.state).toBe('device')
   })
 })
