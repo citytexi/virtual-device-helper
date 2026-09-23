@@ -122,4 +122,23 @@ describe('parsers against real output', () => {
     expect(lines.length).toBeGreaterThan(0)
     expect(lines.every((line) => line.tag.length > 0)).toBe(true)
   })
+
+  // R9: androidDevice.launch가 monkey 대신 쓰는 resolve-activity가 실기기에서 실제로
+  // 컴포넌트를 돌려주는지 읽기 전용으로 확인한다. 아무것도 실행하지 않는다.
+  it('resolves a launcher component for a system package with resolve-activity', async () => {
+    const stdout = (
+      await adb.exec(serial, [
+        'shell',
+        'cmd',
+        'package',
+        'resolve-activity',
+        '--brief',
+        '-c',
+        'android.intent.category.LAUNCHER',
+        'com.android.settings'
+      ])
+    ).stdout
+
+    expect(stdout).toContain('com.android.settings/')
+  })
 })

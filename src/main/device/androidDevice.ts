@@ -284,9 +284,12 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     if (added.length === 1) return added[0] as string
     if (added.length === 0 && opts.reinstall) return null
 
-    throw deviceError('command_failed', '설치 후 패키지명을 특정하지 못했다', 'app_list 대신 패키지명을 직접 지정해 실행해라', {
-      added
-    })
+    throw deviceError(
+      'command_failed',
+      '설치 후 패키지명을 특정하지 못했다',
+      '패키지명을 알고 있다면 그 값을 그대로 app_launch에 넘겨 실행해라',
+      { added }
+    )
   }
 
   async function uninstall(pkg: string): Promise<void> {
@@ -294,17 +297,95 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     await adb.exec(serial, ['uninstall', pkg])
   }
 
+  /**
+   * `monkey -p <pkg> -c android.intent.category.LAUNCHER 1`로 기본 액티비티를 찾던
+   * 예전 방식은 API 36 실기기(emulator-5554)에서 exit 251로 죽어 항상 command_failed를
+   * 냈다. `cmd package resolve-activity`는 같은 정보를 셸을 흉내 내지 않고 직접 준다.
+   * 출력 마지막 줄 중 `/`가 든 줄이 컴포넌트다. 런처 액티비티가 없으면
+   * "No activity found"만 오고 `/`가 든 줄이 없다.
+   */
+  async function resolveLauncherComponent(pkg: string): Promise<string> {
+    const output = await shell([
+      'cmd',
+      'package',
+      'resolve-activity',
+      '--brief',
+      '-c',
+      'android.intent.category.LAUNCHER',
+      pkg
+    ])
+    const lines = output
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+    const component = [...lines].reverse().find((line) => line.includes('/'))
+
+    if (!component) {
+      throw deviceError(
+        'command_failed',
+        `${pkg}에 런처 액티비티가 없다`,
+        'app_launch를 부를 때 activity를 직접 지정해라',
+        { pkg, stdout: output }
+      )
+    }
+
+    return component
+  }
+
+  /**
+   * am start 출력(성공 stdout이든 실패 stderr든)에서 "Error"로 시작하는 줄을 모두
+   * 뽑는다. 관찰된 실패는 "Error type 3"와 "Error: Activity class ... does not
+   * exist." 두 줄로 오는데, 뒤쪽이 실제 원인이라 둘 다 남겨 메시지에서 잘리지 않게 한다.
+   */
+  function findErrorLine(text: string): string | null {
+    const lines = text.match(/^Error.*$/gm)
+    return lines && lines.length > 0 ? lines.map((line) => line.trim()).join(' ') : null
+  }
+
+  /**
+   * `am start`는 존재하지 않는 액티비티를 줘도 adb 자체는 종료 코드만으로 원인을
+   * 말해 주지 않을 때가 있고(관찰: exit 1, stderr에 "Error type 3" / "Error: Activity
+   * class ... does not exist."), 반대로 성공(exit 0)해 놓고 stdout에 같은 형태의
+   * 경고를 남기는 경우도 있어 두 경로 모두 "Error"로 시작하는 줄을 찾는다.
+   */
+  async function startComponent(component: string): Promise<void> {
+    let output: string
+
+    try {
+      const result = await adb.exec(serial, ['shell', 'am', 'start', '-n', component])
+      output = [result.stdout, result.stderr].filter((chunk) => chunk.length > 0).join('\n')
+    } catch (error) {
+      if (isDeviceError(error) && error.toolError.kind === 'command_failed') {
+        const stderr = typeof error.toolError.details?.stderr === 'string' ? error.toolError.details.stderr : ''
+        const errorLine = findErrorLine(stderr)
+        if (errorLine) {
+          throw deviceError(
+            'command_failed',
+            `${component} 실행이 실패했다: ${errorLine}`,
+            '액티비티 이름이 맞는지 확인하거나 activity를 직접 지정해서 app_launch를 다시 불러라',
+            { component, stderr }
+          )
+        }
+      }
+      throw error
+    }
+
+    const errorLine = findErrorLine(output)
+    if (errorLine) {
+      throw deviceError(
+        'command_failed',
+        `${component} 실행이 실패했다: ${errorLine}`,
+        '액티비티 이름이 맞는지 확인하거나 activity를 직접 지정해서 app_launch를 다시 불러라',
+        { component, output }
+      )
+    }
+  }
+
   async function launch(pkg: string, activity?: string): Promise<void> {
     await requirePackage(pkg)
 
-    if (activity) {
-      const component = `${pkg}/${activity}`
-      await shell(['am', 'start', '-n', component])
-      return
-    }
-
-    // 런처 인텐트를 모를 때 monkey가 기본 액티비티를 대신 찾아 준다.
-    await shell(['monkey', '-p', pkg, '-c', 'android.intent.category.LAUNCHER', '1'])
+    const component = activity ? `${pkg}/${activity}` : await resolveLauncherComponent(pkg)
+    await startComponent(component)
   }
 
   async function stop(pkg: string): Promise<void> {

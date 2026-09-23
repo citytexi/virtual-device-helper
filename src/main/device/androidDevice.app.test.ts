@@ -80,6 +80,30 @@ describe('AndroidDevice.install', () => {
     await expect(device.install('/tmp/app.apk', { reinstall: true })).resolves.toBeNull()
   })
 
+  it('hints at app_launch, not the non-existent app_list tool, when the installed package name cannot be determined (R9)', async () => {
+    const before = 'package:com.android.settings\n'
+    const after = 'package:com.android.settings\npackage:com.example.a\npackage:com.example.b\n'
+    let listCount = 0
+    const adb = {
+      exec: vi.fn(async (_serial: string | null, args: string[]): Promise<ExecResult> => {
+        const text = args.join(' ').includes('pm list packages')
+          ? (listCount++ === 0 ? before : after)
+          : ''
+        return { stdout: text, stdoutRaw: Buffer.from(text), stderr: '', exitCode: 0 }
+      }),
+      stream: vi.fn()
+    } as unknown as AdbClient
+    const device = makeDevice(adb)
+
+    const error = await device.install('/tmp/app.apk').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(DeviceError)
+    const toolError = (error as DeviceError).toolError
+    expect(toolError.kind).toBe('command_failed')
+    expect(toolError.hint).not.toContain('app_list')
+    expect(toolError.hint).toContain('app_launch')
+  })
+
   it('gives a specific message and an app_uninstall recovery hint for a signature mismatch (R6)', async () => {
     // 실제 실기기 통합 테스트에서 관찰된 stderr 그대로다: 다른 서명 키로 설치된
     // 패키지 위에 덮어쓰려 할 때 adb가 이 문구를 낸다.
@@ -141,13 +165,105 @@ describe('AndroidDevice.install', () => {
 })
 
 describe('AndroidDevice app commands', () => {
-  it('uses monkey to launch when no activity is given', async () => {
-    const { adb, calls } = fakeAdb({ 'pm list packages': 'package:com.example.app\n' })
+  it('resolves the launcher activity and starts it with am start when no activity is given (R9)', async () => {
+    // 실기기(API 36, emulator-5554)에서 받은 실제 출력이다. monkey는 이 기기에서
+    // exit 251로 죽어서 더 이상 쓰지 않는다.
+    const { adb, calls } = fakeAdb({
+      'pm list packages': 'package:com.teamyg.parfait\n',
+      'resolve-activity': 'priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=false\ncom.teamyg.parfait/.MainActivity'
+    })
     const device = makeDevice(adb)
 
-    await device.launch('com.example.app')
+    await device.launch('com.teamyg.parfait')
 
-    expect(calls.some((args) => args.includes('monkey') && args.includes('com.example.app'))).toBe(true)
+    expect(calls.some((args) => args.includes('monkey'))).toBe(false)
+    const resolve = calls.find((args) => args.includes('resolve-activity'))
+    expect(resolve).toContain('com.teamyg.parfait')
+    const start = calls.find((args) => args.includes('am') && args.includes('start'))
+    expect(start).toContain('com.teamyg.parfait/.MainActivity')
+  })
+
+  it('throws a Korean command_failed with a hint to pass activity when the package has no launcher activity (R9)', async () => {
+    // 실기기에서 런처 액티비티가 없는 패키지에 resolve-activity를 돌리면 이렇게 나온다.
+    const { adb } = fakeAdb({
+      'pm list packages': 'package:com.example.does.not.exist\n',
+      'resolve-activity': 'No activity found'
+    })
+    const device = makeDevice(adb)
+
+    const error = await device.launch('com.example.does.not.exist').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(DeviceError)
+    const toolError = (error as DeviceError).toolError
+    expect(toolError.kind).toBe('command_failed')
+    expect(toolError.message).toMatch(/런처|launcher/i)
+    expect(toolError.hint).toContain('activity')
+    expect(toolError.hint).toContain('app_launch')
+  })
+
+  it('throws command_failed with the am start Error line when the launcher component does not exist (R9)', async () => {
+    // 실기기에서 관찰된 stderr: exit 1, "Error type 3" 다음 줄에 활동 클래스가 없다는
+    // 메시지가 온다. adbClient의 classify()가 이 stderr를 command_failed의
+    // details.stderr에 담아 던진다.
+    const stderr =
+      'Error type 3\nError: Activity class {com.teamyg.parfait/com.teamyg.parfait.Nope} does not exist.'
+    const adb = {
+      exec: vi.fn(async (_serial: string | null, args: string[]): Promise<ExecResult> => {
+        if (args.join(' ').includes('resolve-activity')) {
+          return {
+            stdout: 'com.teamyg.parfait/.Nope',
+            stdoutRaw: Buffer.alloc(0),
+            stderr: '',
+            exitCode: 0
+          }
+        }
+        if (args.includes('am') && args.includes('start')) {
+          throw deviceError('command_failed', `adb 명령이 실패했다: ${args.join(' ')}`, '첨부된 stderr를 확인해라', {
+            stderr,
+            args
+          })
+        }
+        const text = args.join(' ').includes('pm list packages') ? 'package:com.teamyg.parfait\n' : ''
+        return { stdout: text, stdoutRaw: Buffer.from(text), stderr: '', exitCode: 0 }
+      }),
+      stream: vi.fn()
+    } as unknown as AdbClient
+    const device = makeDevice(adb)
+
+    const error = await device.launch('com.teamyg.parfait').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(DeviceError)
+    const toolError = (error as DeviceError).toolError
+    expect(toolError.kind).toBe('command_failed')
+    expect(toolError.message).toContain('Error: Activity class {com.teamyg.parfait/com.teamyg.parfait.Nope} does not exist.')
+    expect(toolError.hint).toContain('activity')
+    expect(toolError.details?.stderr ?? toolError.details?.output).toContain('does not exist')
+  })
+
+  it('applies the same am start Error handling to the explicit-activity branch (R9)', async () => {
+    const stderr =
+      'Error type 3\nError: Activity class {com.teamyg.parfait/com.teamyg.parfait.Nope} does not exist.'
+    const adb = {
+      exec: vi.fn(async (_serial: string | null, args: string[]): Promise<ExecResult> => {
+        if (args.includes('am') && args.includes('start')) {
+          throw deviceError('command_failed', `adb 명령이 실패했다: ${args.join(' ')}`, '첨부된 stderr를 확인해라', {
+            stderr,
+            args
+          })
+        }
+        const text = args.join(' ').includes('pm list packages') ? 'package:com.teamyg.parfait\n' : ''
+        return { stdout: text, stdoutRaw: Buffer.from(text), stderr: '', exitCode: 0 }
+      }),
+      stream: vi.fn()
+    } as unknown as AdbClient
+    const device = makeDevice(adb)
+
+    const error = await device.launch('com.teamyg.parfait', '.Nope').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(DeviceError)
+    const toolError = (error as DeviceError).toolError
+    expect(toolError.kind).toBe('command_failed')
+    expect(toolError.message).toContain('Error: Activity class {com.teamyg.parfait/com.teamyg.parfait.Nope} does not exist.')
   })
 
   it('uses am start with an explicit component when an activity is given', async () => {
