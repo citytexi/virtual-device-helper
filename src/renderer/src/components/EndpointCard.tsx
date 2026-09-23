@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { JSX } from 'react'
 import type { ServerStatus } from '../../../shared/types/ipc'
+import { copyStatusText, useCopy } from '../hooks/useCopy'
 
 export interface EndpointCardProps {
   server: ServerStatus | null
@@ -22,28 +23,10 @@ function configSnippet(server: ServerStatus): string {
   )
 }
 
-type CopyStatus = { ok: true } | { ok: false; message: string }
-
-function statusText(status: CopyStatus): string {
-  return status.ok ? '복사했다' : `복사하지 못했다 — ${status.message}`
-}
-
 export function EndpointCard({ server }: EndpointCardProps): JSX.Element {
   const [revealed, setRevealed] = useState(false)
-  const [tokenCopyStatus, setTokenCopyStatus] = useState<CopyStatus | null>(null)
-  const [configCopyStatus, setConfigCopyStatus] = useState<CopyStatus | null>(null)
-
-  // navigator.clipboard.writeText는 reject할 수 있다(예: 창이 포커스를 잃은
-  // 상태). 실패를 그냥 삼키면 사용자는 복사됐다고 믿고 붙여넣기 했을 때
-  // 빈 값을 넣게 된다. 그래서 성공/실패를 항상 버튼 옆에 알린다.
-  async function copy(text: string, report: (status: CopyStatus) => void): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(text)
-      report({ ok: true })
-    } catch (thrown: unknown) {
-      report({ ok: false, message: thrown instanceof Error ? thrown.message : String(thrown) })
-    }
-  }
+  const tokenCopy = useCopy()
+  const configCopy = useCopy()
 
   if (!server) {
     return (
@@ -79,27 +62,27 @@ export function EndpointCard({ server }: EndpointCardProps): JSX.Element {
           {revealed ? '토큰 숨기기' : '토큰 보기'}
         </button>
 
-        <button type="button" className="btn" onClick={() => void copy(server.token, setTokenCopyStatus)}>
+        <button type="button" className="btn" onClick={() => void tokenCopy.copy(server.token)}>
           토큰 복사
         </button>
 
         <button
           type="button"
           className="btn btn-primary"
-          onClick={() => void copy(configSnippet(server), setConfigCopyStatus)}
+          onClick={() => void configCopy.copy(configSnippet(server))}
         >
           설정 JSON 복사
         </button>
       </div>
 
-      {tokenCopyStatus ? (
-        <p role="status" className="copy-status" data-ok={String(tokenCopyStatus.ok)}>
-          {statusText(tokenCopyStatus)}
+      {tokenCopy.status ? (
+        <p role="status" className="copy-status" data-ok={String(tokenCopy.status.ok)}>
+          {copyStatusText(tokenCopy.status)}
         </p>
       ) : null}
-      {configCopyStatus ? (
-        <p role="status" className="copy-status" data-ok={String(configCopyStatus.ok)}>
-          {statusText(configCopyStatus)}
+      {configCopy.status ? (
+        <p role="status" className="copy-status" data-ok={String(configCopy.status.ok)}>
+          {copyStatusText(configCopy.status)}
         </p>
       ) : null}
     </section>
