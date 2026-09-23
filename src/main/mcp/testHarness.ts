@@ -1,6 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { MCP_SERVER_NAME, serverInstructions } from '../../shared/agentGuide'
 import { registerTools } from './registerTools'
 import type { ToolCallRecord, ToolContext } from './toolContext'
 
@@ -23,7 +24,10 @@ export async function createToolHarness(
   context: Omit<ToolContext, 'onToolCall'>
 ): Promise<ToolHarness> {
   const records: ToolCallRecord[] = []
-  const server = new McpServer({ name: 'virtual-device-helper', version: '0.0.0' })
+  const server = new McpServer(
+    { name: MCP_SERVER_NAME, version: '0.0.0' },
+    { instructions: serverInstructions() }
+  )
 
   registerTools(server, { ...context, onToolCall: (record) => records.push(record) })
 
