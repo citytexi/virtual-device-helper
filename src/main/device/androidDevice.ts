@@ -18,9 +18,15 @@ import type { ResizeImage } from './resizeImage'
 
 /** 스크린샷 기본 축소 기준. 원본이 필요한 쪽은 사람이고, 사람은 앱 화면으로 본다. */
 export const DEFAULT_MAX_LONG_EDGE = 720
-export const DEFAULT_LOG_LIMIT = 200
-/** 인자로도 넘을 수 없는 상한. 툴 하나가 에이전트의 문맥을 통째로 먹는 것을 막는다. */
-export const MAX_LOG_LIMIT = 2000
+export const DEFAULT_LOG_LIMIT = 100
+/**
+ * 인자로도 넘을 수 없는 상한. 툴 하나가 에이전트의 문맥을 통째로 먹는 것을 막는다.
+ * mcpTools 층(`observe.ts`)이 응답 크기를 소유하지만, 이 값은 그 층을 거치지 않고
+ * `AndroidDevice.readLogs`를 직접 부르는 경로(테스트, 장차 M3의 renderer/IPC 경로)에도
+ * 같은 안전판이 있어야 해서 여기 둔다. 위층은 바로 아래층만 부르므로 이 파일이
+ * `observe.ts`를 import할 수는 없다 — 대신 `observe.ts`가 이 상수를 그대로 재사용한다.
+ */
+export const MAX_LOG_LIMIT = 200
 
 const SCREENSHOT_TIMEOUT_MS = 60_000
 const DUMP_PATH = '/sdcard/window_dump.xml'

@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { AvdController } from '../../device/avdController'
 import type { DeviceRegistry } from '../../device/registry'
 import type { Device, LogLine } from '../../../shared/types/device'
+import { parseLogcat } from '../../device/parsers/logcat'
 import { createToolHarness } from '../testHarness'
 import { LOG_READ_DEFAULT_LIMIT, LOG_READ_MAX_LIMIT } from './observe'
 
@@ -78,16 +81,37 @@ describe('screenshot', () => {
 })
 
 describe('log_read', () => {
-  it('returns parsed lines with the truncation flag', async () => {
+  it('returns lines compacted into one string per line, with the truncation flag', async () => {
     const harness = await harnessFor({
       readLogs: async () => ({ lines: [line], truncated: false, droppedCount: 0 })
     })
 
     await expect(harness.call('log_read')).resolves.toEqual({
-      lines: [line],
+      lines: ['09-22 11:06:21.123 E AndroidRuntime(5678): FATAL EXCEPTION: main'],
       truncated: false,
       droppedCount: 0
     })
+
+    await harness.close()
+  })
+
+  it('caps a long message with a visible marker instead of letting one line blow the budget', async () => {
+    const longMessage = 'x'.repeat(500)
+    const harness = await harnessFor({
+      readLogs: async () => ({
+        lines: [{ ...line, message: longMessage }],
+        truncated: false,
+        droppedCount: 0
+      })
+    })
+
+    const payload = (await harness.call('log_read')) as { lines: string[] }
+
+    expect(payload.lines).toHaveLength(1)
+    const formatted = payload.lines[0] as string
+    expect(formatted).toContain('x'.repeat(300))
+    expect(formatted).not.toContain('x'.repeat(301))
+    expect(formatted).toMatch(/…\(\+200자\)$/)
 
     await harness.close()
   })
@@ -166,6 +190,38 @@ describe('log_read', () => {
     await harness.call('log_read', { limit: LOG_READ_MAX_LIMIT })
 
     expect(readLogs).toHaveBeenCalledWith({ limit: LOG_READ_MAX_LIMIT })
+
+    await harness.close()
+  })
+})
+
+describe('log_read response size regression', () => {
+  it('stays under 25,000 characters at the max limit with realistic long lines', async () => {
+    const fixturePath = join(
+      __dirname,
+      '../../device/parsers/__fixtures__/logcat-threadtime-emulator.txt'
+    )
+    const fixtureLines = parseLogcat(readFileSync(fixturePath, 'utf8'))
+    expect(fixtureLines.length).toBeGreaterThan(0)
+
+    // 실제 픽스처를 필요한 만큼 반복해 최대 줄 수를 채우고, 그중 한 줄은 아주 긴
+    // message로 바꿔 넣는다 — 잘림 표식이 없으면 그 한 줄만으로도 예산을 넘길 수 있다.
+    const repeated: LogLine[] = []
+    while (repeated.length < LOG_READ_MAX_LIMIT) {
+      repeated.push(...fixtureLines)
+    }
+    const lines = repeated.slice(0, LOG_READ_MAX_LIMIT)
+    const hugeLineIndex = lines.length - 1
+    lines[hugeLineIndex] = { ...(lines[hugeLineIndex] as LogLine), message: 'x'.repeat(5000) }
+
+    const harness = await harnessFor({
+      readLogs: async () => ({ lines, truncated: false, droppedCount: 0 })
+    })
+
+    const raw = await harness.raw('log_read', { limit: LOG_READ_MAX_LIMIT })
+    const text = (raw.content[0] as { text: string }).text
+
+    expect(text.length).toBeLessThan(25_000)
 
     await harness.close()
   })
