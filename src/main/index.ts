@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { createAdbClient } from './adb/adbClient'
@@ -15,9 +15,16 @@ let window: BrowserWindow | null = null
 let running: BootstrappedApp | null = null
 
 function createWindow(): void {
+  // 3단 레이아웃(기기 목록 · 기기 화면 · 작업 영역)이 스크롤 없이 들어가는 크기.
+  // min 값보다 작아지면 가운데 기기 화면이 읽을 수 없을 만큼 줄어든다.
+  // backgroundColor는 renderer가 뜨기 전 흰 화면이 번쩍이지 않도록 app.css의
+  // --bg와 맞춘다. 사용자가 앱 안에서 고른 테마는 여기서 알 수 없어 OS 설정을 따른다.
   window = new BrowserWindow({
-    width: 1280,
-    height: 860,
+    width: 1440,
+    height: 900,
+    minWidth: 1100,
+    minHeight: 700,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0b1120' : '#f1f5f9',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
