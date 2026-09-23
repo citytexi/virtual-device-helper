@@ -62,12 +62,13 @@ describe('agent guide consistency', () => {
 const README = resolve(__dirname, '../../../README.md')
 
 /**
- * README에서 `heading` 제목 아래 본문만 떼어 낸다. 같은 수준 이상의 다음 제목 전까지다.
+ * `markdown`에서 `heading` 제목 아래 본문만 떼어 낸다. 같은 수준 이상의 다음 제목 전까지다.
  * 툴 표는 "### 툴" 아래만 본다 — "자주 나는 실패" 표의 에러 kind(`no_device` 등)도
- * 백틱 snake_case라 섹션 전체를 보면 툴로 오인한다.
+ * 백틱 snake_case라 섹션 전체를 보면 툴로 오인한다. Windows에서 CRLF로 체크아웃돼도
+ * 같게 읽도록 줄바꿈을 먼저 LF로 맞춘다.
  */
-function readmeSection(heading: string): string {
-  const text = readFileSync(README, 'utf8')
+function readmeSection(markdown: string, heading: string): string {
+  const text = markdown.replace(/\r\n/g, '\n')
   const start = text.indexOf(`\n${heading}\n`)
   if (start === -1) throw new Error(`README에 "${heading}" 제목이 없다`)
   const level = heading.split(' ')[0] as string
@@ -77,13 +78,24 @@ function readmeSection(heading: string): string {
   return end === -1 ? rest : rest.slice(0, end)
 }
 
+const readme = (): string => readFileSync(README, 'utf8')
+
+describe('readmeSection', () => {
+  it('reads a README checked out with CRLF line endings', () => {
+    const crlf = '# t\r\n\r\n## 에이전트로 테스트하기\r\n\r\nbody\r\n\r\n## 개발\r\n'
+
+    expect(readmeSection(crlf, '## 에이전트로 테스트하기')).toContain('body')
+    expect(readmeSection(crlf, '## 에이전트로 테스트하기')).not.toContain('개발')
+  })
+})
+
 describe('README agent section', () => {
   it('has the agent section with a tool table under it', () => {
-    expect(readmeSection('## 에이전트로 테스트하기')).toContain('### 툴')
+    expect(readmeSection(readme(), '## 에이전트로 테스트하기')).toContain('### 툴')
   })
 
   it('lists every registered tool in the tool table', async () => {
-    const table = readmeSection('### 툴')
+    const table = readmeSection(readme(), '### 툴')
 
     for (const name of await registeredToolNames()) {
       expect(table, `README 툴 표에 빠진 툴: ${name}`).toContain(`\`${name}\``)
@@ -93,7 +105,7 @@ describe('README agent section', () => {
   it('names only registered tools in the tool table', async () => {
     const registered = new Set(await registeredToolNames())
 
-    for (const name of mentionedToolNames(readmeSection('### 툴'))) {
+    for (const name of mentionedToolNames(readmeSection(readme(), '### 툴'))) {
       expect(registered, `README 툴 표가 없는 툴을 언급한다: ${name}`).toContain(name)
     }
   })
