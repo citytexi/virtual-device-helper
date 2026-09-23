@@ -13,7 +13,6 @@
 <!-- index:start -->
 | 계획 | 상태 | 내용 |
 |------|------|------|
-| [agent-guide](2026-09-23-agent-guide.md) | done | agentGuide 문구 → MCP instructions → useCopy → 에이전트 탭 → 탭 전환 → README → 수동 검증 |
 <!-- index:end -->
 
 ## 아카이브
@@ -29,6 +28,7 @@
 | [m1-3-mcp-server](archive/2026-09-22-m1-3-mcp-server.md) | done — M1 구현 완료. MCP 툴, 응답 크기 상한, 루프백 HTTP 서버와 보안 기본값 |
 | [m1-4-electron-shell-ui](archive/2026-09-22-m1-4-electron-shell-ui.md) | done — M1 구현 완료. IPC 계약, main 조립, 최소 renderer UI |
 | [m1-5-integration-verification](archive/2026-09-22-m1-5-integration-verification.md) | done — M1 구현 완료. 실기기 통합 테스트와 완료 조건 검증, 결과는 스펙에 옮김 |
+| [agent-guide](archive/2026-09-23-agent-guide.md) | done — 에이전트 사용 안내 구현 완료. PR #8로 develop에 머지 |
 <!-- archive:end -->
 
 ## 작성 가이드

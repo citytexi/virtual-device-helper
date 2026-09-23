@@ -17,7 +17,6 @@
 <!-- index:start -->
 | 스펙 | 상태 | 내용 |
 |------|------|------|
-| [agent-guide](2026-09-23-agent-guide.md) | implemented | Claude Code 연결 안내·프롬프트 템플릿을 README·앱 에이전트 탭·MCP instructions에 싣는다 |
 <!-- index:end -->
 
 ## 아카이브
@@ -28,6 +27,7 @@
 | 스펙 | 내용 |
 |------|------|
 | [m1-device-core-mcp-server](archive/2026-09-22-m1-device-core-mcp-server.md) | implemented — macOS×Android 기기 제어 코어와 앱 내장 MCP 서버. 검증 결과와 남은 결함 포함 |
+| [agent-guide](archive/2026-09-23-agent-guide.md) | implemented — Claude Code 연결 안내·프롬프트 템플릿을 README·앱 에이전트 탭·MCP instructions에 싣는다. 검증 결과 포함 |
 <!-- archive:end -->
 
 ## 작성 가이드
