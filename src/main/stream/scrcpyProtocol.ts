@@ -1,4 +1,5 @@
 import { deviceError, type DeviceError } from '../../shared/types/errors'
+import type { ControlIntent, DeviceKey, TouchAction } from '../../shared/types/stream'
 
 /**
  * scrcpy v4.1 와이어 포맷. 근거는 v4.1 태그의 `DesktopConnection.java`, `Streamer.java`,
@@ -154,6 +155,106 @@ export function createVideoStreamParser(handlers: VideoStreamHandlers): VideoStr
       if (stage === 'dead') return
       buffer = buffer.length === 0 ? Buffer.from(chunk) : Buffer.concat([buffer, chunk])
       drain()
+    }
+  }
+}
+
+const TYPE_INJECT_KEYCODE = 0
+const TYPE_INJECT_TEXT = 1
+const TYPE_INJECT_TOUCH_EVENT = 2
+const TYPE_INJECT_SCROLL_EVENT = 3
+const KEY_ACTION_DOWN = 0
+const KEY_ACTION_UP = 1
+const MOTION_ACTIONS: Record<TouchAction, number> = { down: 0, up: 1, move: 2 }
+/** scrcpy의 SC_POINTER_ID_GENERIC_FINGER. 서버가 터치스크린 이벤트로 주입한다. */
+const POINTER_ID_GENERIC_FINGER = -2n
+/** 서버 ControlMessageReader.INJECT_TEXT_MAX_LENGTH. 넘으면 서버가 연결을 끊는다. */
+export const INJECT_TEXT_MAX_BYTES = 300
+
+export const ANDROID_KEYCODES: Record<DeviceKey, number> = {
+  back: 4,
+  home: 3,
+  app_switch: 187,
+  power: 26,
+  volume_up: 24,
+  volume_down: 25,
+  enter: 66,
+  backspace: 67,
+  forward_delete: 112,
+  tab: 61,
+  escape: 111,
+  up: 19,
+  down: 20,
+  left: 21,
+  right: 22
+}
+
+function keyMessage(action: number, keycode: number): Buffer {
+  const bytes = Buffer.alloc(14)
+  bytes.writeUInt8(TYPE_INJECT_KEYCODE, 0)
+  bytes.writeUInt8(action, 1)
+  bytes.writeInt32BE(keycode, 2)
+  bytes.writeInt32BE(0, 6) // repeat
+  bytes.writeInt32BE(0, 10) // metaState
+  return bytes
+}
+
+/** scrcpy의 sc_float_to_i16fp. [-16, 16]을 [-1, 1]로 줄인 뒤 2^15를 곱하고 버린다. */
+function scrollToI16(value: number): number {
+  const normalized = Math.max(-1, Math.min(1, value / 16))
+  const fixed = Math.trunc(normalized * 0x8000)
+  return fixed >= 0x7fff ? 0x7fff : fixed
+}
+
+function writePosition(bytes: Buffer, offset: number, point: { x: number; y: number; width: number; height: number }): void {
+  bytes.writeInt32BE(Math.round(point.x), offset)
+  bytes.writeInt32BE(Math.round(point.y), offset + 4)
+  bytes.writeUInt16BE(point.width, offset + 8)
+  bytes.writeUInt16BE(point.height, offset + 10)
+}
+
+/** 입력 의도를 control 소켓에 쓸 바이트로 바꾼다. 모든 정수는 big-endian이다. */
+export function serializeControl(intent: ControlIntent): Uint8Array {
+  switch (intent.type) {
+    case 'key': {
+      const keycode = ANDROID_KEYCODES[intent.key]
+      return Buffer.concat([keyMessage(KEY_ACTION_DOWN, keycode), keyMessage(KEY_ACTION_UP, keycode)])
+    }
+
+    case 'text': {
+      const text = Buffer.from(intent.text, 'utf8')
+      if (text.length > INJECT_TEXT_MAX_BYTES) {
+        throw deviceError('command_failed', `입력 텍스트가 ${INJECT_TEXT_MAX_BYTES}바이트를 넘는다`, '텍스트를 나눠서 보내라', {
+          bytes: text.length
+        })
+      }
+      const bytes = Buffer.alloc(5 + text.length)
+      bytes.writeUInt8(TYPE_INJECT_TEXT, 0)
+      bytes.writeUInt32BE(text.length, 1)
+      text.copy(bytes, 5)
+      return bytes
+    }
+
+    case 'touch': {
+      const bytes = Buffer.alloc(32)
+      bytes.writeUInt8(TYPE_INJECT_TOUCH_EVENT, 0)
+      bytes.writeUInt8(MOTION_ACTIONS[intent.action], 1)
+      bytes.writeBigInt64BE(POINTER_ID_GENERIC_FINGER, 2)
+      writePosition(bytes, 10, intent.point)
+      bytes.writeUInt16BE(intent.action === 'up' ? 0 : 0xffff, 22) // pressure
+      bytes.writeInt32BE(0, 24) // actionButton
+      bytes.writeInt32BE(0, 28) // buttons
+      return bytes
+    }
+
+    case 'scroll': {
+      const bytes = Buffer.alloc(21)
+      bytes.writeUInt8(TYPE_INJECT_SCROLL_EVENT, 0)
+      writePosition(bytes, 1, intent.point)
+      bytes.writeInt16BE(scrollToI16(intent.hScroll), 13)
+      bytes.writeInt16BE(scrollToI16(intent.vScroll), 15)
+      bytes.writeInt32BE(0, 17) // buttons
+      return bytes
     }
   }
 }
