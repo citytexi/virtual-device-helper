@@ -180,7 +180,8 @@ describe('AndroidDevice app commands', () => {
     const resolve = calls.find((args) => args.includes('resolve-activity'))
     expect(resolve).toContain('com.teamyg.parfait')
     const start = calls.find((args) => args.includes('am') && args.includes('start'))
-    expect(start).toContain('com.teamyg.parfait/.MainActivity')
+    // 원격 셸이 인자를 이어 붙여 다시 해석하므로 컴포넌트는 작은따옴표로 감싸 보낸다.
+    expect(start).toContain("'com.teamyg.parfait/.MainActivity'")
   })
 
   it('throws a Korean command_failed with a hint to pass activity when the package has no launcher activity (R9)', async () => {
@@ -237,7 +238,9 @@ describe('AndroidDevice app commands', () => {
     expect(toolError.kind).toBe('command_failed')
     expect(toolError.message).toContain('Error: Activity class {com.teamyg.parfait/com.teamyg.parfait.Nope} does not exist.')
     expect(toolError.hint).toContain('activity')
-    expect(toolError.details?.stderr ?? toolError.details?.output).toContain('does not exist')
+    // non-zero exit 경로다. 원인은 adbClient가 담아 준 stderr에 있고, output 필드는 쓰지 않는다.
+    expect(toolError.details?.stderr).toContain('does not exist')
+    expect(toolError.details?.output).toBeUndefined()
   })
 
   it('applies the same am start Error handling to the explicit-activity branch (R9)', async () => {
@@ -266,6 +269,81 @@ describe('AndroidDevice app commands', () => {
     expect(toolError.message).toContain('Error: Activity class {com.teamyg.parfait/com.teamyg.parfait.Nope} does not exist.')
   })
 
+  it('treats a resolver line that is not under the package as no launcher activity (ResolverActivity)', async () => {
+    // 런처 액티비티를 하나로 정하지 못하면 resolve-activity가 시스템의 선택 화면
+    // (ResolverActivity)을 돌려줄 수 있다. 그 컴포넌트는 이 패키지가 아니므로 실행하지 않는다.
+    const { adb, calls } = fakeAdb({
+      'pm list packages': 'package:com.example.app\n',
+      'resolve-activity': 'priority=0 preferredOrder=0 match=0x0 specificIndex=-1 isDefault=false\nandroid/com.android.internal.app.ResolverActivity'
+    })
+    const device = makeDevice(adb)
+
+    const error = await device.launch('com.example.app').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(DeviceError)
+    const toolError = (error as DeviceError).toolError
+    expect(toolError.kind).toBe('command_failed')
+    expect(toolError.message).toMatch(/런처|launcher/i)
+    expect(toolError.hint).toContain('activity')
+    expect(toolError.hint).toContain('app_launch')
+    expect(calls.some((args) => args.includes('am') && args.includes('start'))).toBe(false)
+  })
+
+  it('fails with the Error line when am start exits 0 but prints an Error line on stdout (defensive)', async () => {
+    // 이 모양(exit 0 + stdout의 Error 줄)은 실기기에서 관찰한 것이 아니다. am start가
+    // 종료 코드 없이 실패를 말하는 경우를 대비한 방어 경로다.
+    const stdout =
+      'Starting: Intent { cmp=com.example.app/.Missing }\nError: Activity not started, unable to resolve Intent { cmp=com.example.app/.Missing }'
+    const { adb } = fakeAdb({ 'pm list packages': 'package:com.example.app\n', 'am start': stdout })
+    const device = makeDevice(adb)
+
+    const error = await device.launch('com.example.app', '.Missing').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(DeviceError)
+    const toolError = (error as DeviceError).toolError
+    expect(toolError.kind).toBe('command_failed')
+    expect(toolError.message).toContain('Error: Activity not started')
+    expect(toolError.details?.output).toContain('unable to resolve Intent')
+    expect(toolError.details?.stderr).toBeUndefined()
+  })
+
+  it('keeps a $ in a nested class name intact by single-quoting the component for the remote shell', async () => {
+    const { adb, calls } = fakeAdb({ 'pm list packages': 'package:com.example.app\n' })
+    const device = makeDevice(adb)
+
+    await device.launch('com.example.app', '.Outer$Inner')
+
+    const start = calls.find((args) => args.includes('am') && args.includes('start'))
+    expect(start).toEqual(['shell', 'am', 'start', '-n', "'com.example.app/.Outer$Inner'"])
+  })
+
+  it('rejects an activity with shell metacharacters before running am start', async () => {
+    const { adb, calls } = fakeAdb({ 'pm list packages': 'package:com.example.app\n' })
+    const device = makeDevice(adb)
+
+    const error = await device.launch('com.example.app', '.Main;reboot').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(DeviceError)
+    const toolError = (error as DeviceError).toolError
+    expect(toolError.kind).toBe('command_failed')
+    expect(toolError.hint).toContain('activity')
+    expect(calls.some((args) => args.includes('am') && args.includes('start'))).toBe(false)
+  })
+
+  it('rejects a resolved launcher component with shell metacharacters before running am start', async () => {
+    const { adb, calls } = fakeAdb({
+      'pm list packages': 'package:com.example.app\n',
+      'resolve-activity': 'com.example.app/.Main;reboot'
+    })
+    const device = makeDevice(adb)
+
+    const error = await device.launch('com.example.app').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(DeviceError)
+    expect((error as DeviceError).toolError.kind).toBe('command_failed')
+    expect(calls.some((args) => args.includes('am') && args.includes('start'))).toBe(false)
+  })
+
   it('uses am start with an explicit component when an activity is given', async () => {
     const { adb, calls } = fakeAdb({ 'pm list packages': 'package:com.example.app\n' })
     const device = makeDevice(adb)
@@ -273,7 +351,7 @@ describe('AndroidDevice app commands', () => {
     await device.launch('com.example.app', '.MainActivity')
 
     const start = calls.find((args) => args.includes('am'))
-    expect(start).toContain('com.example.app/.MainActivity')
+    expect(start).toContain("'com.example.app/.MainActivity'")
   })
 
   it('force-stops with am force-stop', async () => {

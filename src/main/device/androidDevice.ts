@@ -104,6 +104,31 @@ function rethrowInstallFailure(error: unknown): never {
   throw error
 }
 
+/**
+ * `am start -n`에 넘길 수 있는 컴포넌트 이름의 문자 집합. 패키지명·클래스명(중첩 클래스의
+ * `$` 포함)과 구분자 `/`만 허용한다.
+ */
+const COMPONENT_PATTERN = /^[A-Za-z0-9_.$/]+$/
+
+/**
+ * 컴포넌트 이름을 원격 셸에 안전하게 넘길 형태로 바꾼다. `adb shell`은 인자를 공백으로
+ * 이어 붙여 기기 셸이 다시 해석하므로(`escapeInputText`와 같은 이유), 그대로 넘기면
+ * 중첩 클래스의 `$Inner`가 변수 확장으로 사라지고 `;` 같은 문자는 다른 명령을 부른다.
+ * 허용 문자 밖이면 거부하고, 허용된 이름은 작은따옴표로 감싼다. 허용 문자 집합에
+ * 작은따옴표가 없으므로 감싼 뒤 따옴표가 깨질 일은 없다.
+ */
+function quoteComponent(component: string): string {
+  if (!COMPONENT_PATTERN.test(component)) {
+    throw deviceError(
+      'command_failed',
+      `실행할 컴포넌트 이름에 쓸 수 없는 문자가 있다: ${component}`,
+      'activity에는 영문자·숫자·_·.·$만 써라(예: .MainActivity, .Outer$Inner). 패키지명은 빼고 넘겨도 된다',
+      { component }
+    )
+  }
+  return `'${component}'`
+}
+
 export interface AndroidDeviceDeps {
   serial: string
   adb: AdbClient
@@ -302,8 +327,10 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
    * `monkey -p <pkg> -c android.intent.category.LAUNCHER 1`로 기본 액티비티를 찾던
    * 예전 방식은 API 36 실기기(emulator-5554)에서 exit 251로 죽어 항상 command_failed를
    * 냈다. `cmd package resolve-activity`는 같은 정보를 셸을 흉내 내지 않고 직접 준다.
-   * 출력 마지막 줄 중 `/`가 든 줄이 컴포넌트다. 런처 액티비티가 없으면
-   * "No activity found"만 오고 `/`가 든 줄이 없다.
+   * 출력 마지막 줄 중 `${pkg}/`로 시작하는 줄이 컴포넌트다. 런처 액티비티가 없으면
+   * "No activity found"만 온다. 런처 액티비티를 하나로 정하지 못하면 시스템의 선택 화면
+   * (`android/com.android.internal.app.ResolverActivity`)이 올 수 있는데, 이 패키지의
+   * 컴포넌트가 아니므로 역시 "런처 액티비티 없음"으로 다룬다.
    */
   async function resolveLauncherComponent(pkg: string): Promise<string> {
     const output = await shell([
@@ -319,7 +346,7 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
-    const component = [...lines].reverse().find((line) => line.includes('/'))
+    const component = [...lines].reverse().find((line) => line.startsWith(`${pkg}/`))
 
     if (!component) {
       throw deviceError(
@@ -344,16 +371,17 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
   }
 
   /**
-   * `am start`는 존재하지 않는 액티비티를 줘도 adb 자체는 종료 코드만으로 원인을
-   * 말해 주지 않을 때가 있고(관찰: exit 1, stderr에 "Error type 3" / "Error: Activity
-   * class ... does not exist."), 반대로 성공(exit 0)해 놓고 stdout에 같은 형태의
-   * 경고를 남기는 경우도 있어 두 경로 모두 "Error"로 시작하는 줄을 찾는다.
+   * `am start`가 존재하지 않는 액티비티로 실패하면 관찰된 모양은 exit 1과 stderr의
+   * "Error type 3" / "Error: Activity class ... does not exist."였다. 그 경우 adbClient가
+   * command_failed로 던지고 여기서 stderr의 Error 줄을 메시지로 올린다. exit 0으로 끝나면서
+   * stdout에 Error 줄을 남기는 경우는 관찰한 적이 없지만, 성공으로 잘못 보고하지 않도록
+   * 방어적으로 같은 검사를 한다.
    */
   async function startComponent(component: string): Promise<void> {
     let output: string
 
     try {
-      const result = await adb.exec(serial, ['shell', 'am', 'start', '-n', component])
+      const result = await adb.exec(serial, ['shell', 'am', 'start', '-n', quoteComponent(component)])
       output = [result.stdout, result.stderr].filter((chunk) => chunk.length > 0).join('\n')
     } catch (error) {
       if (isDeviceError(error) && error.toolError.kind === 'command_failed') {
