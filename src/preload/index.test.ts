@@ -47,12 +47,18 @@ describe('preload API surface', () => {
     expect(api.ipcRenderer).toBeUndefined()
   })
 
-  it('routes each method to its own named channel', async () => {
+  it.each([
+    ['getSnapshot', IPC_CHANNELS.getSnapshot, []],
+    ['selectDevice', IPC_CHANNELS.selectDevice, ['emulator-5554']],
+    ['bootAvd', IPC_CHANNELS.bootAvd, ['Pixel_7_API_34']],
+    ['shutdownDevice', IPC_CHANNELS.shutdownDevice, ['emulator-5554']],
+    ['captureScreenshot', IPC_CHANNELS.captureScreenshot, ['emulator-5554']]
+  ] as const)('routes %s to its own named channel with its argument', async (method, channel, args) => {
     const api = await loadPreload()
 
-    await (api.selectDevice as (serial: string) => Promise<unknown>)('emulator-5554')
+    await (api[method] as (...callArgs: unknown[]) => Promise<unknown>)(...args)
 
-    expect(invoke).toHaveBeenCalledWith(IPC_CHANNELS.selectDevice, 'emulator-5554')
+    expect(invoke).toHaveBeenCalledWith(channel, ...args)
   })
 
   it('delivers only the event payload to subscribers, never the IpcRendererEvent', async () => {
