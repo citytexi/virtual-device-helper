@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Outcome, RendererApi } from '../../../shared/types/ipc'
 import type { ScreenshotResult } from '../../../shared/types/device'
-import { DeviceScreen } from './DeviceScreen'
+import { ScreenshotView } from './ScreenshotView'
 
 const captureScreenshot = vi.fn(
   async (): Promise<Outcome<ScreenshotResult>> => ({
@@ -20,30 +20,23 @@ beforeEach(() => {
   } as unknown as RendererApi
 })
 
-describe('DeviceScreen', () => {
-  it('asks for no screenshot when there is no device', () => {
-    render(<DeviceScreen serial={null} />)
-
-    expect(captureScreenshot).not.toHaveBeenCalled()
-    expect(screen.getByText(/기기를 선택해라/)).toBeDefined()
-  })
-
+describe('ScreenshotView', () => {
   it('captures once for the given serial on mount', async () => {
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<ScreenshotView serial="emulator-5554" />)
 
     await waitFor(() => expect(captureScreenshot).toHaveBeenCalledWith('emulator-5554'))
     expect(captureScreenshot).toHaveBeenCalledTimes(1)
   })
 
   it('renders the captured png as an image', async () => {
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<ScreenshotView serial="emulator-5554" />)
 
     const image = (await screen.findByRole('img')) as HTMLImageElement
     expect(image.src).toBe('data:image/png;base64,QUJD')
   })
 
   it('recaptures when the refresh button is pressed', async () => {
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<ScreenshotView serial="emulator-5554" />)
     await screen.findByRole('img')
 
     await userEvent.click(screen.getByRole('button', { name: '새로고침' }))
@@ -52,10 +45,10 @@ describe('DeviceScreen', () => {
   })
 
   it('recaptures when the serial changes', async () => {
-    const { rerender } = render(<DeviceScreen serial="emulator-5554" />)
+    const { rerender } = render(<ScreenshotView serial="emulator-5554" />)
     await screen.findByRole('img')
 
-    rerender(<DeviceScreen serial="emulator-5556" />)
+    rerender(<ScreenshotView serial="emulator-5556" />)
 
     await waitFor(() => expect(captureScreenshot).toHaveBeenLastCalledWith('emulator-5556'))
   })
@@ -66,7 +59,7 @@ describe('DeviceScreen', () => {
       error: { kind: 'device_unresponsive', message: '응답이 없다', hint: '다시 부팅해라' }
     } as never)
 
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<ScreenshotView serial="emulator-5554" />)
 
     await waitFor(() => expect(screen.getByText(/응답이 없다/)).toBeDefined())
   })
@@ -74,7 +67,7 @@ describe('DeviceScreen', () => {
   it('shows the reason and re-enables refresh when the capture promise rejects', async () => {
     captureScreenshot.mockRejectedValueOnce(new Error('연결 끊김'))
 
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<ScreenshotView serial="emulator-5554" />)
 
     await waitFor(() => expect(screen.getByText(/연결 끊김/)).toBeDefined())
     expect(screen.getByRole('button', { name: '새로고침' })).toHaveProperty('disabled', false)
@@ -94,10 +87,10 @@ describe('DeviceScreen', () => {
         })
     )
 
-    const { rerender } = render(<DeviceScreen serial="emulator-5554" />)
+    const { rerender } = render(<ScreenshotView serial="emulator-5554" />)
     await waitFor(() => expect(captureScreenshot).toHaveBeenCalledTimes(1))
 
-    rerender(<DeviceScreen serial="emulator-5556" />)
+    rerender(<ScreenshotView serial="emulator-5556" />)
     await waitFor(() => expect(captureScreenshot).toHaveBeenCalledTimes(2))
 
     // B(새 serial)가 먼저 끝나고, A(오래된 serial)가 뒤늦게 끝난다.
@@ -132,10 +125,10 @@ describe('DeviceScreen', () => {
       })
     })
 
-    const { rerender } = render(<DeviceScreen serial="emulator-5554" />)
+    const { rerender } = render(<ScreenshotView serial="emulator-5554" />)
     await screen.findByRole('img')
 
-    rerender(<DeviceScreen serial="emulator-5556" />)
+    rerender(<ScreenshotView serial="emulator-5556" />)
 
     // 새 serial의 캡처가 아직 끝나지 않았으면 이전 기기 화면을 보여주면 안 된다.
     await waitFor(() => expect(screen.queryByRole('img')).toBeNull())
