@@ -642,7 +642,8 @@ code {
   animation: gesture-fade 700ms ease-out forwards;
 }
 
-.gesture-swipe line {
+.gesture-swipe line,
+.gesture-swipe circle {
   vector-effect: non-scaling-stroke;
 }
 
