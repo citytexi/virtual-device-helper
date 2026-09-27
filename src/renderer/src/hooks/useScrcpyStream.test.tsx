@@ -33,7 +33,7 @@ function harness(startResult: Awaited<ReturnType<ScrcpyStreamDeps['startStream']
       return decoder
     })
   }
-  const canvasRef = { current: null }
+  const canvasRef: { current: HTMLCanvasElement | null } = { current: null }
   const deliverPort = (serial: string, port: FakePort) =>
     act(() => portCallback?.({ serial, sessionId: 'x' }, port as unknown as MessagePort))
   const deliver = (port: FakePort, message: StreamDown) => act(() => port.onmessage?.({ data: message } as MessageEvent))
@@ -275,6 +275,41 @@ describe('useScrcpyStream', () => {
       error: { kind: 'command_failed', message: '코덱을 못 만든다', hint: '다시 연결해라' }
     })
     expect(h.deps.stopStream).toHaveBeenCalled()
+  })
+
+  it('closes the frame after drawing even when canvasRef is empty', () => {
+    const h = harness()
+    renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    h.deliverPort('emulator-5554', fakePort())
+    const frame = { close: vi.fn() } as unknown as VideoFrame
+
+    act(() => h.decoders[0]?.handlers.onFrame(frame))
+
+    expect(frame.close).toHaveBeenCalled()
+  })
+
+  it('sizes the canvas to the frame, draws it, then closes the frame', () => {
+    const h = harness()
+    const drawImage = vi.fn()
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => ({ drawImage }))
+    } as unknown as HTMLCanvasElement
+    h.canvasRef.current = canvas
+    renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    h.deliverPort('emulator-5554', fakePort())
+    const frame = { displayWidth: 472, displayHeight: 1024, close: vi.fn() } as unknown as VideoFrame
+
+    act(() => h.decoders[0]?.handlers.onFrame(frame))
+
+    expect(canvas.width).toBe(472)
+    expect(canvas.height).toBe(1024)
+    expect(drawImage).toHaveBeenCalledWith(frame, 0, 0)
+    expect(frame.close).toHaveBeenCalled()
+    const drawOrder = drawImage.mock.invocationCallOrder[0]
+    const closeOrder = vi.mocked(frame.close).mock.invocationCallOrder[0]
+    expect(drawOrder).toBeLessThan(closeOrder as number)
   })
 
   it('closes a stale port for the previous serial after switching devices, and stops before starting the next stream', async () => {
