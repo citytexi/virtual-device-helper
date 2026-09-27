@@ -103,30 +103,47 @@ export function useScrcpyStream(
 
     function adopt(next: MessagePort): void {
       release()
-      const adoptedDecoder = d.createDecoder({
-        onFrame: (frame) => {
-          // 한 프레임이라도 그렸다면 그 디코더는 살아 있는 것 — 실패 카운트를 씻는다.
-          restartCountRef.current = 0
-          drawFrame(canvasRef.current, frame)
-        },
-        onError: (error) => {
-          if (!active) return
-          if (restartCountRef.current >= MAX_DECODER_RESTARTS) {
-            // 한도를 넘겼다 — 더 재시작하지 않고 사람이 보게 failed로 강등한다.
-            setStatus({
-              state: 'failed',
-              error: { kind: 'command_failed', message: error.message, hint: '다시 연결해라' }
-            })
-            // main은 이 실패를 모른다 — 포트를 놓아 늦게 온 status가 failed를 덮어쓰지
-            // 못하게 하고, main에도 세션을 그만두라고 알린다.
-            release()
-            d.stopStream().catch(() => {})
-            return
+      let adoptedDecoder: StreamDecoder
+      try {
+        adoptedDecoder = d.createDecoder({
+          onFrame: (frame) => {
+            // 한 프레임이라도 그렸다면 그 디코더는 살아 있는 것 — 실패 카운트를 씻는다.
+            restartCountRef.current = 0
+            drawFrame(canvasRef.current, frame)
+          },
+          onError: (error) => {
+            if (!active) return
+            if (restartCountRef.current >= MAX_DECODER_RESTARTS) {
+              // 한도를 넘겼다 — 더 재시작하지 않고 사람이 보게 failed로 강등한다.
+              setStatus({
+                state: 'failed',
+                error: { kind: 'command_failed', message: error.message, hint: '다시 연결해라' }
+              })
+              // main은 이 실패를 모른다 — 포트를 놓아 늦게 온 status가 failed를 덮어쓰지
+              // 못하게 하고, main에도 세션을 그만두라고 알린다.
+              release()
+              d.stopStream().catch(() => {})
+              return
+            }
+            restartCountRef.current += 1
+            setAttempt((n) => n + 1)
           }
-          restartCountRef.current += 1
-          setAttempt((n) => n + 1)
-        }
-      })
+        })
+      } catch (error) {
+        // createDecoder 자체가 던지면(예: 코덱 미지원) 이 포트로는 아무것도 못 한다 — 포트를
+        // 닫아 흘리지 않고, main에도 세션을 그만두라 알리고, 사람이 보게 failed로 강등한다.
+        next.close()
+        setStatus({
+          state: 'failed',
+          error: {
+            kind: 'command_failed',
+            message: error instanceof Error ? error.message : String(error),
+            hint: '다시 연결해라'
+          }
+        })
+        d.stopStream().catch(() => {})
+        return
+      }
       port = next
       decoder = adoptedDecoder
       portRef.current = next

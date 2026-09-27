@@ -258,6 +258,25 @@ describe('useScrcpyStream', () => {
     expect(result.current.status).toEqual({ state: 'streaming' })
   })
 
+  it('closes the port and demotes to failed when creating the decoder throws', async () => {
+    const h = harness()
+    vi.mocked(h.deps.createDecoder).mockImplementationOnce(() => {
+      throw new Error('코덱을 못 만든다')
+    })
+    const { result } = renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(1))
+    const port = fakePort()
+
+    h.deliverPort('emulator-5554', port)
+
+    expect(port.close).toHaveBeenCalled()
+    expect(result.current.status).toEqual({
+      state: 'failed',
+      error: { kind: 'command_failed', message: '코덱을 못 만든다', hint: '다시 연결해라' }
+    })
+    expect(h.deps.stopStream).toHaveBeenCalled()
+  })
+
   it('closes a stale port for the previous serial after switching devices, and stops before starting the next stream', async () => {
     const h = harness()
     const { rerender } = renderHook(({ serial }: { serial: string }) => useScrcpyStream(serial, h.canvasRef, h.deps), {
