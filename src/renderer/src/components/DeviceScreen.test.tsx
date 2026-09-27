@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { RendererApi } from '../../../shared/types/ipc'
+import type { MainEvent, RendererApi } from '../../../shared/types/ipc'
 import type { SessionStatus } from '../../../shared/types/stream'
 import type { ScrcpyStream } from '../hooks/useScrcpyStream'
 import { useScrcpyStream } from '../hooks/useScrcpyStream'
@@ -13,6 +13,7 @@ vi.mock('../hooks/useScrcpyStream', () => ({ useScrcpyStream: vi.fn() }))
 const send = vi.fn()
 const reconnect = vi.fn()
 const captureScreenshot = vi.fn(async () => ({ ok: true, value: { base64: 'QUJD', width: 1, height: 1 } }))
+const eventListeners: Array<(event: MainEvent) => void> = []
 
 function streamWith(status: SessionStatus, video: ScrcpyStream['video'] = { width: 472, height: 1024 }): void {
   vi.mocked(useScrcpyStream).mockReturnValue({ status, video, send, reconnect })
@@ -36,7 +37,14 @@ beforeEach(() => {
   reconnect.mockClear()
   captureScreenshot.mockClear()
   vi.mocked(useScrcpyStream).mockClear()
-  ;(window as unknown as { api: Partial<RendererApi> }).api = { captureScreenshot } as unknown as RendererApi
+  eventListeners.length = 0
+  ;(window as unknown as { api: Partial<RendererApi> }).api = {
+    captureScreenshot,
+    onEvent: (listener: (event: MainEvent) => void) => {
+      eventListeners.push(listener)
+      return () => {}
+    }
+  } as unknown as RendererApi
 })
 
 describe('DeviceScreen', () => {
@@ -165,5 +173,29 @@ describe('DeviceScreen', () => {
     // fireEvent는 preventDefault가 호출되지 않았을 때만 true를 돌려준다.
     expect(notPrevented).toBe(true)
     expect(send).not.toHaveBeenCalled()
+  })
+
+  it('draws an agent tap over the live canvas', () => {
+    streamWith({ state: 'streaming' }, { width: 540, height: 1200 })
+    const { container } = render(<DeviceScreen serial="emulator-5554" />)
+
+    act(() =>
+      eventListeners.forEach((listener) =>
+        listener({
+          type: 'tool_call',
+          record: {
+            id: '1',
+            tool: 'ui_tap',
+            argsSummary: '{}',
+            startedAt: 0,
+            durationMs: 1,
+            ok: true,
+            gesture: { kind: 'tap', serial: 'emulator-5554', screen: { width: 1080, height: 2400 }, x: 540, y: 930 }
+          }
+        })
+      )
+    )
+
+    expect(container.querySelector('.screen-stage svg.gesture-overlay circle.gesture-tap')).not.toBeNull()
   })
 })
