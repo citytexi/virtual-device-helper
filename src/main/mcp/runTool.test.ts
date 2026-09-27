@@ -153,3 +153,42 @@ describe('runTool sink isolation', () => {
     expect(calls).toBe(1)
   })
 })
+
+describe('runTool gesture', () => {
+  it('attaches the gesture of a successful call', async () => {
+    const sink = collector()
+    const gesture = { kind: 'tap' as const, serial: 's', screen: { width: 1, height: 2 }, x: 0, y: 0 }
+
+    await runTool(sink, 'ui_tap', {}, async () => ({ ok: true }), {
+      gesture: async () => gesture
+    })
+
+    expect(sink.records[0]?.gesture).toEqual(gesture)
+  })
+
+  it('does not ask for a gesture when the call fails', async () => {
+    const sink = collector()
+    const gesture = vi.fn(async () => undefined)
+
+    await runTool(sink, 'ui_tap', {}, async () => {
+      throw new Error('boom')
+    }, { gesture })
+
+    expect(gesture).not.toHaveBeenCalled()
+    expect(sink.records[0]?.gesture).toBeUndefined()
+  })
+
+  it('keeps the success when building the gesture throws', async () => {
+    const sink = collector()
+
+    const result = await runTool(sink, 'ui_tap', {}, async () => ({ ok: true }), {
+      gesture: async () => {
+        throw new Error('no size')
+      }
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(sink.records[0]).toMatchObject({ ok: true })
+    expect(sink.records[0]?.gesture).toBeUndefined()
+  })
+})

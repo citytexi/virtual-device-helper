@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { isDeviceError, type ToolError } from '../../shared/types/errors'
+import type { Gesture } from '../../shared/types/ipc'
 import type { ToolCallSink } from './toolContext'
 
 export type ToolContent =
@@ -46,11 +47,20 @@ export function jsonResult(payload: unknown): ToolResult {
  * `ToolResult`에 인덱스 시그니처를 넣어 두면 `isError` 같은 선택 필드의 오타를 excess
  * property check가 잡아내지 못하게 된다.
  */
+export interface RunToolOpts {
+  /**
+   * 성공한 호출에만 부른다. 던지거나 undefined면 gesture 없이 기록한다 — 오버레이용
+   * 부가 정보가 툴 결과를 바꾸면 안 된다.
+   */
+  gesture?: () => Promise<Gesture | undefined>
+}
+
 export async function runTool(
   sink: ToolCallSink,
   tool: string,
   args: unknown,
-  handler: () => Promise<unknown> | unknown
+  handler: () => Promise<unknown> | unknown,
+  opts: RunToolOpts = {}
 ): Promise<CallToolResult> {
   const startedAt = Date.now()
   const id = randomUUID()
@@ -69,13 +79,22 @@ export async function runTool(
 
   try {
     const payload = await handler()
+
+    let gesture: Gesture | undefined
+    try {
+      gesture = await opts.gesture?.()
+    } catch {
+      gesture = undefined
+    }
+
     recordSafely({
       id,
       tool,
       argsSummary: summariseArgs(args),
       startedAt,
       durationMs: Date.now() - startedAt,
-      ok: true
+      ok: true,
+      ...(gesture ? { gesture } : {})
     })
 
     const result: ToolResult = isContentPayload(payload) ? { content: payload.content } : jsonResult(payload)

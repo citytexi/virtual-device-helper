@@ -1,6 +1,20 @@
 import type { AvdEntry, ScreenshotResult } from './device'
 import type { ToolError, ToolErrorKind } from './errors'
 
+/** wm size가 돌려주는 자연 방향 화면 크기(기기 픽셀) */
+export interface ScreenSize {
+  width: number
+  height: number
+}
+
+/**
+ * 에이전트의 화면 동작. 좌표는 툴이 받은 기기 픽셀 그대로다. 회전 상태는 main이 모르므로
+ * 정규화는 renderer가 비디오 크기와 screen을 비교해서 한다.
+ */
+export type Gesture =
+  | { kind: 'tap'; serial: string; screen: ScreenSize; x: number; y: number }
+  | { kind: 'swipe'; serial: string; screen: ScreenSize; x1: number; y1: number; x2: number; y2: number }
+
 export interface ToolCallRecord {
   id: string
   tool: string
@@ -10,6 +24,8 @@ export interface ToolCallRecord {
   durationMs: number
   ok: boolean
   errorKind?: ToolErrorKind
+  /** 화면 위 동작이 있는 툴(ui_tap·ui_swipe)이 성공했을 때만 붙는다. 실시간 화면 오버레이가 쓴다. */
+  gesture?: Gesture
 }
 
 /** 채널 이름은 여기 한곳에만 둔다. preload와 main이 같은 상수를 본다. */
