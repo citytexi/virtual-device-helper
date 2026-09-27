@@ -124,6 +124,10 @@ export async function runTool(
 
   try {
     const payload = await handler()
+    // 활동 탭에 보일 소요 시간은 handler가 끝난 시점까지만 잰다. gesture 조회는 그 뒤에
+    // 이어지는 부가 작업이라 GESTURE_TIMEOUT_MS까지 더 기다릴 수 있는데, 그 대기를
+    // durationMs에 얹으면 이미 끝난 호출이 실제보다 오래 걸린 것처럼 보인다.
+    const durationMs = Date.now() - startedAt
 
     const gesture = await withGestureTimeout(opts.gesture)
 
@@ -132,7 +136,7 @@ export async function runTool(
       tool,
       argsSummary: summariseArgs(args),
       startedAt,
-      durationMs: Date.now() - startedAt,
+      durationMs,
       ok: true,
       ...(gesture ? { gesture } : {})
     })

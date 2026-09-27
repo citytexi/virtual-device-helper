@@ -213,6 +213,32 @@ describe('runTool gesture', () => {
     }
   })
 
+  it('excludes the gesture wait from the recorded durationMs', async () => {
+    vi.useFakeTimers()
+    try {
+      const sink = collector()
+      let releaseGesture: (() => void) | undefined
+      const slowGesture = new Promise<undefined>((resolve) => {
+        releaseGesture = () => resolve(undefined)
+      })
+
+      const pending = runTool(sink, 'ui_tap', {}, async () => ({ ok: true }), {
+        gesture: () => slowGesture
+      })
+
+      // handler는 이미 끝났지만 gesture는 아직이다 — 이 시간만큼 durationMs가
+      // 부풀면 안 된다.
+      await vi.advanceTimersByTimeAsync(500)
+      releaseGesture?.()
+      const result = await pending
+
+      expect(result.isError).toBeFalsy()
+      expect(sink.records[0]?.durationMs).toBeLessThan(500)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('leaves no pending timer once a gesture resolves quickly', async () => {
     vi.useFakeTimers()
     try {
