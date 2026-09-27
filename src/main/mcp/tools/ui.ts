@@ -34,6 +34,11 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
         async () => {
           const device = context.registry.resolve(args.serial)
           target = device
+          // 미리 조회를 걸어 탭과 병렬로 돈다; 실패는 gesture 쪽에서 다시 처리한다.
+          // device.info()가 동기적으로 던질 수도 있으니 microtask 뒤로 미뤄 .catch로 받는다.
+          Promise.resolve()
+            .then(() => screenSizeOf(device))
+            .catch(() => {})
           await context.registry.run(device.serial, () => device.tap(args.x, args.y))
           return { tapped: { x: args.x, y: args.y } }
         },
@@ -69,6 +74,11 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
         async () => {
           const device = context.registry.resolve(args.serial)
           target = device
+          // 미리 조회를 걸어 탭과 병렬로 돈다; 실패는 gesture 쪽에서 다시 처리한다.
+          // device.info()가 동기적으로 던질 수도 있으니 microtask 뒤로 미뤄 .catch로 받는다.
+          Promise.resolve()
+            .then(() => screenSizeOf(device))
+            .catch(() => {})
           await context.registry.run(device.serial, () =>
             device.swipe(args.x1, args.y1, args.x2, args.y2, args.durationMs)
           )
