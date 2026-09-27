@@ -57,7 +57,14 @@ describe('wheelToScroll', () => {
 })
 
 describe('keyToIntent', () => {
-  const plain: KeyInput = { key: 'a', isComposing: false, ctrlKey: false, metaKey: false, altKey: false }
+  const plain: KeyInput = {
+    key: 'a',
+    isComposing: false,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false
+  }
 
   it('sends a printable ascii character as text', () => {
     expect(keyToIntent(plain)).toEqual({ type: 'text', text: 'a' })
@@ -86,8 +93,13 @@ describe('keyToIntent', () => {
     ['a Ctrl shortcut', { ...plain, key: 'c', ctrlKey: true }],
     ['an Alt chord', { ...plain, key: 'x', altKey: true }],
     ['a named key we do not map', { ...plain, key: 'F5' }],
-    ['a prototype key name', { ...plain, key: 'toString' }]
+    ['a prototype key name', { ...plain, key: 'toString' }],
+    ['Shift+Tab', { ...plain, key: 'Tab', shiftKey: true }]
   ])('sends nothing for %s', (_name, input) => {
     expect(keyToIntent(input)).toBeNull()
+  })
+
+  it('still sends plain Tab as the tab key (only Shift+Tab passes through)', () => {
+    expect(keyToIntent({ ...plain, key: 'Tab' })).toEqual({ type: 'key', key: 'tab' })
   })
 })

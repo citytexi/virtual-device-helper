@@ -70,6 +70,7 @@ export interface KeyInput {
   ctrlKey: boolean
   metaKey: boolean
   altKey: boolean
+  shiftKey: boolean
 }
 
 const NAMED_KEYS: ReadonlyMap<string, DeviceKey> = new Map([
@@ -91,6 +92,9 @@ const NAMED_KEYS: ReadonlyMap<string, DeviceKey> = new Map([
 export function keyToIntent(event: KeyInput): ControlIntent | null {
   if (event.isComposing) return null
   if (event.metaKey || event.ctrlKey || event.altKey) return null
+  // Shift+Tab은 브라우저 포커스를 캔버스 밖으로 내보내야 한다(WCAG 2.1.2 키보드 트랩 금지).
+  // intent 없이 그냥 통과시켜 DeviceScreen이 preventDefault를 하지 않게 한다.
+  if (event.key === 'Tab' && event.shiftKey) return null
 
   const named = NAMED_KEYS.get(event.key)
   if (named) return { type: 'key', key: named }

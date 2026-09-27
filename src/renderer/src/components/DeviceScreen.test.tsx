@@ -154,4 +154,16 @@ describe('DeviceScreen', () => {
 
     expect(send.mock.calls.map((call) => call[0])).toEqual([{ type: 'text', text: 'a' }])
   })
+
+  it('lets Shift+Tab pass through so focus can leave the canvas (no keyboard trap)', () => {
+    streamWith({ state: 'streaming' })
+    render(<DeviceScreen serial="emulator-5554" />)
+    const canvas = screen.getByLabelText('emulator-5554의 실시간 화면')
+
+    const notPrevented = fireEvent.keyDown(canvas, { key: 'Tab', shiftKey: true })
+
+    // fireEvent는 preventDefault가 호출되지 않았을 때만 true를 돌려준다.
+    expect(notPrevented).toBe(true)
+    expect(send).not.toHaveBeenCalled()
+  })
 })

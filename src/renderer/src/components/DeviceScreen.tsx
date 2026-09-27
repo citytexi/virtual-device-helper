@@ -89,10 +89,12 @@ function LiveScreen({ serial }: { serial: string }): JSX.Element {
       isComposing: event.nativeEvent.isComposing,
       ctrlKey: event.ctrlKey,
       metaKey: event.metaKey,
-      altKey: event.altKey
+      altKey: event.altKey,
+      shiftKey: event.shiftKey
     })
     if (!intent) return
     // Tab·화살표·Backspace가 페이지 포커스 이동이나 뒤로 가기로 새지 않게 막는다.
+    // (Shift+Tab은 keyToIntent가 null을 돌려주니 여기 오지 않는다 — 브라우저 포커스 이동이 그대로 된다.)
     event.preventDefault()
     send(intent)
   }
