@@ -1,148 +1,169 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Outcome, RendererApi } from '../../../shared/types/ipc'
-import type { ScreenshotResult } from '../../../shared/types/device'
+import type { RendererApi } from '../../../shared/types/ipc'
+import type { SessionStatus } from '../../../shared/types/stream'
+import type { ScrcpyStream } from '../hooks/useScrcpyStream'
+import { useScrcpyStream } from '../hooks/useScrcpyStream'
 import { DeviceScreen } from './DeviceScreen'
 
-const captureScreenshot = vi.fn(
-  async (): Promise<Outcome<ScreenshotResult>> => ({
-    ok: true,
-    value: { base64: 'QUJD', width: 360, height: 800 }
-  })
-)
+vi.mock('../hooks/useScrcpyStream', () => ({ useScrcpyStream: vi.fn() }))
+
+const send = vi.fn()
+const reconnect = vi.fn()
+const captureScreenshot = vi.fn(async () => ({ ok: true, value: { base64: 'QUJD', width: 1, height: 1 } }))
+
+function streamWith(status: SessionStatus, video: ScrcpyStream['video'] = { width: 472, height: 1024 }): void {
+  vi.mocked(useScrcpyStream).mockReturnValue({ status, video, send, reconnect })
+}
+
+// jsdom은 레이아웃을 하지 않는다. 캔버스가 비디오의 절반 크기로 딱 맞게 그려졌다고 둔다.
+vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockReturnValue({
+  left: 0,
+  top: 0,
+  width: 236,
+  height: 512,
+  right: 236,
+  bottom: 512,
+  x: 0,
+  y: 0,
+  toJSON: () => ({})
+})
 
 beforeEach(() => {
+  send.mockClear()
+  reconnect.mockClear()
   captureScreenshot.mockClear()
-  ;(window as unknown as { api: Partial<RendererApi> }).api = {
-    captureScreenshot
-  } as unknown as RendererApi
+  vi.mocked(useScrcpyStream).mockClear()
+  ;(window as unknown as { api: Partial<RendererApi> }).api = { captureScreenshot } as unknown as RendererApi
 })
 
 describe('DeviceScreen', () => {
-  it('asks for no screenshot when there is no device', () => {
+  it('asks to pick a device when there is none and opens no stream', () => {
+    streamWith({ state: 'streaming' })
+
     render(<DeviceScreen serial={null} />)
 
-    expect(captureScreenshot).not.toHaveBeenCalled()
     expect(screen.getByText(/기기를 선택해라/)).toBeDefined()
+    expect(useScrcpyStream).not.toHaveBeenCalled()
   })
 
-  it('captures once for the given serial on mount', async () => {
-    render(<DeviceScreen serial="emulator-5554" />)
-
-    await waitFor(() => expect(captureScreenshot).toHaveBeenCalledWith('emulator-5554'))
-    expect(captureScreenshot).toHaveBeenCalledTimes(1)
-  })
-
-  it('renders the captured png as an image', async () => {
-    render(<DeviceScreen serial="emulator-5554" />)
-
-    const image = (await screen.findByRole('img')) as HTMLImageElement
-    expect(image.src).toBe('data:image/png;base64,QUJD')
-  })
-
-  it('recaptures when the refresh button is pressed', async () => {
-    render(<DeviceScreen serial="emulator-5554" />)
-    await screen.findByRole('img')
-
-    await userEvent.click(screen.getByRole('button', { name: '새로고침' }))
-
-    await waitFor(() => expect(captureScreenshot).toHaveBeenCalledTimes(2))
-  })
-
-  it('recaptures when the serial changes', async () => {
-    const { rerender } = render(<DeviceScreen serial="emulator-5554" />)
-    await screen.findByRole('img')
-
-    rerender(<DeviceScreen serial="emulator-5556" />)
-
-    await waitFor(() => expect(captureScreenshot).toHaveBeenLastCalledWith('emulator-5556'))
-  })
-
-  it('shows the failure reason instead of a blank frame', async () => {
-    captureScreenshot.mockResolvedValueOnce({
-      ok: false,
-      error: { kind: 'device_unresponsive', message: '응답이 없다', hint: '다시 부팅해라' }
-    } as never)
+  it('shows the live canvas and takes no screenshot while streaming', () => {
+    streamWith({ state: 'streaming' })
 
     render(<DeviceScreen serial="emulator-5554" />)
 
-    await waitFor(() => expect(screen.getByText(/응답이 없다/)).toBeDefined())
+    expect(screen.getByLabelText('emulator-5554의 실시간 화면')).toBeDefined()
+    expect(captureScreenshot).not.toHaveBeenCalled()
   })
 
-  it('shows the reason and re-enables refresh when the capture promise rejects', async () => {
-    captureScreenshot.mockRejectedValueOnce(new Error('연결 끊김'))
+  it('says it is connecting', () => {
+    streamWith({ state: 'connecting' }, null)
 
     render(<DeviceScreen serial="emulator-5554" />)
 
-    await waitFor(() => expect(screen.getByText(/연결 끊김/)).toBeDefined())
-    expect(screen.getByRole('button', { name: '새로고침' })).toHaveProperty('disabled', false)
+    expect(screen.getByRole('status').textContent).toContain('연결 중')
   })
 
-  it('ignores a superseded capture result from a stale serial', async () => {
-    let resolveA: ((result: Outcome<ScreenshotResult>) => void) | undefined
-    let resolveB: ((result: Outcome<ScreenshotResult>) => void) | undefined
-    let call = 0
+  it('says which reconnect attempt it is on', () => {
+    streamWith({ state: 'reconnecting', attempt: 2 })
 
-    captureScreenshot.mockImplementation(
-      () =>
-        new Promise<Outcome<ScreenshotResult>>((resolve) => {
-          call += 1
-          if (call === 1) resolveA = resolve
-          else resolveB = resolve
-        })
-    )
+    render(<DeviceScreen serial="emulator-5554" />)
 
-    const { rerender } = render(<DeviceScreen serial="emulator-5554" />)
-    await waitFor(() => expect(captureScreenshot).toHaveBeenCalledTimes(1))
+    expect(screen.getByRole('status').textContent).toContain('2/3')
+  })
 
-    rerender(<DeviceScreen serial="emulator-5556" />)
-    await waitFor(() => expect(captureScreenshot).toHaveBeenCalledTimes(2))
+  it('falls back to the screenshot view with the reason and a reconnect button when the stream fails', async () => {
+    streamWith({ state: 'failed', error: { kind: 'device_unresponsive', message: '서버가 안 뜬다', hint: '다시 연결해라' } })
 
-    // B(새 serial)가 먼저 끝나고, A(오래된 serial)가 뒤늦게 끝난다.
-    resolveB?.({ ok: true, value: { base64: 'Qg==', width: 100, height: 200 } })
-    await waitFor(() => {
-      const image = screen.getByRole('img') as HTMLImageElement
-      expect(image.src).toBe('data:image/png;base64,Qg==')
+    render(<DeviceScreen serial="emulator-5554" />)
+
+    expect(screen.getByText(/서버가 안 뜬다/)).toBeDefined()
+    expect(screen.queryByLabelText('emulator-5554의 실시간 화면')).toBeNull()
+    expect(captureScreenshot).toHaveBeenCalledWith('emulator-5554')
+    await userEvent.click(screen.getByRole('button', { name: '다시 연결' }))
+    expect(reconnect).toHaveBeenCalled()
+  })
+
+  it('sends a hardware key from the toolbar', async () => {
+    streamWith({ state: 'streaming' })
+    render(<DeviceScreen serial="emulator-5554" />)
+
+    await userEvent.click(screen.getByRole('button', { name: '홈' }))
+
+    expect(send).toHaveBeenCalledWith({ type: 'key', key: 'home' })
+  })
+
+  it('disables the toolbar until the stream is live', () => {
+    streamWith({ state: 'connecting' }, null)
+
+    render(<DeviceScreen serial="emulator-5554" />)
+
+    expect(screen.getByRole('button', { name: '뒤로' })).toHaveProperty('disabled', true)
+  })
+
+  it('turns a drag into touch down, move and up in video coordinates', () => {
+    streamWith({ state: 'streaming' })
+    render(<DeviceScreen serial="emulator-5554" />)
+    const canvas = screen.getByLabelText('emulator-5554의 실시간 화면')
+
+    fireEvent.pointerDown(canvas, { clientX: 50, clientY: 100, button: 0, pointerId: 1 })
+    fireEvent.pointerMove(canvas, { clientX: 60, clientY: 150, pointerId: 1 })
+    fireEvent.pointerUp(canvas, { clientX: 500, clientY: 150, pointerId: 1 })
+
+    const point = (x: number, y: number) => ({ x, y, width: 472, height: 1024 })
+    expect(send.mock.calls.map((call) => call[0])).toEqual([
+      { type: 'touch', action: 'down', point: point(100, 200) },
+      { type: 'touch', action: 'move', point: point(120, 300) },
+      // 캔버스 밖에서 손을 떼도 가장자리로 붙여 up을 보낸다.
+      { type: 'touch', action: 'up', point: point(471, 300) }
+    ])
+  })
+
+  it('does not send a move without a pressed pointer', () => {
+    streamWith({ state: 'streaming' })
+    render(<DeviceScreen serial="emulator-5554" />)
+
+    fireEvent.pointerMove(screen.getByLabelText('emulator-5554의 실시간 화면'), { clientX: 60, clientY: 150 })
+
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('sends the wheel as a scroll at the pointer', () => {
+    streamWith({ state: 'streaming' })
+    render(<DeviceScreen serial="emulator-5554" />)
+
+    fireEvent.wheel(screen.getByLabelText('emulator-5554의 실시간 화면'), { clientX: 50, clientY: 100, deltaY: 100, deltaMode: 0 })
+
+    expect(send).toHaveBeenCalledWith({
+      type: 'scroll',
+      point: { x: 100, y: 200, width: 472, height: 1024 },
+      hScroll: 0,
+      vScroll: -1
     })
-
-    resolveA?.({ ok: true, value: { base64: 'QQ==', width: 1, height: 1 } })
-
-    // A의 뒤늦은 결과가 B의 화면을 덮어쓰지 않아야 한다.
-    await new Promise((r) => setTimeout(r, 0))
-    const image = screen.getByRole('img') as HTMLImageElement
-    expect(image.src).toBe('data:image/png;base64,Qg==')
   })
 
-  it('clears the previous device shot when the serial changes, before the new capture resolves', async () => {
-    let resolveSecond: ((result: Outcome<ScreenshotResult>) => void) | undefined
-    let call = 0
+  it('sends typed ascii as text and leaves Cmd shortcuts alone', () => {
+    streamWith({ state: 'streaming' })
+    render(<DeviceScreen serial="emulator-5554" />)
+    const canvas = screen.getByLabelText('emulator-5554의 실시간 화면')
 
-    captureScreenshot.mockImplementation(() => {
-      call += 1
-      if (call === 1) {
-        return Promise.resolve({
-          ok: true,
-          value: { base64: 'QUJD', width: 360, height: 800 }
-        } as Outcome<ScreenshotResult>)
-      }
-      return new Promise<Outcome<ScreenshotResult>>((resolve) => {
-        resolveSecond = resolve
-      })
-    })
+    fireEvent.keyDown(canvas, { key: 'a' })
+    fireEvent.keyDown(canvas, { key: 'r', metaKey: true })
 
-    const { rerender } = render(<DeviceScreen serial="emulator-5554" />)
-    await screen.findByRole('img')
+    expect(send.mock.calls.map((call) => call[0])).toEqual([{ type: 'text', text: 'a' }])
+  })
 
-    rerender(<DeviceScreen serial="emulator-5556" />)
+  it('lets Shift+Tab pass through so focus can leave the canvas (no keyboard trap)', () => {
+    streamWith({ state: 'streaming' })
+    render(<DeviceScreen serial="emulator-5554" />)
+    const canvas = screen.getByLabelText('emulator-5554의 실시간 화면')
 
-    // 새 serial의 캡처가 아직 끝나지 않았으면 이전 기기 화면을 보여주면 안 된다.
-    await waitFor(() => expect(screen.queryByRole('img')).toBeNull())
+    const notPrevented = fireEvent.keyDown(canvas, { key: 'Tab', shiftKey: true })
 
-    resolveSecond?.({ ok: true, value: { base64: 'Qg==', width: 100, height: 200 } })
-
-    const image = await screen.findByRole('img')
-    expect((image as HTMLImageElement).src).toBe('data:image/png;base64,Qg==')
+    // fireEvent는 preventDefault가 호출되지 않았을 때만 true를 돌려준다.
+    expect(notPrevented).toBe(true)
+    expect(send).not.toHaveBeenCalled()
   })
 })

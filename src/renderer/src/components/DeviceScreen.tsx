@@ -1,76 +1,34 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { JSX } from 'react'
-import type { ToolError } from '../../../shared/types/errors'
-import type { ScreenshotResult } from '../../../shared/types/device'
+import { useRef } from 'react'
+import type { JSX, KeyboardEvent, PointerEvent, WheelEvent } from 'react'
+import type { DeviceKey, SessionStatus } from '../../../shared/types/stream'
+import { useScrcpyStream } from '../hooks/useScrcpyStream'
+import { keyToIntent, toVideoPoint, wheelToScroll } from '../stream/inputMapper'
+import { ScreenshotView } from './ScreenshotView'
 
 export interface DeviceScreenProps {
   serial: string | null
 }
 
+const DEVICE_BUTTONS: ReadonlyArray<{ key: DeviceKey; label: string; glyph: string }> = [
+  { key: 'back', label: '뒤로', glyph: '◀' },
+  { key: 'home', label: '홈', glyph: '●' },
+  { key: 'app_switch', label: '최근 앱', glyph: '■' },
+  { key: 'volume_down', label: '볼륨 낮추기', glyph: '−' },
+  { key: 'volume_up', label: '볼륨 높이기', glyph: '+' },
+  { key: 'power', label: '전원', glyph: '⏻' }
+]
+
+function statusText(status: SessionStatus): string | null {
+  if (status.state === 'connecting') return '연결 중…'
+  if (status.state === 'reconnecting') return `다시 연결 중 (${status.attempt}/3)`
+  return null
+}
+
 /**
- * 기기 화면을 보여주는 영역.
- *
- * M1에서는 정지 스크린샷이다. M2에서 이 컴포넌트의 내부만 scrcpy 스트리밍
- * 캔버스로 바뀐다. props와 바깥 경계는 그대로 두므로 App은 손대지 않는다.
+ * 기기 화면 영역. 실시간 스트림을 그리고 사람 입력을 기기로 보낸다. 스트림이 끝내 실패하면
+ * 스크린샷 화면으로 강등된다. 바깥 경계(props)는 M1 그대로라 App은 이 변화를 모른다.
  */
 export function DeviceScreen({ serial }: DeviceScreenProps): JSX.Element {
-  const [shot, setShot] = useState<ScreenshotResult | null>(null)
-  const [failure, setFailure] = useState<ToolError | null>(null)
-  const [capturing, setCapturing] = useState(false)
-
-  // 요청 번호. serial이 바뀌거나 새 capture가 시작되면 올라간다 — 응답이
-  // 돌아왔을 때 이 번호가 최신 요청과 다르면(추월당했으면) 결과를 버린다.
-  // unmount 이후 응답도 같은 방식으로 걸러진다.
-  const requestId = useRef(0)
-  const mounted = useRef(true)
-
-  useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-    }
-  }, [])
-
-  const capture = useCallback(async (target: string) => {
-    const myRequest = (requestId.current += 1)
-    setCapturing(true)
-    setFailure(null)
-
-    try {
-      const result = await window.api.captureScreenshot(target)
-
-      if (!mounted.current || myRequest !== requestId.current) return
-
-      if (result.ok) setShot(result.value)
-      else setFailure(result.error)
-    } catch (thrown: unknown) {
-      if (!mounted.current || myRequest !== requestId.current) return
-
-      setFailure({
-        kind: 'command_failed',
-        message: thrown instanceof Error ? thrown.message : String(thrown),
-        hint: '연결을 확인하고 다시 시도해라'
-      })
-    } finally {
-      if (mounted.current && myRequest === requestId.current) setCapturing(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    // serial이 바뀌면 이전 기기의 화면·실패를 먼저 지운다. 지우지 않으면
-    // 새 캡처가 끝나기 전까지 사용자가 이전 기기의 화면을 새 기기의 것으로
-    // 착각한다.
-    setShot(null)
-    setFailure(null)
-
-    if (!serial) {
-      // 진행 중이던 요청이 있어도 무시하도록 요청 번호를 올려 둔다.
-      requestId.current += 1
-      return
-    }
-    void capture(serial)
-  }, [serial, capture])
-
   if (!serial) {
     return (
       <section aria-label="기기 화면" className="device-screen">
@@ -78,32 +36,126 @@ export function DeviceScreen({ serial }: DeviceScreenProps): JSX.Element {
       </section>
     )
   }
+  // key로 기기마다 새 캔버스를 만든다. 이전 기기의 마지막 프레임이 새 기기 화면처럼 남지 않는다.
+  return <LiveScreen key={serial} serial={serial} />
+}
+
+function LiveScreen({ serial }: { serial: string }): JSX.Element {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const dragging = useRef(false)
+  const stream = useScrcpyStream(serial, canvasRef)
+  const { status, video, send } = stream
+  const live = status.state === 'streaming'
+  const overlayText = statusText(status)
+
+  function pointAt(clientX: number, clientY: number, clamp: boolean) {
+    const canvas = canvasRef.current
+    if (!canvas || !video) return null
+    return toVideoPoint(clientX, clientY, canvas.getBoundingClientRect(), video, { clamp })
+  }
+
+  function onPointerDown(event: PointerEvent<HTMLCanvasElement>): void {
+    if (event.button !== 0) return
+    const point = pointAt(event.clientX, event.clientY, false)
+    if (!point) return
+    dragging.current = true
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    event.currentTarget.focus()
+    send({ type: 'touch', action: 'down', point })
+  }
+
+  function onPointerMove(event: PointerEvent<HTMLCanvasElement>): void {
+    if (!dragging.current) return
+    const point = pointAt(event.clientX, event.clientY, true)
+    if (point) send({ type: 'touch', action: 'move', point })
+  }
+
+  function onPointerEnd(event: PointerEvent<HTMLCanvasElement>): void {
+    if (!dragging.current) return
+    dragging.current = false
+    const point = pointAt(event.clientX, event.clientY, true)
+    if (point) send({ type: 'touch', action: 'up', point })
+  }
+
+  function onWheel(event: WheelEvent<HTMLCanvasElement>): void {
+    const point = pointAt(event.clientX, event.clientY, false)
+    const scroll = wheelToScroll(event.deltaX, event.deltaY, event.deltaMode)
+    if (point && scroll) send({ type: 'scroll', point, ...scroll })
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLCanvasElement>): void {
+    const intent = keyToIntent({
+      key: event.key,
+      isComposing: event.nativeEvent.isComposing,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      altKey: event.altKey,
+      shiftKey: event.shiftKey
+    })
+    if (!intent) return
+    // Tab·화살표·Backspace가 페이지 포커스 이동이나 뒤로 가기로 새지 않게 막는다.
+    // (Shift+Tab은 keyToIntent가 null을 돌려주니 여기 오지 않는다 — 브라우저 포커스 이동이 그대로 된다.)
+    event.preventDefault()
+    send(intent)
+  }
 
   return (
     <section aria-label="기기 화면" className="device-screen">
       <div className="screen-toolbar">
         <h2 className="pane-title">화면</h2>
         <span className="device-serial mono">{serial}</span>
-        <button type="button" className="btn" onClick={() => void capture(serial)} disabled={capturing}>
-          새로고침
-        </button>
+        {status.state === 'failed' ? (
+          <button type="button" className="btn" onClick={stream.reconnect}>
+            다시 연결
+          </button>
+        ) : null}
       </div>
 
-      {failure ? (
-        <p role="alert" className="notice notice-error">
-          {failure.message} — {failure.hint}
-        </p>
-      ) : null}
+      {status.state === 'failed' ? (
+        <>
+          <p role="alert" className="notice notice-error">
+            실시간 화면을 열지 못했다: {status.error.message} — {status.error.hint}
+          </p>
+          <ScreenshotView serial={serial} />
+        </>
+      ) : (
+        <div className="screen-frame">
+          <div className="screen-stage">
+            <canvas
+              ref={canvasRef}
+              className="screen-canvas"
+              tabIndex={0}
+              aria-label={`${serial}의 실시간 화면`}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerEnd}
+              onPointerCancel={onPointerEnd}
+              onWheel={onWheel}
+              onKeyDown={onKeyDown}
+            />
+            {overlayText ? (
+              <p role="status" className="screen-status">
+                {overlayText}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      )}
 
-      <div className="screen-frame" aria-busy={capturing}>
-        {shot ? (
-          <img
-            src={`data:image/png;base64,${shot.base64}`}
-            alt={`${serial}의 화면`}
-            width={shot.width}
-            height={shot.height}
-          />
-        ) : null}
+      <div className="device-keys" role="toolbar" aria-label="기기 버튼">
+        {DEVICE_BUTTONS.map((button) => (
+          <button
+            key={button.key}
+            type="button"
+            className="btn device-key"
+            aria-label={button.label}
+            title={button.label}
+            disabled={!live}
+            onClick={() => send({ type: 'key', key: button.key })}
+          >
+            {button.glyph}
+          </button>
+        ))}
       </div>
     </section>
   )
