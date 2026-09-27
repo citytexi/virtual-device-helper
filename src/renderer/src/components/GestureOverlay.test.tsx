@@ -82,6 +82,10 @@ describe('GestureOverlay', () => {
     const line = container.querySelector('g.gesture-swipe line')
     expect(line?.getAttribute('y1')).toBe('900')
     expect(line?.getAttribute('y2')).toBe('200')
+
+    const circle = container.querySelector('g.gesture-swipe circle')
+    expect(circle?.getAttribute('cx')).toBe('50')
+    expect(circle?.getAttribute('cy')).toBe('200')
   })
 
   it.each([
@@ -120,6 +124,29 @@ describe('GestureOverlay', () => {
     const { container } = render(<GestureOverlay serial="emulator-5554" video={null} subscribe={b.subscribe} />)
 
     expect(container.querySelector('svg')).toBeNull()
+  })
+
+  it('clears marks and timers when the serial prop switches to another device', () => {
+    vi.useFakeTimers()
+    const b = bus()
+    const { container, rerender } = render(
+      <GestureOverlay serial="emulator-5554" video={video} subscribe={b.subscribe} />
+    )
+
+    b.emit(toolCall('1', { kind: 'tap', serial: 'emulator-5554', screen: portrait, x: 1, y: 1 }))
+    expect(container.querySelectorAll('circle.gesture-tap')).toHaveLength(1)
+
+    rerender(<GestureOverlay serial="emulator-5556" video={video} subscribe={b.subscribe} />)
+
+    expect(container.querySelectorAll('circle.gesture-tap')).toHaveLength(0)
+    expect(vi.getTimerCount()).toBe(0)
+
+    // A용 이벤트는 더 이상 그려지지 않고, B용 이벤트만 그려진다.
+    b.emit(toolCall('2', { kind: 'tap', serial: 'emulator-5554', screen: portrait, x: 1, y: 1 }))
+    expect(container.querySelectorAll('circle.gesture-tap')).toHaveLength(0)
+
+    b.emit(toolCall('3', { kind: 'tap', serial: 'emulator-5556', screen: portrait, x: 1, y: 1 }))
+    expect(container.querySelectorAll('circle.gesture-tap')).toHaveLength(1)
   })
 
   it('unsubscribes and cancels pending timers when unmounted', () => {
