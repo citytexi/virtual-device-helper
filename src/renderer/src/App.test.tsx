@@ -11,7 +11,9 @@ function mockApi(snapshot: AppSnapshot): void {
     captureScreenshot: vi.fn(async () => ({ ok: true, value: { base64: 'QUJD', width: 1, height: 1 } })),
     selectDevice: vi.fn(),
     bootAvd: vi.fn(),
-    shutdownDevice: vi.fn()
+    shutdownDevice: vi.fn(),
+    startStream: vi.fn(async () => ({ ok: true, value: undefined })),
+    stopStream: vi.fn(async () => ({ ok: true, value: undefined }))
   } as unknown as RendererApi
 }
 
@@ -24,7 +26,9 @@ function mockApiRejecting(reason: string): void {
     captureScreenshot: vi.fn(),
     selectDevice: vi.fn(),
     bootAvd: vi.fn(),
-    shutdownDevice: vi.fn()
+    shutdownDevice: vi.fn(),
+    startStream: vi.fn(async () => ({ ok: true, value: undefined })),
+    stopStream: vi.fn(async () => ({ ok: true, value: undefined }))
   } as unknown as RendererApi
 }
 
@@ -81,7 +85,7 @@ describe('App', () => {
     render(<App />)
 
     await waitFor(() =>
-      expect(screen.getByRole('img', { name: 'emulator-5554의 화면' })).toBeDefined()
+      expect(screen.getByLabelText('emulator-5554의 실시간 화면')).toBeDefined()
     )
   })
 
