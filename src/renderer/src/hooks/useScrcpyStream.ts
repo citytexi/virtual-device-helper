@@ -84,18 +84,12 @@ export function useScrcpyStream(
   // 디코더 실패로 재시작한 연속 횟수. 프레임이 한 번이라도 그려지거나 사람이 직접
   // reconnect()를 부르면 0으로 되돌린다 — 그 시점부터는 새로 세는 게 맞다.
   const restartCountRef = useRef(0)
-  // serial이 바뀌면(기기 전환) 이전 기기의 실패 횟수를 들고 오지 않는다.
-  const prevSerialRef = useRef<string | null>(null)
 
   useEffect(() => {
     const d = depsRef.current as ScrcpyStreamDeps
     let active = true
     let port: MessagePort | null = null
     let decoder: StreamDecoder | null = null
-    if (prevSerialRef.current !== serial) {
-      prevSerialRef.current = serial
-      restartCountRef.current = 0
-    }
     setStatus(CONNECTING)
     setVideo(null)
 
@@ -123,6 +117,10 @@ export function useScrcpyStream(
               state: 'failed',
               error: { kind: 'command_failed', message: error.message, hint: '다시 연결해라' }
             })
+            // main은 이 실패를 모른다 — 포트를 놓아 늦게 온 status가 failed를 덮어쓰지
+            // 못하게 하고, main에도 세션을 그만두라고 알린다.
+            release()
+            d.stopStream().catch(() => {})
             return
           }
           restartCountRef.current += 1

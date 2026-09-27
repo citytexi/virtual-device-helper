@@ -179,6 +179,38 @@ describe('useScrcpyStream', () => {
     })
   })
 
+  it('releases the port and stops the stream when the decoder-restart limit is hit, so a late status cannot overwrite failed', async () => {
+    const h = harness()
+    const { result } = renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(1))
+
+    for (let i = 0; i < 3; i++) {
+      h.deliverPort('emulator-5554', fakePort())
+      act(() => h.decoders[i]?.handlers.onError(new Error(`decode ${i}`)))
+      await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(i + 2))
+    }
+
+    const lastPort = fakePort()
+    h.deliverPort('emulator-5554', lastPort)
+    act(() => h.decoders[3]?.handlers.onError(new Error('decode 4th')))
+
+    expect(result.current.status).toEqual({
+      state: 'failed',
+      error: { kind: 'command_failed', message: 'decode 4th', hint: '다시 연결해라' }
+    })
+    expect(lastPort.close).toHaveBeenCalled()
+    expect(h.decoders[3]?.close).toHaveBeenCalled()
+    expect(h.deps.stopStream).toHaveBeenCalled()
+
+    // main은 이 실패를 모른다 — 그래도 늦게 온 status가 failed를 덮어쓰지 못한다.
+    h.deliver(lastPort, { type: 'status', status: { state: 'streaming' } })
+
+    expect(result.current.status).toEqual({
+      state: 'failed',
+      error: { kind: 'command_failed', message: 'decode 4th', hint: '다시 연결해라' }
+    })
+  })
+
   it('a decoded frame resets the consecutive-failure count', async () => {
     const h = harness()
     renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
