@@ -146,4 +146,19 @@ describe('createStreamDecoder', () => {
     expect((late as unknown as { close: ReturnType<typeof vi.fn> }).close).toHaveBeenCalled()
     expect(h.decoder.close).toHaveBeenCalled()
   })
+
+  it('closes frames that arrive after a failure', () => {
+    const h = harness()
+    h.decoder.decode.mockImplementation(() => {
+      throw new Error('closed codec')
+    })
+    h.stream.push(config(CONFIG))
+    h.stream.push(key([1]))
+
+    const frame = { close: vi.fn() } as unknown as VideoFrame
+    h.init().output(frame)
+
+    expect(h.onFrame).not.toHaveBeenCalled()
+    expect((frame as unknown as { close: ReturnType<typeof vi.fn> }).close).toHaveBeenCalled()
+  })
 })

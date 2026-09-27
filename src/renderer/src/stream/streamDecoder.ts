@@ -60,7 +60,7 @@ export function createStreamDecoder(deps: StreamDecoderDeps): StreamDecoder {
 
   const decoder = deps.createDecoder({
     output: (frame) => {
-      if (closed) {
+      if (closed || failed) {
         frame.close()
         return
       }
