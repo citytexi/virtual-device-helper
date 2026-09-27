@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { deviceError } from '../../shared/types/errors'
-import { runTool } from './runTool'
+import { GESTURE_TIMEOUT_MS, runTool } from './runTool'
 import type { ToolCallRecord } from './toolContext'
 
 function collector(): { onToolCall: (record: ToolCallRecord) => void; records: ToolCallRecord[] } {
@@ -190,5 +190,42 @@ describe('runTool gesture', () => {
     expect(result.isError).toBeFalsy()
     expect(sink.records[0]).toMatchObject({ ok: true })
     expect(sink.records[0]?.gesture).toBeUndefined()
+  })
+
+  it('does not let a slow gesture delay an already-successful result', async () => {
+    vi.useFakeTimers()
+    try {
+      const sink = collector()
+      const neverSettles = new Promise<never>(() => {})
+
+      const pending = runTool(sink, 'ui_tap', {}, async () => ({ ok: true }), {
+        gesture: () => neverSettles
+      })
+
+      await vi.advanceTimersByTimeAsync(GESTURE_TIMEOUT_MS)
+      const result = await pending
+
+      expect(result.isError).toBeFalsy()
+      expect(sink.records[0]).toMatchObject({ ok: true })
+      expect(sink.records[0]?.gesture).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('leaves no pending timer once a gesture resolves quickly', async () => {
+    vi.useFakeTimers()
+    try {
+      const sink = collector()
+      const gesture = { kind: 'tap' as const, serial: 's', screen: { width: 1, height: 2 }, x: 0, y: 0 }
+
+      await runTool(sink, 'ui_tap', {}, async () => ({ ok: true }), {
+        gesture: async () => gesture
+      })
+
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
