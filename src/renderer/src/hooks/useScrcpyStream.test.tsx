@@ -155,4 +155,95 @@ describe('useScrcpyStream', () => {
 
     expect(result.current.status).toEqual({ state: 'connecting' })
   })
+
+  it('demotes to failed after exceeding the decoder-restart limit, without restarting again', async () => {
+    const h = harness()
+    const { result } = renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(1))
+
+    // 한도(3)까지는 실패마다 재시작한다.
+    for (let i = 0; i < 3; i++) {
+      h.deliverPort('emulator-5554', fakePort())
+      act(() => h.decoders[i]?.handlers.onError(new Error(`decode ${i}`)))
+      await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(i + 2))
+    }
+
+    // 한도를 넘긴 네 번째 실패는 재시작하지 않고 바로 failed로 강등한다.
+    h.deliverPort('emulator-5554', fakePort())
+    act(() => h.decoders[3]?.handlers.onError(new Error('decode 4th')))
+
+    expect(h.deps.startStream).toHaveBeenCalledTimes(4)
+    expect(result.current.status).toEqual({
+      state: 'failed',
+      error: { kind: 'command_failed', message: 'decode 4th', hint: '다시 연결해라' }
+    })
+  })
+
+  it('a decoded frame resets the consecutive-failure count', async () => {
+    const h = harness()
+    renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(1))
+
+    // 한도까지 실패를 채운다.
+    for (let i = 0; i < 3; i++) {
+      h.deliverPort('emulator-5554', fakePort())
+      act(() => h.decoders[i]?.handlers.onError(new Error(`decode ${i}`)))
+      await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(i + 2))
+    }
+
+    // 새 포트에서 프레임이 그려졌다 — 실패 카운트가 씻긴다.
+    h.deliverPort('emulator-5554', fakePort())
+    const frame = { close: vi.fn() } as unknown as VideoFrame
+    act(() => h.decoders[3]?.handlers.onFrame(frame))
+
+    // 카운트가 씻겼으니 다음 실패는 바로 failed로 가지 않고 다시 재시작한다.
+    act(() => h.decoders[3]?.handlers.onError(new Error('decode after frame')))
+
+    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(5))
+  })
+
+  it('reconnect after a decoder-limit failure starts the stream again', async () => {
+    const h = harness()
+    const { result } = renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(1))
+
+    for (let i = 0; i < 3; i++) {
+      h.deliverPort('emulator-5554', fakePort())
+      act(() => h.decoders[i]?.handlers.onError(new Error(`decode ${i}`)))
+      await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(i + 2))
+    }
+    h.deliverPort('emulator-5554', fakePort())
+    act(() => h.decoders[3]?.handlers.onError(new Error('decode 4th')))
+    expect(result.current.status.state).toBe('failed')
+
+    act(() => result.current.reconnect())
+    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(5))
+
+    const port = fakePort()
+    h.deliverPort('emulator-5554', port)
+    h.deliver(port, { type: 'status', status: { state: 'streaming' } })
+
+    expect(result.current.status).toEqual({ state: 'streaming' })
+  })
+
+  it('closes a stale port for the previous serial after switching devices, and stops before starting the next stream', async () => {
+    const h = harness()
+    const { rerender } = renderHook(({ serial }: { serial: string }) => useScrcpyStream(serial, h.canvasRef, h.deps), {
+      initialProps: { serial: 'emulator-5554' }
+    })
+    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledWith('emulator-5554'))
+
+    rerender({ serial: 'emulator-5556' })
+    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledWith('emulator-5556'))
+
+    const stalePort = fakePort()
+    h.deliverPort('emulator-5554', stalePort)
+
+    expect(stalePort.close).toHaveBeenCalled()
+    expect(h.decoders).toHaveLength(0)
+
+    const stopOrder = vi.mocked(h.deps.stopStream).mock.invocationCallOrder[0]
+    const startBOrder = vi.mocked(h.deps.startStream).mock.invocationCallOrder[1]
+    expect(stopOrder).toBeLessThan(startBOrder as number)
+  })
 })

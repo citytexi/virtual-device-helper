@@ -44,6 +44,13 @@ function browserDeps(): ScrcpyStreamDeps {
 
 const CONNECTING: SessionStatus = { state: 'connecting' }
 
+/**
+ * 디코더 실패로 인한 연속 재시작 한도. main의 재시도 횟수와 맞춘다. 이 한도를 넘기면
+ * connecting↔streaming을 영원히 오가는 대신 failed로 강등해 스크린샷 폴백과 "다시 연결"
+ * 버튼이 뜨게 한다.
+ */
+const MAX_DECODER_RESTARTS = 3
+
 function drawFrame(canvas: HTMLCanvasElement | null, frame: VideoFrame): void {
   try {
     if (!canvas) return
@@ -74,12 +81,21 @@ export function useScrcpyStream(
   // 값을 올리면 effect가 다시 돌며 스트림을 처음부터 연다(재연결·디코더 복구).
   const [attempt, setAttempt] = useState(0)
   const portRef = useRef<MessagePort | null>(null)
+  // 디코더 실패로 재시작한 연속 횟수. 프레임이 한 번이라도 그려지거나 사람이 직접
+  // reconnect()를 부르면 0으로 되돌린다 — 그 시점부터는 새로 세는 게 맞다.
+  const restartCountRef = useRef(0)
+  // serial이 바뀌면(기기 전환) 이전 기기의 실패 횟수를 들고 오지 않는다.
+  const prevSerialRef = useRef<string | null>(null)
 
   useEffect(() => {
     const d = depsRef.current as ScrcpyStreamDeps
     let active = true
     let port: MessagePort | null = null
     let decoder: StreamDecoder | null = null
+    if (prevSerialRef.current !== serial) {
+      prevSerialRef.current = serial
+      restartCountRef.current = 0
+    }
     setStatus(CONNECTING)
     setVideo(null)
 
@@ -94,9 +110,23 @@ export function useScrcpyStream(
     function adopt(next: MessagePort): void {
       release()
       const adoptedDecoder = d.createDecoder({
-        onFrame: (frame) => drawFrame(canvasRef.current, frame),
-        onError: () => {
-          if (active) setAttempt((n) => n + 1)
+        onFrame: (frame) => {
+          // 한 프레임이라도 그렸다면 그 디코더는 살아 있는 것 — 실패 카운트를 씻는다.
+          restartCountRef.current = 0
+          drawFrame(canvasRef.current, frame)
+        },
+        onError: (error) => {
+          if (!active) return
+          if (restartCountRef.current >= MAX_DECODER_RESTARTS) {
+            // 한도를 넘겼다 — 더 재시작하지 않고 사람이 보게 failed로 강등한다.
+            setStatus({
+              state: 'failed',
+              error: { kind: 'command_failed', message: error.message, hint: '다시 연결해라' }
+            })
+            return
+          }
+          restartCountRef.current += 1
+          setAttempt((n) => n + 1)
         }
       })
       port = next
@@ -140,7 +170,8 @@ export function useScrcpyStream(
       active = false
       unsubscribe()
       release()
-      void d.stopStream()
+      // cleanup 중 실패는 보고할 곳이 없다 — unhandled rejection만 막는다.
+      d.stopStream().catch(() => {})
     }
   }, [serial, attempt, canvasRef])
 
@@ -148,7 +179,11 @@ export function useScrcpyStream(
     portRef.current?.postMessage(intent)
   }, [])
 
-  const reconnect = useCallback(() => setAttempt((n) => n + 1), [])
+  const reconnect = useCallback(() => {
+    // 사람이 직접 다시 연결을 요청했다 — 지난 실패 횟수는 잊는다.
+    restartCountRef.current = 0
+    setAttempt((n) => n + 1)
+  }, [])
 
   return { status, video, send, reconnect }
 }
