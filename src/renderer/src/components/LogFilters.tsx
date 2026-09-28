@@ -20,8 +20,8 @@ const CHIP_TITLE = { include: '포함', exclude: '제외', off: '해제' } as co
 
 /**
  * 로그 탭 위쪽 필터 줄. 상태는 LogTab이 쥐고, 여기서는 바뀐 필터를 통째로 돌려준다.
- * 태그 칩은 누를 때마다 포함 → 제외 → 해제로 돈다. 포함은 aria-pressed로, 세 상태 전부는
- * data-state와 title로 드러낸다 — 색만으로 구분하지 않는다.
+ * 태그 칩은 누를 때마다 포함 → 제외 → 해제로 돈다. 포함은 aria-pressed로, 제외는 접근성 이름의
+ * "(제외)"로, 세 상태 전부는 data-state와 title로 드러낸다 — 색만으로 구분하지 않는다.
  */
 export function LogFilters({ filter, onChange, tags, packages, regexError }: LogFiltersProps): JSX.Element {
   const errorId = useId()
@@ -96,6 +96,7 @@ export function LogFilters({ filter, onChange, tags, packages, regexError }: Log
                 aria-pressed={state === 'include'}
                 data-state={state}
                 title={CHIP_TITLE[state]}
+                aria-label={state === 'exclude' ? `${tag} (제외)` : undefined}
                 onClick={() => onChange({ ...filter, chips: cycleChip(filter.chips, tag) })}
               >
                 {tag}

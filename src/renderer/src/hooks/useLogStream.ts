@@ -40,7 +40,7 @@ function browserDeps(): LogStreamDeps {
   }
 }
 
-/** 가변 버퍼. 앞을 자를 때 splice로 당기지 않고 start를 올렸다가, capacity만큼 쌓이면 한 번에 압축한다. */
+/** 가변 버퍼. 앞을 자를 때 splice로 당기지 않고 start를 올렸다가, capacity/4만큼 쌓이면 한 번에 압축한다. */
 interface RowBuffer {
   rows: LogRow[]
   start: number
@@ -53,7 +53,9 @@ function appendRows(buf: RowBuffer, capacity: number, next: LogRow[]): void {
   buf.rows.push(...next)
   const size = buf.rows.length - buf.start
   if (size > capacity) buf.start += size - capacity
-  if (buf.start >= capacity) {
+  // 죽은 앞부분이 capacity의 1/4에 닿으면 한 번에 당긴다 — 뒤 배열이 capacity의 2배까지
+  // 부풀지 않게 한다. splice는 제자리라 배열 참조는 그대로다.
+  if (buf.start >= Math.max(1, Math.floor(capacity / 4))) {
     buf.rows.splice(0, buf.start)
     buf.start = 0
   }
@@ -170,7 +172,8 @@ export function useLogStream(
         setStatus(message.state)
       } else if (message.type === 'resumed') {
         lastSeqRef.current = Math.max(lastSeqRef.current, message.lastSeq)
-        setCaughtUp(true)
+        // 숨겨진 뒤에 도착한 앞선 resume의 답은 caughtUp을 올리지 않는다 — 다음 resume의 답을 기다린다.
+        if (visibleRef.current) setCaughtUp(true)
       }
     }
 

@@ -85,9 +85,18 @@ export function cycleChip(chips: Record<string, ChipState>, tag: string): Record
   return next
 }
 
+/** 개수 많은 순, 같으면 이름순으로 `limit`개. */
+export function rankTags(counts: ReadonlyMap<string, number>, limit: number): string[] {
+  return [...counts.entries()]
+    .sort(([tagA, countA], [tagB, countB]) => countB - countA || tagA.localeCompare(tagB))
+    .slice(0, limit)
+    .map(([tag]) => tag)
+}
+
 /**
  * `start`(기본 0) 이후 줄(line) 행에서 많이 나온 태그 순으로 `limit`개를 돌려준다.
- * 개수가 같으면 이름순. gap 행은 세지 않는다.
+ * 개수가 같으면 이름순. gap 행은 세지 않는다. 버퍼 전체를 훑으므로 자라는 버퍼에는
+ * refreshTagCounts를 쓴다.
  */
 export function topTags(rows: readonly LogRow[], limit: number, start = 0): string[] {
   const counts = new Map<string, number>()
@@ -96,8 +105,82 @@ export function topTags(rows: readonly LogRow[], limit: number, start = 0): stri
     if (!row || row.kind !== 'line') continue
     counts.set(row.entry.tag, (counts.get(row.entry.tag) ?? 0) + 1)
   }
-  return [...counts.entries()]
-    .sort(([tagA, countA], [tagB, countB]) => countB - countA || tagA.localeCompare(tagB))
-    .slice(0, limit)
-    .map(([tag]) => tag)
+  return rankTags(counts, limit)
+}
+
+/** 행의 seq. gap은 덮는 구간의 끝(toSeq)을 쓴다 — useLogStream이 gap 뒤 lastSeq를 그렇게 올린다. */
+export function rowSeq(row: LogRow): number {
+  return row.kind === 'line' ? row.entry.seq : row.toSeq
+}
+
+/** seq로 정렬된 rows[from..to)에서 seq > after인 첫 인덱스. */
+export function firstAfter(rows: readonly LogRow[], from: number, to: number, after: number): number {
+  let lo = from
+  let hi = to
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (rowSeq(rows[mid] as LogRow) > after) hi = mid
+    else lo = mid + 1
+  }
+  return lo
+}
+
+/**
+ * 살아있는 버퍼의 태그별 줄 수를 증분으로 센다. 버퍼 배열은 압축(splice)되면 밀려난 행이
+ * 사라지므로, 센 줄을 `queue`에 따로 들고 있다가 앞이 잘리면 거기서 빼 간다(행 참조만 든다).
+ */
+export interface TagCounts {
+  /** 센 버퍼 배열. 바뀌면 새 세션이다. */
+  rows: readonly LogRow[] | null
+  processedUpToSeq: number
+  counts: Map<string, number>
+  /** 센 line 행들, seq 순. `queue[head..)`가 아직 살아있다. */
+  queue: LogRow[]
+  head: number
+}
+
+export function createTagCounts(): TagCounts {
+  return { rows: null, processedUpToSeq: -1, counts: new Map(), queue: [], head: 0 }
+}
+
+/**
+ * `rows[start..)`에 맞춰 counts를 갱신한다. 처리한 마지막 seq를 기준으로 해서 여러 번
+ * 불려도(StrictMode 이중 렌더) 결과가 같다.
+ */
+export function refreshTagCounts(cache: TagCounts, rows: readonly LogRow[], start: number): void {
+  const last = rows.length > start ? rows[rows.length - 1] : undefined
+  const lastSeq = last ? rowSeq(last) : -1
+
+  if (cache.rows !== rows || lastSeq < cache.processedUpToSeq) {
+    cache.rows = rows
+    cache.processedUpToSeq = -1
+    cache.counts = new Map()
+    cache.queue = []
+    cache.head = 0
+  }
+
+  // 앞이 잘린 줄을 뺀다.
+  const first = rows[start]
+  const firstSeq = first ? rowSeq(first) : Infinity
+  while (cache.head < cache.queue.length) {
+    const row = cache.queue[cache.head] as LogRow
+    if (row.kind !== 'line' || row.entry.seq >= firstSeq) break
+    const n = (cache.counts.get(row.entry.tag) ?? 0) - 1
+    if (n > 0) cache.counts.set(row.entry.tag, n)
+    else cache.counts.delete(row.entry.tag)
+    cache.head += 1
+  }
+  if (cache.head > 1024 && cache.head * 2 > cache.queue.length) {
+    cache.queue.splice(0, cache.head)
+    cache.head = 0
+  }
+
+  // 새 줄을 더한다.
+  for (let i = firstAfter(rows, start, rows.length, cache.processedUpToSeq); i < rows.length; i++) {
+    const row = rows[i] as LogRow
+    if (row.kind !== 'line') continue
+    cache.queue.push(row)
+    cache.counts.set(row.entry.tag, (cache.counts.get(row.entry.tag) ?? 0) + 1)
+  }
+  if (lastSeq > cache.processedUpToSeq) cache.processedUpToSeq = lastSeq
 }

@@ -56,10 +56,13 @@ describe('LogFilters', () => {
     await userEvent.click(chip)
     expect(chip.getAttribute('data-state')).toBe('exclude')
     expect(chip.getAttribute('aria-pressed')).toBe('false')
+    // 제외 상태는 스크린 리더에도 이름으로 드러난다.
+    expect(screen.getByRole('button', { name: 'ActivityManager (제외)' })).toBe(chip)
 
     await userEvent.click(chip)
     expect(chip.getAttribute('aria-pressed')).toBe('false')
     expect(chip.getAttribute('data-state')).toBe('off')
+    expect(screen.getByRole('button', { name: 'ActivityManager' })).toBe(chip)
   })
 
   it('lists packages in the app select with an 전체 option', async () => {

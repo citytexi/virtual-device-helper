@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { LogEntry } from '../../../shared/types/logs'
 import type { LogRow } from '../hooks/useLogStream'
-import { EMPTY_FILTER, compileFilter, cycleChip, topTags } from './logFilter'
+import { EMPTY_FILTER, compileFilter, createTagCounts, cycleChip, rankTags, refreshTagCounts, topTags } from './logFilter'
 
 const e = (over: Partial<LogEntry>): LogRow => ({
   kind: 'line',
@@ -89,5 +89,43 @@ describe('topTags', () => {
   it('counts only rows from the given start index', () => {
     const rows: LogRow[] = [e({ tag: 'A' }), e({ tag: 'A' }), e({ tag: 'B' })]
     expect(topTags(rows, 5, 2)).toEqual(['B'])
+  })
+})
+
+describe('refreshTagCounts', () => {
+  const t = (seq: number, tag: string): LogRow => e({ seq, tag })
+
+  it('adds counts only for lines after the processed seq and is idempotent', () => {
+    const cache = createTagCounts()
+    const rows: LogRow[] = [t(0, 'A'), t(1, 'B')]
+    refreshTagCounts(cache, rows, 0)
+    rows.push(t(2, 'A'), { kind: 'gap', fromSeq: 3, toSeq: 4 }, t(5, 'C'))
+    refreshTagCounts(cache, rows, 0)
+    refreshTagCounts(cache, rows, 0)
+
+    expect(Object.fromEntries(cache.counts)).toEqual({ A: 2, B: 1, C: 1 })
+    expect(rankTags(cache.counts, 2)).toEqual(['A', 'B'])
+  })
+
+  it('subtracts lines trimmed from the front, even after the backing array was compacted', () => {
+    const cache = createTagCounts()
+    const rows: LogRow[] = [t(0, 'A'), t(1, 'A'), t(2, 'B')]
+    refreshTagCounts(cache, rows, 0)
+
+    // 앞 두 줄이 밀려나고 압축(splice)돼 배열에서 사라졌다. 같은 배열이다.
+    rows.push(t(3, 'C'))
+    rows.splice(0, 2)
+    refreshTagCounts(cache, rows, 0)
+
+    expect(Object.fromEntries(cache.counts)).toEqual({ B: 1, C: 1 })
+  })
+
+  it('starts over for a new session', () => {
+    const cache = createTagCounts()
+    refreshTagCounts(cache, [t(0, 'A'), t(1, 'A')], 0)
+
+    refreshTagCounts(cache, [t(0, 'Z')], 0)
+
+    expect(Object.fromEntries(cache.counts)).toEqual({ Z: 1 })
   })
 })

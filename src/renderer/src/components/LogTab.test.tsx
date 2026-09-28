@@ -123,6 +123,38 @@ describe('LogTab', () => {
     expect(screen.getByRole('button', { name: '맨 아래로' })).toBeDefined()
   })
 
+  it('keeps following on a wheel up when the list does not overflow', () => {
+    const rows = [line(0), line(1)]
+    const { rerender } = render(<LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 1 })} />)
+    const list = sizeList(200)
+
+    // 줄이 몇 개 안 돼 스크롤할 곳이 없다 — scroll 이벤트도 오지 않는다.
+    fireEvent.wheel(list, { deltaY: -40 })
+    fireEvent.keyDown(list, { key: 'ArrowUp' })
+    rows.push(line(2))
+    rerender(<LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 2 })} />)
+
+    expect(screen.queryByRole('button', { name: '맨 아래로' })).toBeNull()
+  })
+
+  it('keeps following after pressing and releasing the scrollbar at the bottom', () => {
+    const rows = Array.from({ length: 100 }, (_, i) => line(i))
+    const { rerender } = render(<LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 1 })} />)
+    const list = sizeList(200)
+    rows.push(line(100))
+    rerender(<LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 2 })} />)
+    expect(list.scrollTop).toBe(101 * LOG_ROW_HEIGHT - 200)
+
+    // 스크롤바를 눌렀다 끌지 않고 놓는다.
+    fireEvent.pointerDown(list)
+    fireEvent.pointerUp(window)
+    rows.push(line(101))
+    rerender(<LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 3 })} />)
+
+    expect(screen.queryByRole('button', { name: '맨 아래로' })).toBeNull()
+    expect(list.scrollTop).toBe(102 * LOG_ROW_HEIGHT - 200)
+  })
+
   it('treats a position above the last auto scroll as a user scroll when a batch lands first', () => {
     const rows = Array.from({ length: 100 }, (_, i) => line(i))
     const { rerender } = render(<LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 1 })} />)
@@ -179,11 +211,12 @@ describe('LogTab', () => {
   })
 
   it('resets selection and following when a new session starts', async () => {
-    const { rerender } = render(<LogTab serial="emulator-5554" visible stream={makeStream([line(0), line(1)])} />)
+    const rows = Array.from({ length: 100 }, (_, i) => line(i))
+    const { rerender } = render(<LogTab serial="emulator-5554" visible stream={makeStream(rows)} />)
     const list = sizeList(200)
     await userEvent.click(renderedRows()[0] as HTMLElement)
     list.scrollTop = 0
-    fireEvent.wheel(list, { deltaY: -40 })
+    fireEvent.scroll(list)
     expect(screen.getByRole('button', { name: '맨 아래로' })).toBeDefined()
 
     // 새 포트 = 새 버퍼 배열.

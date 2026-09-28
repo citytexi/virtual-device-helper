@@ -2,7 +2,18 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent, PointerEvent, UIEvent, WheelEvent } from 'react'
 import type { LogEntry } from '../../../shared/types/logs'
 import { useLogStream, type LogRow, type LogStream, type LogStreamDeps } from '../hooks/useLogStream'
-import { EMPTY_FILTER, compileFilter, topTags, type CompiledFilter, type LogFilter } from '../logs/logFilter'
+import {
+  EMPTY_FILTER,
+  compileFilter,
+  createTagCounts,
+  firstAfter,
+  rankTags,
+  refreshTagCounts,
+  rowSeq,
+  type CompiledFilter,
+  type LogFilter,
+  type TagCounts
+} from '../logs/logFilter'
 import { visibleRange } from '../logs/virtualRange'
 import { LogFilters } from './LogFilters'
 
@@ -21,23 +32,6 @@ export interface LogTabProps {
   deps?: LogStreamDeps
   /** 이 구간(`entry.at` 기준, 양끝 포함) 안의 행에 data-highlight를 단다. M3-3이 채운다. */
   highlight?: { fromAt: number; toAt: number }
-}
-
-/** 행의 seq. gap은 덮는 구간의 끝(toSeq)을 쓴다 — useLogStream이 gap 뒤 lastSeq를 그렇게 올린다. */
-function rowSeq(row: LogRow): number {
-  return row.kind === 'line' ? row.entry.seq : row.toSeq
-}
-
-/** seq로 정렬된 rows[from..to)에서 seq > after인 첫 인덱스. */
-function firstAfter(rows: readonly LogRow[], from: number, to: number, after: number): number {
-  let lo = from
-  let hi = to
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1
-    if (rowSeq(rows[mid] as LogRow) > after) hi = mid
-    else lo = mid + 1
-  }
-  return lo
 }
 
 /** 증분 필터의 상태. 렌더 중에 고쳐 쓰므로 ref에 둔다. */
@@ -133,13 +127,18 @@ export function LogTab({ serial, visible, stream, deps, highlight }: LogTabProps
   const visibleRows = cache.result
   const count = visibleRows.length
 
-  // version이 바뀔 때만 다시 센다 — rows는 같은 배열이 제자리에서 자란다.
+  // 태그 수는 증분으로 센다(새 줄만 더하고 밀려난 줄만 뺀다). 순위는 version이 바뀔 때만
+  // 다시 매긴다 — rows는 같은 배열이 제자리에서 자란다.
+  const tagCountsRef = useRef<TagCounts | null>(null)
+  if (!tagCountsRef.current) tagCountsRef.current = createTagCounts()
+  const tagCounts = tagCountsRef.current
+  refreshTagCounts(tagCounts, s.rows, s.start)
   const tags = useMemo(() => {
-    const top = topTags(s.rows, TOP_TAG_LIMIT, s.start)
+    const top = rankTags(tagCounts.counts, TOP_TAG_LIMIT)
     // 목록에서 밀려난 태그라도 켜 둔 칩은 끌 수 있게 남겨 둔다.
     const extra = Object.keys(filter.chips).filter((tag) => !top.includes(tag))
     return [...top, ...extra]
-  }, [s.version, s.start, s.rows, filter.chips])
+  }, [s.version, s.start, s.rows, filter.chips, tagCounts])
 
   const liveCount = s.rows.length - s.start
   // 기기가 끊겨 serial이 null이 돼도 받은 줄이 남아 있으면 목록을 그대로 보인다.
@@ -256,8 +255,20 @@ export function LogTab({ serial, visible, stream, deps, highlight }: LogTabProps
     setViewport(el.clientHeight)
     if (top === autoTopRef.current) return
     autoTopRef.current = null
+    setFollowing(atBottom(el))
+  }
+
+  function atBottom(el: HTMLElement): boolean {
     const total = (cacheRef.current as FilterCache).result.length * LOG_ROW_HEIGHT
-    setFollowing(top + el.clientHeight >= total - LOG_ROW_HEIGHT)
+    return el.scrollTop + el.clientHeight >= total - LOG_ROW_HEIGHT
+  }
+
+  // 위로 갈 수 있는 목록인가. 넘치지 않거나 이미 맨 위면 scroll 이벤트가 오지 않아, 여기서 멈추면
+  // onScroll의 맨 아래 재판정이 돌지 않고 영영 멈춘 채로 남는다. 넘침은 scrollHeight 대신
+  // 행 수로 잰다 — 따라가기 판정과 같은 기준이고 jsdom에서도 잴 수 있다.
+  function canScrollUp(el: HTMLElement): boolean {
+    const total = (cacheRef.current as FilterCache).result.length * LOG_ROW_HEIGHT
+    return total > el.clientHeight && el.scrollTop > 0
   }
 
   // 위로 가려는 의도가 보이면 scroll 이벤트를 기다리지 않고 바로 따라가기를 멈춘다.
@@ -267,16 +278,41 @@ export function LogTab({ serial, visible, stream, deps, highlight }: LogTabProps
   }
 
   function onWheel(event: WheelEvent<HTMLDivElement>): void {
-    if (event.deltaY < 0) stopFollowing()
+    if (event.deltaY < 0 && canScrollUp(event.currentTarget)) stopFollowing()
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
-    if (event.key === 'PageUp' || event.key === 'ArrowUp' || event.key === 'Home') stopFollowing()
+    const up = event.key === 'PageUp' || event.key === 'ArrowUp' || event.key === 'Home'
+    if (up && canScrollUp(event.currentTarget)) stopFollowing()
   }
 
+  // pointerup은 목록 밖에서 떼도 받도록 window에서 듣는다. 언마운트 때 떼어 낸다.
+  const pointerUpRef = useRef<(() => void) | null>(null)
+  useEffect(
+    () => () => {
+      if (pointerUpRef.current) window.removeEventListener('pointerup', pointerUpRef.current)
+    },
+    []
+  )
+
   function onPointerDown(event: PointerEvent<HTMLDivElement>): void {
-    // 목록 자체(스크롤바)를 잡은 것만 본다. 행을 누르는 것은 상세 보기다.
-    if (event.target === event.currentTarget) stopFollowing()
+    // 목록 자체(스크롤바·빈 곳)를 잡은 것만 본다. 행을 누르는 것은 상세 보기다.
+    if (event.target !== event.currentTarget) return
+    const el = event.currentTarget
+    if (!canScrollUp(el)) return
+    stopFollowing()
+    // 끌지 않고 놓았으면 scroll 이벤트가 없다. 놓는 순간 아직 맨 아래면 따라가기를 되살린다.
+    if (pointerUpRef.current) window.removeEventListener('pointerup', pointerUpRef.current)
+    const onUp = (): void => {
+      window.removeEventListener('pointerup', onUp)
+      pointerUpRef.current = null
+      if (atBottom(el)) {
+        setFollowing(true)
+        scrollToBottom()
+      }
+    }
+    pointerUpRef.current = onUp
+    window.addEventListener('pointerup', onUp)
   }
 
   function jumpToBottom(): void {

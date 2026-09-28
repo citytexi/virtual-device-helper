@@ -101,6 +101,22 @@ describe('useLogStream', () => {
     expect(liveRows(result.current).map((r) => (r.kind === 'line' ? r.entry.seq : -1))).toEqual([17, 18, 19])
   })
 
+  it('compacts once a quarter of capacity is dead, keeping the backing array near capacity', () => {
+    const h = harness()
+    const { result } = renderHook(() => useLogStream('emulator-5554', true, h.deps, 8))
+    const port = fakePort()
+    h.deliverPort('emulator-5554', port)
+
+    for (let i = 0; i < 40; i++) {
+      h.deliver(port, { type: 'batch', entries: [entry(i)] })
+      // 죽은 앞부분은 capacity/4(=2)줄에 닿기 전까지만 남는다.
+      expect(result.current.rows.length).toBeLessThanOrEqual(8 + 2)
+    }
+    expect(liveRows(result.current).map((r) => (r.kind === 'line' ? r.entry.seq : -1))).toEqual([
+      32, 33, 34, 35, 36, 37, 38, 39
+    ])
+  })
+
   it('ignores a repeated batch and an overlapping snapshot (seq guard)', () => {
     const h = harness()
     const { result } = renderHook(() => useLogStream('emulator-5554', true, h.deps))
@@ -153,6 +169,27 @@ describe('useLogStream', () => {
 
     h.deliver(port, { type: 'resumed', lastSeq: 3 })
 
+    expect(result.current.caughtUp).toBe(true)
+  })
+
+  it('ignores a resumed that arrives while hidden — caughtUp waits for the next resumed', () => {
+    const h = harness()
+    const { result, rerender } = renderHook(({ visible }: { visible: boolean }) => useLogStream('emulator-5554', visible, h.deps), {
+      initialProps: { visible: true }
+    })
+    const port = fakePort()
+    h.deliverPort('emulator-5554', port)
+    h.deliver(port, { type: 'batch', entries: [entry(0)] })
+    rerender({ visible: false })
+    rerender({ visible: true })
+    rerender({ visible: false })
+
+    // 앞선 resume의 답이 숨겨진 뒤에 도착한다.
+    h.deliver(port, { type: 'resumed', lastSeq: 0 })
+    rerender({ visible: true })
+    expect(result.current.caughtUp).toBe(false)
+
+    h.deliver(port, { type: 'resumed', lastSeq: 0 })
     expect(result.current.caughtUp).toBe(true)
   })
 
