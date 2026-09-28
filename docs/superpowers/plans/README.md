@@ -13,6 +13,10 @@
 <!-- index:start -->
 | 계획 | 상태 | 내용 |
 |------|------|------|
+| [m3-1-node-control](2026-09-28-m3-1-node-control.md) | draft | 노드 트리·정규화 bounds, ref 재검증, UI 툴의 ref·0..1 좌표 입력, 제스처 정규화 |
+| [m3-2a-log-core](2026-09-28-m3-2a-log-core.md) | draft | logcat tail·버퍼·pid 추적·시계 보정, 로그 포트, log_read의 package |
+| [m3-2b-log-panel](2026-09-28-m3-2b-log-panel.md) | draft | useLogStream, 필터·가상 스크롤, 로그 탭 UI |
+| [m3-3-event-timeline](2026-09-28-m3-3-event-timeline.md) | draft | 툴 호출 상세·가림, 기기·스트림·로그 이벤트 타임라인, 활동 탭, 로그 점프 |
 <!-- index:end -->
 
 ## 아카이브

@@ -19,6 +19,9 @@ virtual-device-helper의 구조 결정을 기록한다. 기록하는 것은 **"�
 | [0008](0008-log-read-response-shape.md) | log_read 응답은 압축 한 줄 문자열과 바이트 예산으로 준다 | accepted | 2026-09-23 | 줄 수 상한만으론 인라인 한도를 못 막았다. 구조화된 LogLine은 툴 층 아래에 남긴다 |
 | [0009](0009-unsigned-arm64-mac-distribution.md) | 배포는 서명 없는 macOS arm64 dmg·zip으로 한다 | accepted | 2026-09-23 | Developer ID 없음, Intel·Windows 미지원 |
 | [0010](0010-stream-transport-message-port.md) | 스트림 전송은 MessageChannelMain 전용 포트로 한다 | accepted | 2026-09-23 | 세션마다 포트 하나라 기기 전환 시 패킷 섞임이 구조적으로 없다. IPC 채널·로컬 WebSocket 기각 |
+| [0011](0011-node-ref-revalidation.md) | 요소 지정은 스냅샷 ref와 실행 직전 재검증으로 한다 | proposed | 2026-09-28 | 화면이 바뀐 뒤 엉뚱한 곳을 누르는 틀린 성공을 막는다. 캐시 좌표·셀렉터 ref 기각 |
+| [0012](0012-normalized-tool-coordinates.md) | MCP 툴 좌표는 0..1 정규화 좌표로 한다 | proposed | 2026-09-28 | 스크린샷 축소·회전과 무관한 좌표. MCP 클라이언트 호환이 깨진다. 픽셀 유지·병행 기각 |
+| [0013](0013-log-transport-dedicated-port.md) | 로그 전송은 용도별 전용 MessagePort로 한다 | proposed | 2026-09-28 | 상태 이벤트와 대량 로그를 분리하고 흐름 제어 자리를 둔다. ADR-0010의 포트 규칙을 용도별로 넓힌다. `app:event`·폴링 기각 |
 <!-- index:end -->
 
 ## 언제 ADR을 쓰는가

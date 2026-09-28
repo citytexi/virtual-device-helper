@@ -13,6 +13,7 @@ virtual-device-helper의 구조·설계 명세를 모은다. 다루는 것은 **
 <!-- index:start -->
 | 문서 | 상태 | 검증일 | 내용 |
 |------|------|--------|------|
+| [main-layers](main-layers.md) | living | 2026-09-28 | main 프로세스의 층과 옆에 붙는 파이프라인, 조립 방식 |
 <!-- index:end -->
 
 ## 언제 architecture 문서를 쓰는가
