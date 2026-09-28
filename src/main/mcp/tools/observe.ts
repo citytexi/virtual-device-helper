@@ -3,6 +3,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { runTool } from '../runTool'
 import type { ToolContext } from '../toolContext'
 import { DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT } from '../../../shared/limits'
+import { ANDROID_PACKAGE_PATTERN } from '../../../shared/packageName'
+import { deviceError } from '../../../shared/types/errors'
 import type { LogLine } from '../../../shared/types/device'
 
 const serial = z
@@ -37,6 +39,14 @@ const LOG_MESSAGE_MAX_CODEPOINTS = 300
  * ADR-0008에 있다.
  */
 export const LOG_READ_RESPONSE_BUDGET_BYTES = 20_000
+
+/**
+ * package로 걸렀는데 pid 기록이 하나도 없을 때 쓰는 hint. 설치 여부만 확인하는
+ * `requirePackage`의 hint(`app_install로 먼저 설치해라`)와는 구분한다 — 여기서는
+ * 설치는 됐지만 이 연결 동안 한 번도 실행되지 않았을 가능성까지 함께 안내해야 한다.
+ */
+export const PACKAGE_NOT_RUN_HINT =
+  '설치돼 있지 않으면 app_install, 실행한 적이 없으면 app_launch로 먼저 실행해라'
 
 /** message가 상한을 넘으면 코드포인트 단위로 잘라내고, 몇 자를 버렸는지 보이는 표식을 남긴다. */
 function truncateMessage(message: string): string {
@@ -121,7 +131,8 @@ export function registerObserveTools(server: McpServer, context: ToolContext): v
         `logcat을 읽는다. 기본 줄 수 제한이 있고(${LOG_READ_DEFAULT_LIMIT}) 인자로도 상한(${LOG_READ_MAX_LIMIT})을 넘을 수 없다. ` +
         '잘리면 truncated가 true로 온다 — 그때는 filter로 좁혀서 다시 불러라. lines는 한 줄당 문자열 하나로 온다 ' +
         '("MM-DD HH:MM:SS.mmm L tag(pid): message" 형태). 긴 message는 잘리고 "…(+N자)"로 얼마나 잘렸는지 표시된다. ' +
-        `줄 수가 상한 안이어도 응답 전체가 UTF-8로 ${LOG_READ_RESPONSE_BUDGET_BYTES}바이트를 넘으면 가장 오래된 줄부터 추가로 버리고 그만큼 truncated·droppedCount에 반영한다.`,
+        `줄 수가 상한 안이어도 응답 전체가 UTF-8로 ${LOG_READ_RESPONSE_BUDGET_BYTES}바이트를 넘으면 가장 오래된 줄부터 추가로 버리고 그만큼 truncated·droppedCount에 반영한다. ` +
+        'package를 주면 그 패키지가 가졌던 pid로 거른다 — 앱이 죽은 뒤에도 찾는다. pid 기록이 전혀 없으면 package_not_found다.',
       inputSchema: {
         filter: z.string().optional().describe('태그나 메시지에 대한 부분일치 필터'),
         since: z.string().optional().describe('이 시각 이후만. 형식은 "MM-DD HH:mm:ss.SSS"'),
@@ -134,17 +145,37 @@ export function registerObserveTools(server: McpServer, context: ToolContext): v
           .describe(
             `가져올 최대 줄 수. 생략하면 ${LOG_READ_DEFAULT_LIMIT}, 상한은 ${LOG_READ_MAX_LIMIT}이며 인자로도 못 넘는다.`
           ),
+        package: z
+          .string()
+          .regex(ANDROID_PACKAGE_PATTERN, 'package는 안드로이드 패키지명이어야 한다. 예: com.example.app')
+          .optional()
+          .describe('이 패키지의 로그만. 앱이 죽은 뒤에도 이 연결 동안의 로그를 찾는다'),
         serial
       }
     },
     async (args) =>
       runTool(context, 'log_read', args, async () => {
         const device = context.registry.resolve(args.serial)
-        const opts: { filter?: string; since?: string; limit: number } = {
+        const opts: { filter?: string; since?: string; limit: number; pids?: number[] } = {
           limit: args.limit ?? LOG_READ_DEFAULT_LIMIT
         }
         if (args.filter !== undefined) opts.filter = args.filter
         if (args.since !== undefined) opts.since = args.since
+
+        // pidHistory는 registry.run 밖에서 부른다 — adb pidof 호출이 실제 로그 조회와
+        // 직렬 큐를 나눠 쓰지 않게 한다.
+        if (args.package !== undefined) {
+          const pids = await context.pidHistory(device.serial, args.package)
+          if (pids.length === 0) {
+            throw deviceError(
+              'package_not_found',
+              `${args.package}의 pid 기록이 없다`,
+              PACKAGE_NOT_RUN_HINT,
+              { pkg: args.package }
+            )
+          }
+          opts.pids = pids
+        }
 
         const result = await context.registry.run(device.serial, () => device.readLogs(opts))
         const formatted = result.lines.map(formatLogLine)

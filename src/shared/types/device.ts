@@ -98,6 +98,8 @@ export interface LogOpts {
   /** "MM-DD HH:mm:ss.SSS" 형식. 이 시각 이후만 읽는다. */
   since?: string
   limit?: number
+  /** 이 pid들의 줄만 남긴다. limit을 적용하기 전에 거른다. */
+  pids?: number[]
 }
 
 /**

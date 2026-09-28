@@ -8,6 +8,7 @@ import {
 } from '../shared/types/ipc'
 import type { ScreenshotResult } from '../shared/types/device'
 import type { StreamPortMeta } from '../shared/types/stream'
+import type { LogPortMeta } from '../shared/types/logs'
 
 /**
  * renderer에 노출하는 전부. 범용 invoke를 만들지 않는다 —
@@ -24,6 +25,8 @@ const api: RendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.captureScreenshot, serial) as Promise<Outcome<ScreenshotResult>>,
   startStream: (serial) => ipcRenderer.invoke(IPC_CHANNELS.startStream, serial) as Promise<Outcome<void>>,
   stopStream: () => ipcRenderer.invoke(IPC_CHANNELS.stopStream) as Promise<Outcome<void>>,
+  openLogs: (serial) => ipcRenderer.invoke(IPC_CHANNELS.openLogs, serial) as Promise<Outcome<void>>,
+  closeLogs: () => ipcRenderer.invoke(IPC_CHANNELS.closeLogs) as Promise<Outcome<void>>,
   onEvent: (callback) => {
     // IpcRendererEvent를 renderer로 넘기지 않는다. sender를 통해 더 많은 것이 새어 나간다.
     const listener = (_event: IpcRendererEvent, payload: MainEvent): void => callback(payload)
@@ -40,6 +43,15 @@ const api: RendererApi = {
 ipcRenderer.on(IPC_CHANNELS.streamPort, (event: IpcRendererEvent, meta: StreamPortMeta) => {
   if (event.ports.length !== 1) return
   window.postMessage({ channel: IPC_CHANNELS.streamPort, serial: meta.serial, sessionId: meta.sessionId }, '*', [...event.ports])
+})
+
+/**
+ * 로그 포트도 스트림 포트와 같은 규칙이다. renderer의 logPort.ts가 channel·출처·포트 개수를
+ * 보고 받는다. 여기서도 포트가 정확히 하나일 때만 넘긴다.
+ */
+ipcRenderer.on(IPC_CHANNELS.logPort, (event: IpcRendererEvent, meta: LogPortMeta) => {
+  if (event.ports.length !== 1) return
+  window.postMessage({ channel: IPC_CHANNELS.logPort, serial: meta.serial, sessionId: meta.sessionId }, '*', [...event.ports])
 })
 
 contextBridge.exposeInMainWorld('api', api)

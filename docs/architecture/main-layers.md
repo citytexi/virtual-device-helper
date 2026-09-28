@@ -5,7 +5,7 @@ status: living                  # living | superseded | deprecated
 verified: 2026-09-28
 scope: [main, mcp, android, streaming]
 hosts: []                       # windows | macos — 호스트 OS마다 구조가 갈릴 때만 채운다
-related_adr: [ADR-0005, ADR-0001, ADR-0010]
+related_adr: [ADR-0005, ADR-0001, ADR-0010, ADR-0013]
 related_spec: [m1-device-core-mcp-server, m2-live-streaming, m3-node-control-logs-events]
 related_architecture:
 related_plan:
@@ -47,6 +47,7 @@ main 프로세스는 아래에서 위로 쌓인다. 타깃 디바이스를 가�
 | 파이프라인 | 디렉토리 · 진입 심볼 | 전용 포트 | 근거 |
 |---|---|---|---|
 | 화면 스트림 | `src/main/stream/` · `streamManager.ts#createStreamManager` | `app:stream-port` | [ADR-0010](../adr/0010-stream-transport-message-port.md) |
+| 로그 | `src/main/logs/` · `logManager.ts#createLogManager` | `app:log-port` | [ADR-0013](../adr/0013-log-transport-dedicated-port.md) |
 
 파이프라인 매니저는 기기 관리 층의 이벤트로 수명을 정한다. preload는 범용 포트 통로를 만들지 않는다.
 

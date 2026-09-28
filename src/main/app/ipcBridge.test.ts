@@ -30,7 +30,9 @@ function harness() {
     shutdownDevice: vi.fn(async () => {}),
     captureScreenshot: vi.fn(async () => ({ base64: 'QUJD', width: 1, height: 1 })),
     startStream: vi.fn(async () => {}),
-    stopStream: vi.fn(async () => {})
+    stopStream: vi.fn(async () => {}),
+    openLogs: vi.fn(),
+    closeLogs: vi.fn()
   }
 
   registerIpcBridge(ipcMain as never, state, actions, (channel, payload) =>
@@ -52,7 +54,9 @@ describe('registerIpcBridge', () => {
         IPC_CHANNELS.shutdownDevice,
         IPC_CHANNELS.captureScreenshot,
         IPC_CHANNELS.startStream,
-        IPC_CHANNELS.stopStream
+        IPC_CHANNELS.stopStream,
+        IPC_CHANNELS.openLogs,
+        IPC_CHANNELS.closeLogs
       ].sort()
     )
   })
@@ -128,6 +132,34 @@ describe('registerIpcBridge', () => {
     await h.handlers.get(IPC_CHANNELS.stopStream)!({})
 
     expect(h.actions.stopStream).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens logs for a known serial', async () => {
+    const h = harness()
+    const handler = h.handlers.get(IPC_CHANNELS.openLogs)!
+
+    const result = await handler({}, 'emulator-5554')
+
+    expect(result).toEqual({ ok: true, value: undefined })
+    expect(h.actions.openLogs).toHaveBeenCalledWith('emulator-5554')
+  })
+
+  it('rejects openLogs with an empty serial', async () => {
+    const h = harness()
+    const handler = h.handlers.get(IPC_CHANNELS.openLogs)!
+
+    const result = (await handler({}, '')) as { ok: boolean }
+
+    expect(result.ok).toBe(false)
+    expect(h.actions.openLogs).not.toHaveBeenCalled()
+  })
+
+  it('routes closeLogs without arguments', async () => {
+    const h = harness()
+
+    await h.handlers.get(IPC_CHANNELS.closeLogs)!({})
+
+    expect(h.actions.closeLogs).toHaveBeenCalledTimes(1)
   })
 
   it('broadcasts main events on the single event channel', () => {

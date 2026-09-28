@@ -270,9 +270,13 @@ interface LogEntry extends LogLine {
 
 - **`logTail.ts`** — `adb logcat -v threadtime -T 2000`을 `adbClient.stream`으로 띄운다. 줄은 `AdbStream.onLine`이
   잘라 준다. `parseLogcatLine`으로 파싱하고, 파싱 못 하는 줄은 버린다.
-- **시계 보정** — tail을 시작할 때 `date +%s%3N`을 한 번 불러 기기와 호스트의 시계 차이를 잰다. 왕복 시간의
-  절반을 보정한다. 기기 timestamp(`MM-DD HH:mm:ss.SSS`)에 호스트의 연도를 붙이고 이 차이를 더해 `at`을 만든다.
-  12월과 1월 사이에서는 호스트 날짜와 가까운 쪽 연도를 고른다. 측정이 실패하면 `at`은 줄을 받은 호스트 시각이다.
+- **시계 보정** — tail을 시작할 때 `date +%s%3N%z`를 한 번 불러 기기 epoch ms와 기기 tz offset(`+0900` 등)을
+  함께 잰다. `%3N`과 `%z` 사이에 공백을 두지 않는다 — `adb shell`이 인자를 이어 붙여 기기 셸이 다시 나누기
+  때문이다. 시계 차이는 호스트의 왕복 중간 시각에서 기기 epoch를 뺀 값이다. logcat timestamp(`MM-DD HH:mm:ss.SSS`)는
+  기기 tz의 벽시계이므로 기기 tz로 해석해 epoch로 바꾸고(UTC 필드에서 tz offset을 뺀다), 이 차이를 더해 `at`을
+  만든다. 연도는 작년·올해·내년 중 결과가 호스트 현재 시각에 가장 가까운 쪽을 고른다. 그래서 12월과 1월 사이에서도,
+  기기와 호스트의 tz가 달라도 `at`이 맞는다. `%z`를 못 읽으면 호스트 tz로 해석한다. epoch가 13자리 숫자가 아니거나
+  측정이 실패하면 `at`은 줄을 받은 호스트 시각이다.
 - **`logBuffer.ts`** — 기기별 링 버퍼. 5만 줄. `seq` 범위 조회와 `at` 기준 탐색을 준다.
 - **`pidTracker.ts`** — 기기별 pid→패키지 맵과 패키지→pid 기록.
   - 시작할 때 `ps -A -o PID,NAME`으로 채운다.
@@ -558,6 +562,40 @@ vitest와 TDD로 간다. 실기기가 필요한 테스트는 `*.integration.test
 - 다이얼로그가 떠 있을 때 `ui_find`의 bounds로 다이얼로그 버튼을 누를 수 있다 —
   미검증 — 앱+MCP 클라이언트로 사용자 확인 필요
 
+### M3-2a 검증 결과 (2026-09-28)
+
+- **통합 테스트** (`npm run test:integration -- src/main/logs/logTail.integration.test.ts`, PASS,
+  대상 emulator-5554):
+  - `createLogTail`이 실제 logcat 스트림에서 `adb shell log -t VDH_M3 <메시지>`로 쓴 줄을 5초 안에 받고,
+    `parseDeviceClock(adb shell date +%s%3N%z)`로 잰 기기 epoch와 tz offset이 폴백 없이 읽힌다는 것을 실기기로 확인했다.
+  - MCP 클라이언트 없이 `log_read({ package })` 경로를 그대로 재현한 두 번째 케이스: `createLogTail`이 먹이는
+    `createPidTracker`가 `ps -A -o PID,NAME` seed와 `ActivityManager`의 `Start proc` 줄로 설정 앱 pid를 배우고,
+    `adb shell am crash com.android.settings`로 죽인 뒤 `adb shell pidof com.android.settings`가 빈 값이 된
+    상태에서도 tracker가 기억한 pid로 `androidDevice.ts`의 `readLogs({ pids })`를 부르면 `FATAL EXCEPTION`
+    또는 태그 `AndroidRuntime`인 크래시 스택이 돌아온다는 것을 확인했다. `pidTracker.ts`의 pid 기록과
+    `readLogs`의 pid 필터가 실제 크래시 위에서 맞물려 동작함을 보인다.
+- **통합 테스트** (`npm run test:integration -- src/main/logs/logRead.integration.test.ts`, PASS,
+  대상 emulator-5554): `index.ts`와 같은 조각 — `trackDevices` 기반 `createDeviceRegistry`, 실제 `createLogTail`을
+  쓰는 `createLogManager`, `adbLogDeps.ts`의 `createSeedPids`·`createPidof` — 을 묶고, MCP 툴 층은
+  `testHarness.ts`의 `createToolHarness`(인메모리 전송)에 `pidHistory: logs.pidHistory`로 붙였다. 설정 앱을 띄워
+  tail이 `Start proc` 줄을 받은 뒤 `adb shell am crash com.android.settings`로 죽이고, `pidof`가 빈 값이 된 뒤
+  MCP `log_read({ package: 'com.android.settings' })`를 부르면 크래시 스택이 돌아온다는 것을 확인했다.
+- `adb shell am crash com.android.settings`로 크래시시킨 뒤 `log_read({ package: 'com.android.settings' })`가
+  크래시 스택을 준다. 프로세스가 죽은 뒤에도 준다 — MCP 툴 경로는 위 통합 테스트로 프로세스 안에서 검증됨.
+  HTTP 전송과 앱 조립(`bootstrap.ts`)을 거친 경로만 미검증 — 앱+MCP 클라이언트로 사용자 확인 필요
+
+### M3-2b 검증 결과 (2026-09-28)
+
+- 설정 앱을 크래시시킨 뒤 로그 탭의 앱 필터로 크래시 스택이 보이고, `pidof`가 빈 뒤에도 보인다 —
+  미검증 — 앱에서 사용자 확인 필요
+- `adb shell 'while true; do log -t M3LOAD load; done'`로 부하를 거는 동안 스크롤·필터 입력·탭 전환이 멈추지
+  않는다 — 미검증 — 앱에서 사용자 확인 필요
+- 같은 부하에서 로그 탭의 줄 수가 5만에서 더 늘지 않는다 — 미검증 — 앱에서 사용자 확인 필요
+- 로그 탭을 숨겼다가 다시 열면 빠진 줄이 채워지거나 "밀려난 구간" 행이 보인다 — 미검증 — 앱에서 사용자 확인 필요
+- 자동화 테스트가 덮는 범위: renderer 단위 테스트가 버퍼 상한·pause/resume와 `gap`(`useLogStream.test.tsx`),
+  따라가기·스크롤(`LogTab.test.tsx`), 필터 조합(`logFilter.test.ts`, `LogFilters.test.tsx`)을 실기기 부하 없이
+  확인하고, M3-2a의 크래시 로그 경로는 `logRead.integration.test.ts` 통합 테스트가 확인한다.
+
 ## 계획 분할
 
 - **M3-1 노드 기반 제어** — 로그·타임라인과 독립이다.
@@ -573,6 +611,6 @@ vitest와 TDD로 간다. 실기기가 필요한 테스트는 `*.integration.test
 
 - ref 동작마다 덤프가 한 번 더 들어 1~2초 느려진다. 실사용에서 문제가 되면 "직전 덤프가 아주 최근이면
   재사용"을 얹는다. 기준 시간은 실측 뒤에 정한다.
-- 로그 버퍼 5만 줄, 배치 100ms, snapshot 청크 5000줄은 출발값이다. M3-2 완료 검증에서 메모리와 스크롤을 보고
-  조정한다.
-- 태그 칩으로 보여 줄 태그 수는 로그 탭 폭을 보고 M3-2에서 정한다.
+- 로그 버퍼 5만 줄, 배치 100ms, snapshot 청크 5000줄은 아직 출발값이다. M3-2b 완료 검증(위 "M3-2b 검증 결과"
+  참고)이 앱에서 아직 끝나지 않아, 메모리와 스크롤을 보고 조정할지는 정해지지 않았다.
+- 태그 칩으로 보여 줄 태그 수도 아직 출발값이다. 같은 M3-2b 앱 확인 뒤 로그 탭 폭을 보고 정한다.
