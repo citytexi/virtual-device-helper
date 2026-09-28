@@ -1,14 +1,14 @@
 ---
 id: m2-1-stream-core          # 파일명에서 날짜 접두사를 뺀 slug
 title: M2-1 — main 스트림 코어
-status: draft                   # draft | in-progress | done | abandoned | superseded
+status: done                   # draft | in-progress | done | abandoned | superseded
 type: work-order                # work-order | handoff
 created: 2026-09-23
-updated: 2026-09-23
+updated: 2026-09-28
 owner: virtual-device-helper 팀
 scope: [main, preload, shared, streaming, android, build]
 hosts: []                       # windows | macos — 호스트 OS마다 작업이 갈릴 때만 채운다
-archived_reason:                # done/abandoned 시 사유 (활성 계획은 비움)
+archived_reason: done — M2 구현 완료. scrcpy 세션·streamManager·startStream IPC, 검증 결과는 M2 스펙에 남김
 related_adr: [ADR-0002, ADR-0010]
 related_spec: m2-live-streaming
 related_architecture:

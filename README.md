@@ -2,10 +2,10 @@
 
 Android·iOS 가상 기기를 MCP로 제어하고, 화면·로그·이벤트를 한 화면에서 보는 Electron 데스크탑 앱.
 
-현재 상태: v0.1.0 — macOS(Apple Silicon) 호스트, Android 에뮬레이터, MCP 서버, 기기 스크린샷, 툴 호출 기록,
-에이전트 안내 탭. 실시간 화면 스트리밍과 화면 직접 조작은 아직 없다(M2).
+현재 상태: v0.1.0 — macOS(Apple Silicon) 호스트, Android 에뮬레이터, MCP 서버, 실시간 기기 화면과 직접 조작,
+에이전트 동작 표시, 툴 호출 기록, 에이전트 안내 탭.
 검증 결과와 남은 결함은 [M1 스펙](docs/superpowers/specs/archive/2026-09-22-m1-device-core-mcp-server.md)의
-"검증 결과"에 있다.
+"검증 결과"와 [M2 스펙](docs/superpowers/specs/2026-09-23-m2-live-streaming.md)의 "검증 결과"에 있다.
 
 ## 필요한 것
 
