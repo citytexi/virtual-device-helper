@@ -121,6 +121,10 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
           }
           if (data.durationMs === undefined) {
             ctx.addIssue({ code: 'custom', message: '좌표 경로는 durationMs가 필요하다' })
+            return
+          }
+          if (data.direction !== undefined) {
+            ctx.addIssue({ code: 'custom', message: 'direction은 ref 경로에서만 쓴다' })
           }
         })
     },

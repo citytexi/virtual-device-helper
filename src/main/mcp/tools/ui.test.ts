@@ -267,11 +267,30 @@ describe('ui_swipe', () => {
     await harness.close()
   })
 
-  it('ui_swipe rejects direction without ref and ref with coordinates', async () => {
+  it('rejects a ref call missing direction', async () => {
     const harness = await harnessFor({ swipe: vi.fn(async () => {}) })
 
-    expect((await harness.raw('ui_swipe', { direction: 'down' })).isError).toBe(true)
-    expect((await harness.raw('ui_swipe', { ref: 'g1:0', x1: 0.1, y1: 0.1, x2: 0.2, y2: 0.2 })).isError).toBe(true)
+    expect((await harness.raw('ui_swipe', { ref: 'g1:0' })).isError).toBe(true)
+
+    await harness.close()
+  })
+
+  it('rejects ref combined with an otherwise-complete coordinate set', async () => {
+    const harness = await harnessFor({ swipe: vi.fn(async () => {}) })
+
+    // direction까지 포함해 ref 경로 자체는 완전하다 — 유일한 결함이 좌표와의 동시 지정임을 가린다.
+    expect(
+      (
+        await harness.raw('ui_swipe', {
+          ref: 'g1:0',
+          direction: 'down',
+          x1: 0.1,
+          y1: 0.1,
+          x2: 0.2,
+          y2: 0.2
+        })
+      ).isError
+    ).toBe(true)
 
     await harness.close()
   })
@@ -280,6 +299,27 @@ describe('ui_swipe', () => {
     const harness = await harnessFor({ swipe: vi.fn(async () => {}) })
 
     expect((await harness.raw('ui_swipe', { x1: 0.1, y1: 0.1, x2: 0.2, y2: 0.2 })).isError).toBe(true)
+
+    await harness.close()
+  })
+
+  it('rejects coordinates combined with direction', async () => {
+    const swipe = vi.fn(async () => {})
+    const harness = await harnessFor({ swipe })
+
+    // 좌표 경로에서는 durationMs까지 채워도 direction이 섞이면 거절한다 — 에이전트가
+    // direction이 조용히 무시된 채 좌표대로만 움직였다고 착각하면 안 된다.
+    const result = await harness.raw('ui_swipe', {
+      x1: 0.1,
+      y1: 0.1,
+      x2: 0.2,
+      y2: 0.2,
+      durationMs: 300,
+      direction: 'down'
+    })
+
+    expect(result.isError).toBe(true)
+    expect(swipe).not.toHaveBeenCalled()
 
     await harness.close()
   })
