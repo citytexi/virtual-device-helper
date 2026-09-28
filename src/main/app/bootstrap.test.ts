@@ -38,6 +38,13 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
     registryListeners.push(listener)
     return () => {}
   })
+  // registry.start()가 불리는 바로 그 순간, 그때까지 등록된 리스너에게만 동기로
+  // device_connected를 쏜다. 실제 registry도 추적을 시작하자마자 이미 붙어 있던 기기를
+  // 이렇게 알린다. 구독이 start() 뒤에 걸리면 이 리스너 목록에 없으니 이벤트를 놓친다 —
+  // fireRegistry를 나중에 수동으로 불러서는 이 순서를 검증할 수 없다.
+  ;(stack.registry.start as ReturnType<typeof vi.fn>).mockImplementation(() => {
+    registryListeners.forEach((listener) => listener({ type: 'device_connected', serial: 'emulator-5554' }))
+  })
   const stream = {
     open: vi.fn(async () => {}),
     stop: vi.fn(async () => {}),
@@ -146,13 +153,11 @@ describe('bootstrapApp with an SDK: logs', () => {
   it('subscribes the log manager before registry.start so initial devices get a tail', async () => {
     const h = harness()
 
+    // registry.start()의 가짜 구현이 그 순간까지 등록된 리스너에게 device_connected를
+    // 동기로 쏜다(harness 참고). 로그 구독이 start() 앞에 걸려 있어야만 이 호출을 받는다.
     await bootstrapApp(h.deps)
-    h.fireRegistry({ type: 'device_connected', serial: 'emulator-5554' })
 
     expect(h.logs.handleConnect).toHaveBeenCalledWith('emulator-5554')
-    const onOrder = vi.mocked(h.stack.registry.on).mock.invocationCallOrder[0]!
-    const startOrder = vi.mocked(h.stack.registry.start).mock.invocationCallOrder[0]!
-    expect(onOrder).toBeLessThan(startOrder)
   })
 
   it('closes the log tail when its device disconnects', async () => {

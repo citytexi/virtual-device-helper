@@ -156,11 +156,12 @@ describe('log port forwarding', () => {
     vi.unstubAllGlobals()
   })
 
-  it('drops a log-port event carrying two ports', async () => {
+  it('forwards nothing when the message carries no single port', async () => {
     const postMessage = vi.fn()
     vi.stubGlobal('window', { postMessage })
     await loadPreload()
 
+    portListener()({ ports: [] }, { serial: 'emulator-5554', sessionId: 's1' })
     portListener()({ ports: [{}, {}] }, { serial: 'emulator-5554', sessionId: 's1' })
 
     expect(postMessage).not.toHaveBeenCalled()

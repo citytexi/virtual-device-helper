@@ -67,7 +67,7 @@ function postPortToRenderer(channel: string, meta: unknown, remote: unknown): vo
       return
     }
   } catch (thrown) {
-    console.error('포트를 renderer에 건네지 못했다', thrown)
+    console.error(`포트를 renderer에 건네지 못했다 (${channel})`, thrown)
   }
   try {
     port.close()
