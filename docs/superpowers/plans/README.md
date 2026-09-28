@@ -13,6 +13,7 @@
 <!-- index:start -->
 | 계획 | 상태 | 내용 |
 |------|------|------|
+| [m3-1-node-control](2026-09-28-m3-1-node-control.md) | draft | 노드 트리·정규화 bounds, ref 재검증, UI 툴의 ref·0..1 좌표 입력, 제스처 정규화 |
 <!-- index:end -->
 
 ## 아카이브
