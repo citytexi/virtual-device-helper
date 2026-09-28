@@ -7,7 +7,7 @@ import type { Device, LogLine } from '../../shared/types/device'
 import type { TailState } from '../../shared/types/logs'
 import { createLogTail } from './logTail'
 import { createPidTracker } from './pidTracker'
-import { parseDeviceEpoch } from './logClock'
+import { DEVICE_CLOCK_ARGS, parseDeviceClock } from './logClock'
 
 const SETTINGS_PKG = 'com.android.settings'
 const SETTINGS_COMPONENT = `${SETTINGS_PKG}/.Settings`
@@ -105,8 +105,11 @@ describe('createLogTail against a real emulator', () => {
       expect(Math.abs((found as { line: LogLine; at: number }).at - Date.now())).toBeLessThan(5_000)
 
       // 시계 측정이 성공했는지(폴백이 아닌지)도 따로 확인한다.
-      const dateResult = await adb.exec(serial, ['shell', 'date', '+%s%3N'])
-      expect(parseDeviceEpoch(dateResult.stdout)).not.toBeNull()
+      // tz offset까지 읽혀야 timestamp를 기기 tz로 해석한다(호스트 tz 폴백이 아님).
+      const dateResult = await adb.exec(serial, DEVICE_CLOCK_ARGS)
+      const clock = parseDeviceClock(dateResult.stdout)
+      expect(clock).not.toBeNull()
+      expect(clock?.tzOffsetMin).not.toBeNull()
     } finally {
       tail.stop()
     }

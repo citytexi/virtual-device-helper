@@ -3,11 +3,11 @@ import type { TailState } from '../../shared/types/logs'
 import type { AdbClient } from '../adb/adbClient'
 import { RECONNECT_DELAYS_MS } from '../stream/streamManager'
 import { parseLogcatLine } from '../device/parsers/logcat'
-import { clockOffset, parseDeviceEpoch, toHostEpoch } from './logClock'
+import { clockOffset, DEVICE_CLOCK_ARGS, parseDeviceClock, toHostEpoch } from './logClock'
 
 /** logcat -v threadtime 고정 인자. -T 뒤에 시작 시각을 붙인다. */
 const LOGCAT_BASE_ARGS = ['logcat', '-v', 'threadtime']
-/** 최초 시작에 쓰는 -T 값. 최근 몇 초만 받아 과거 로그 폭주를 피한다. */
+/** 최초 시작에 쓰는 -T 값. 초가 아니라 줄 수다 — 버퍼의 마지막 2000줄만 받아 과거 로그 폭주를 피한다. */
 const INITIAL_SINCE = '2000'
 
 export interface LogTailDeps {
@@ -41,6 +41,8 @@ export function createLogTail(deps: LogTailDeps, handlers: LogTailHandlers): Log
 
   // 시계 측정이 실패하면 null로 두고 수신 시각으로 폴백한다.
   let offsetMs: number | null = null
+  // 기기 tz offset(분). %z를 못 읽었으면 null이고, 그때 timestamp는 호스트 tz로 해석한다.
+  let tzOffsetMin: number | null = null
   let lastLineTimestamp: string | null = null
   // 이번 스트림을 재시작할 때 넘긴 -T 값(=재생 기준 timestamp). 최초 스트림('2000'으로 시작)은
   // 실제 timestamp가 아니므로 null — 이 경우 줄을 하나라도 받으면 곧장 재시도 카운터를 되돌린다.
@@ -68,7 +70,7 @@ export function createLogTail(deps: LogTailDeps, handlers: LogTailHandlers): Log
     }
     lastLineTimestamp = parsed.timestamp
 
-    const at = offsetMs === null ? now() : toHostEpoch(parsed.timestamp, offsetMs, now())
+    const at = offsetMs === null ? now() : toHostEpoch(parsed.timestamp, offsetMs, now(), tzOffsetMin)
     handlers.onLine(parsed, at)
   }
 
@@ -119,12 +121,14 @@ export function createLogTail(deps: LogTailDeps, handlers: LogTailHandlers): Log
   async function start(): Promise<void> {
     const hostBefore = now()
     try {
-      const result = await deps.adb.exec(deps.serial, ['shell', 'date', '+%s%3N'])
+      const result = await deps.adb.exec(deps.serial, DEVICE_CLOCK_ARGS)
       const hostAfter = now()
-      const deviceEpoch = parseDeviceEpoch(result.stdout)
-      offsetMs = deviceEpoch === null ? null : clockOffset(hostBefore, deviceEpoch, hostAfter)
+      const clock = parseDeviceClock(result.stdout)
+      offsetMs = clock === null ? null : clockOffset(hostBefore, clock.epochMs, hostAfter)
+      tzOffsetMin = clock?.tzOffsetMin ?? null
     } catch {
       offsetMs = null
+      tzOffsetMin = null
     }
     // exec을 기다리는 동안 stop()이 왔으면 여기서 멈춘다. 그러지 않으면 이미 'stopped'를
     // 알린 뒤에 아무도 못 끄는 logcat 프로세스를 새로 띄우게 된다.

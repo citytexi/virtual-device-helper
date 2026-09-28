@@ -19,6 +19,7 @@ interface Setup {
   tail: ReturnType<typeof createLogTail>
   streams: FakeStream[]
   streamArgs: string[][]
+  execArgs: string[][]
   lines: Array<{ line: LogLine; at: number }>
   states: TailState[]
   onResumeCalls: number
@@ -37,6 +38,7 @@ function setup(
 ): Setup {
   const streams: FakeStream[] = []
   const streamArgs: string[][] = []
+  const execArgs: string[][] = []
   const lines: Array<{ line: LogLine; at: number }> = []
   const states: TailState[] = []
   let onResumeCalls = 0
@@ -44,7 +46,8 @@ function setup(
   const clock = { value: 0 }
 
   const adb: Pick<AdbClient, 'exec' | 'stream'> = {
-    exec: async (): Promise<ExecResult> => {
+    exec: async (_serial: string | null, args: string[]): Promise<ExecResult> => {
+      execArgs.push(args)
       if (opts.execGate) await opts.execGate()
       if (opts.execRejects) throw new Error('boom')
       return {
@@ -101,6 +104,7 @@ function setup(
     tail,
     streams,
     streamArgs,
+    execArgs,
     lines,
     states,
     get onResumeCalls() {
@@ -119,7 +123,7 @@ describe('createLogTail', () => {
     expect(states).toEqual(['running'])
   })
 
-  it('converts device timestamps with the measured offset', async () => {
+  it('converts device timestamps with the measured offset in the host tz when %z is missing', async () => {
     // toHostEpoch가 연도를 호스트 현재 시각으로 추정하므로 실제 epoch 규모의 값을 쓴다.
     const hostAt = Date.parse('2026-09-28T10:00:05Z')
     // 기기가 1000ms 늦다(기기 epoch = hostAt - 1000) → offset = +1000
@@ -134,6 +138,20 @@ describe('createLogTail', () => {
     expect(s.lines[0]!.at).toBe(expectedAt)
   })
 
+  it('reads device timestamps in the device tz reported by date %z', async () => {
+    // 기기 +0000, 호스트 tz는 무엇이든 결과가 같아야 한다.
+    const hostAt = Date.UTC(2026, 8, 28, 10, 0, 5)
+    // 기기가 1000ms 늦다(기기 epoch = hostAt - 1000) → offset = +1000
+    const s = setup({ execStdout: `${hostAt - 1000}+0000` })
+    s.clock.value = hostAt
+    await s.tail.start()
+
+    s.streams[0]!.line('09-28 10:00:00.000  1  1 I T: a')
+
+    expect(s.execArgs[0]).toEqual(['shell', 'date', '+%s%3N%z'])
+    expect(s.lines[0]!.at).toBe(Date.UTC(2026, 8, 28, 10, 0, 0) + 1000)
+  })
+
   it('keeps a streamed line that ends in \\r', async () => {
     const s = setup()
     await s.tail.start()
@@ -144,7 +162,7 @@ describe('createLogTail', () => {
   })
 
   it('falls back to host receive time when date fails', async () => {
-    // '%3N'이 펼쳐지지 않은 값 → parseDeviceEpoch가 null
+    // '%3N'이 펼쳐지지 않은 값 → parseDeviceClock이 null
     const s = setup({ execStdout: '1790000000%3N' })
     await s.tail.start()
 

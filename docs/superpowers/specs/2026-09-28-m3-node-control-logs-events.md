@@ -270,9 +270,13 @@ interface LogEntry extends LogLine {
 
 - **`logTail.ts`** — `adb logcat -v threadtime -T 2000`을 `adbClient.stream`으로 띄운다. 줄은 `AdbStream.onLine`이
   잘라 준다. `parseLogcatLine`으로 파싱하고, 파싱 못 하는 줄은 버린다.
-- **시계 보정** — tail을 시작할 때 `date +%s%3N`을 한 번 불러 기기와 호스트의 시계 차이를 잰다. 왕복 시간의
-  절반을 보정한다. 기기 timestamp(`MM-DD HH:mm:ss.SSS`)에 호스트의 연도를 붙이고 이 차이를 더해 `at`을 만든다.
-  12월과 1월 사이에서는 호스트 날짜와 가까운 쪽 연도를 고른다. 측정이 실패하면 `at`은 줄을 받은 호스트 시각이다.
+- **시계 보정** — tail을 시작할 때 `date +%s%3N%z`를 한 번 불러 기기 epoch ms와 기기 tz offset(`+0900` 등)을
+  함께 잰다. `%3N`과 `%z` 사이에 공백을 두지 않는다 — `adb shell`이 인자를 이어 붙여 기기 셸이 다시 나누기
+  때문이다. 시계 차이는 호스트의 왕복 중간 시각에서 기기 epoch를 뺀 값이다. logcat timestamp(`MM-DD HH:mm:ss.SSS`)는
+  기기 tz의 벽시계이므로 기기 tz로 해석해 epoch로 바꾸고(UTC 필드에서 tz offset을 뺀다), 이 차이를 더해 `at`을
+  만든다. 연도는 작년·올해·내년 중 결과가 호스트 현재 시각에 가장 가까운 쪽을 고른다. 그래서 12월과 1월 사이에서도,
+  기기와 호스트의 tz가 달라도 `at`이 맞는다. `%z`를 못 읽으면 호스트 tz로 해석한다. epoch가 13자리 숫자가 아니거나
+  측정이 실패하면 `at`은 줄을 받은 호스트 시각이다.
 - **`logBuffer.ts`** — 기기별 링 버퍼. 5만 줄. `seq` 범위 조회와 `at` 기준 탐색을 준다.
 - **`pidTracker.ts`** — 기기별 pid→패키지 맵과 패키지→pid 기록.
   - 시작할 때 `ps -A -o PID,NAME`으로 채운다.
@@ -563,7 +567,7 @@ vitest와 TDD로 간다. 실기기가 필요한 테스트는 `*.integration.test
 - **통합 테스트** (`npm run test:integration -- src/main/logs/logTail.integration.test.ts`, PASS,
   대상 emulator-5554):
   - `createLogTail`이 실제 logcat 스트림에서 `adb shell log -t VDH_M3 <메시지>`로 쓴 줄을 5초 안에 받고,
-    `parseDeviceEpoch(adb shell date +%s%3N)`로 잰 시계 오프셋이 폴백 없이 성공한다는 것을 실기기로 확인했다.
+    `parseDeviceClock(adb shell date +%s%3N%z)`로 잰 기기 epoch와 tz offset이 폴백 없이 읽힌다는 것을 실기기로 확인했다.
   - MCP 클라이언트 없이 `log_read({ package })` 경로를 그대로 재현한 두 번째 케이스: `createLogTail`이 먹이는
     `createPidTracker`가 `ps -A -o PID,NAME` seed와 `ActivityManager`의 `Start proc` 줄로 설정 앱 pid를 배우고,
     `adb shell am crash com.android.settings`로 죽인 뒤 `adb shell pidof com.android.settings`가 빈 값이 된
