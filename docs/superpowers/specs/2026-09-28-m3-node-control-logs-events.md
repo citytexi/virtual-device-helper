@@ -558,6 +558,21 @@ vitest와 TDD로 간다. 실기기가 필요한 테스트는 `*.integration.test
 - 다이얼로그가 떠 있을 때 `ui_find`의 bounds로 다이얼로그 버튼을 누를 수 있다 —
   미검증 — 앱+MCP 클라이언트로 사용자 확인 필요
 
+### M3-2a 검증 결과 (2026-09-28)
+
+- **통합 테스트** (`npm run test:integration -- src/main/logs/logTail.integration.test.ts`, PASS,
+  대상 emulator-5554):
+  - `createLogTail`이 실제 logcat 스트림에서 `adb shell log -t VDH_M3 <메시지>`로 쓴 줄을 5초 안에 받고,
+    `parseDeviceEpoch(adb shell date +%s%3N)`로 잰 시계 오프셋이 폴백 없이 성공한다는 것을 실기기로 확인했다.
+  - MCP 클라이언트 없이 `log_read({ package })` 경로를 그대로 재현한 두 번째 케이스: `createLogTail`이 먹이는
+    `createPidTracker`가 `ps -A -o PID,NAME` seed와 `ActivityManager`의 `Start proc` 줄로 설정 앱 pid를 배우고,
+    `adb shell am crash com.android.settings`로 죽인 뒤 `adb shell pidof com.android.settings`가 빈 값이 된
+    상태에서도 tracker가 기억한 pid로 `androidDevice.ts`의 `readLogs({ pids })`를 부르면 `FATAL EXCEPTION`
+    또는 태그 `AndroidRuntime`인 크래시 스택이 돌아온다는 것을 확인했다. `pidTracker.ts`의 pid 기록과
+    `readLogs`의 pid 필터가 실제 크래시 위에서 맞물려 동작함을 보인다.
+- `adb shell am crash com.android.settings`로 크래시시킨 뒤 `log_read({ package: 'com.android.settings' })`가
+  크래시 스택을 준다. 프로세스가 죽은 뒤에도 준다 — 미검증 — 앱+MCP 클라이언트로 사용자 확인 필요
+
 ## 계획 분할
 
 - **M3-1 노드 기반 제어** — 로그·타임라인과 독립이다.
