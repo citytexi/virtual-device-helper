@@ -15,9 +15,106 @@ export interface ToolResult {
 
 const ARGS_SUMMARY_LIMIT = 120
 
+/** `ToolCallDetail.args`와 `error.details`에 같이 쓰는 상한(스펙 "근거 표기 규칙"의 2KB). */
+export const DETAIL_LIMIT_BYTES = 2048
+
+/** JSON으로 못 옮기는 값(순환 참조 등)을 만났을 때 쓰는 표식. */
+const SERIALIZE_FAILURE = '<직렬화 실패>'
+
+/** `redact` 콜백이 던졌을 때 인자를 통째로 이 표식으로 바꾼다. */
+const REDACT_FAILURE = '<가림 실패>'
+
+/** `…(잘림)` 표식. `observe.ts`의 로그 잘림 표식과 자리만 다르고 이유는 같다. */
+const TRUNCATION_MARK = '…(잘림)'
+
+/**
+ * `ui_text`처럼 원문을 남기면 안 되는 인자를 가릴 때 쓴다. 코드포인트 수(N)만 남기고
+ * 나머지는 버린다 — `.length`(UTF-16 코드유닛)를 쓰면 서로게이트 쌍이 낀 문자열에서
+ * 실제 글자 수와 다르게 샌다.
+ */
+export function redactText(text: string): string {
+  return `<${Array.from(text).length}자 가림>`
+}
+
+/**
+ * UTF-8 바이트 기준으로 `limitBytes`(표식 포함)를 넘지 않게 자른다. 코드포인트 경계에서
+ * 끊어서 서로게이트 쌍이 반쪽만 남는 것을 막는다(`observe.ts`의 `truncateMessage`와 같은 이유,
+ * 다만 여기는 코드포인트 수가 아니라 바이트 수가 상한이다).
+ */
+function truncateToBytes(text: string, limitBytes: number): string {
+  if (Buffer.byteLength(text, 'utf8') <= limitBytes) return text
+
+  const budget = Math.max(0, limitBytes - Buffer.byteLength(TRUNCATION_MARK, 'utf8'))
+  let kept = ''
+  let bytes = 0
+  for (const codePoint of text) {
+    const codePointBytes = Buffer.byteLength(codePoint, 'utf8')
+    if (bytes + codePointBytes > budget) break
+    kept += codePoint
+    bytes += codePointBytes
+  }
+  return `${kept}${TRUNCATION_MARK}`
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value ?? {})
+  } catch {
+    return SERIALIZE_FAILURE
+  }
+}
+
 function summariseArgs(args: unknown): string {
-  const text = JSON.stringify(args ?? {})
+  const text = safeStringify(args)
   return text.length <= ARGS_SUMMARY_LIMIT ? text : `${text.slice(0, ARGS_SUMMARY_LIMIT - 1)}…`
+}
+
+/** `detail.args`용 JSON을 만든다. 직렬화가 안 되면(순환 참조 등) 표식만 남긴다. */
+function buildDetailArgs(redactedArgs: unknown): string {
+  let text: string
+  try {
+    text = JSON.stringify(redactedArgs ?? {})
+  } catch {
+    return SERIALIZE_FAILURE
+  }
+  return truncateToBytes(text, DETAIL_LIMIT_BYTES)
+}
+
+/**
+ * `redact`를 먼저 적용하고 그 결과로 `argsSummary`와 `detail.args`를 함께 만든다.
+ * `redact`가 던지면 인자를 통째로 표식으로 바꿔서 원본이 어느 필드에도 남지 않는다.
+ */
+function buildArgsFields(
+  args: unknown,
+  redact?: (args: unknown) => unknown
+): { argsSummary: string; detailArgs: string } {
+  if (!redact) {
+    return { argsSummary: summariseArgs(args), detailArgs: buildDetailArgs(args) }
+  }
+  try {
+    const redacted = redact(args)
+    return { argsSummary: summariseArgs(redacted), detailArgs: buildDetailArgs(redacted) }
+  } catch {
+    return { argsSummary: REDACT_FAILURE, detailArgs: REDACT_FAILURE }
+  }
+}
+
+/**
+ * `error.details`가 2KB를 넘으면 원래 모양(`Record<string, unknown>`)을 유지한 채
+ * `{ truncated: '<앞부분 JSON>…(잘림)' }`으로 바꾼다. `message`·`hint`는 그대로 둔다.
+ */
+function limitErrorDetails(error: ToolError): ToolError {
+  if (!error.details) return error
+
+  let text: string
+  try {
+    text = JSON.stringify(error.details)
+  } catch {
+    return { ...error, details: { truncated: SERIALIZE_FAILURE } }
+  }
+  if (Buffer.byteLength(text, 'utf8') <= DETAIL_LIMIT_BYTES) return error
+
+  return { ...error, details: { truncated: truncateToBytes(text, DETAIL_LIMIT_BYTES) } }
 }
 
 function isContentPayload(value: unknown): value is { content: ToolContent[] } {
@@ -53,6 +150,21 @@ export interface RunToolOpts {
    * 부가 정보가 툴 결과를 바꾸면 안 된다.
    */
   gesture?: () => Promise<Gesture | undefined>
+  /**
+   * 핸들러가 실제로 대상으로 삼은 기기의 serial. 성공·실패 모두에서 부른다. 던지거나
+   * undefined를 돌려주면 기록에서 `serial` 필드를 뺀다 — 툴 결과에는 영향 없다.
+   */
+  serial?: () => string | undefined
+  /**
+   * 성공한 호출의 payload를 한 줄로 요약한다. 던지면 `detail.resultSummary`를 비운다.
+   */
+  summarise?: (payload: unknown) => string
+  /**
+   * `argsSummary`와 `detail.args`를 만들기 전에 인자에서 원문을 지운다(예: `ui_text`의
+   * `text`). 던지면 인자를 통째로 `"<가림 실패>"`로 바꾼다 — 원본이 어느 필드에도
+   * 남지 않는다.
+   */
+  redact?: (args: unknown) => unknown
 }
 
 export async function runTool(
@@ -65,6 +177,10 @@ export async function runTool(
   const startedAt = Date.now()
   const id = randomUUID()
 
+  // args는 handler 실행 여부와 무관하다. redact·직렬화를 한 번만 하고 성공/실패 양쪽
+  // 기록에서 같은 값을 쓴다.
+  const { argsSummary, detailArgs } = buildArgsFields(args, opts.redact)
+
   // 기록(sink.onToolCall)은 툴 결과와 완전히 분리한다. sink가 예외를 던져도(예: 창을 닫은
   // 뒤 webContents가 destroyed 상태인 경우) 이미 끝난 handler의 성공/실패 판정을 바꾸면
   // 안 된다. 그래서 sink 호출은 이 작은 함수 하나로 모으고 예외를 삼킨다. 호출당 정확히
@@ -74,6 +190,17 @@ export async function runTool(
       sink.onToolCall(record)
     } catch {
       // 기록 실패는 무시한다. 활동 탭에 못 남아도 툴 결과는 그대로 에이전트에게 간다.
+    }
+  }
+
+  // serial 콜백은 성공·실패 모두에서 부른다. 던지거나 undefined면 필드를 뺀다 —
+  // 툴 결과에는 영향 없다.
+  function resolveSerial(): string | undefined {
+    if (!opts.serial) return undefined
+    try {
+      return opts.serial()
+    } catch {
+      return undefined
     }
   }
 
@@ -94,14 +221,32 @@ export async function runTool(
       }
     }
 
+    // summarise도 성공 뒤에만 부른다. 던지면 resultSummary 없이 기록한다 — 툴 결과에는
+    // 영향 없다.
+    let resultSummary: string | undefined
+    if (opts.summarise) {
+      try {
+        resultSummary = opts.summarise(payload)
+      } catch {
+        resultSummary = undefined
+      }
+    }
+
+    const serial = resolveSerial()
+
     recordSafely({
       id,
       tool,
-      argsSummary: summariseArgs(args),
+      argsSummary,
       startedAt,
       durationMs,
       ok: true,
-      ...(gesture ? { gesture } : {})
+      ...(gesture ? { gesture } : {}),
+      ...(serial !== undefined ? { serial } : {}),
+      detail: {
+        args: detailArgs,
+        ...(resultSummary !== undefined ? { resultSummary } : {})
+      }
     })
 
     const result: ToolResult = isContentPayload(payload) ? { content: payload.content } : jsonResult(payload)
@@ -115,14 +260,21 @@ export async function runTool(
           hint: '같은 호출을 다시 시도하고, 반복되면 앱의 활동 탭에서 맥락을 확인해라'
         }
 
+    const serial = resolveSerial()
+
     recordSafely({
       id,
       tool,
-      argsSummary: summariseArgs(args),
+      argsSummary,
       startedAt,
       durationMs: Date.now() - startedAt,
       ok: false,
-      errorKind: toolError.kind
+      errorKind: toolError.kind,
+      ...(serial !== undefined ? { serial } : {}),
+      detail: {
+        args: detailArgs,
+        error: limitErrorDetails(toolError)
+      }
     })
 
     const result: ToolResult = {

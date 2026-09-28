@@ -260,7 +260,15 @@ describe('bootstrapApp with an SDK', () => {
 
     await bootstrapApp(h.deps)
     const context = vi.mocked(h.deps.startServer).mock.calls[0]![0].context
-    context.onToolCall({ id: 'a', tool: 'ui_tap', argsSummary: '{}', startedAt: 1, durationMs: 1, ok: true })
+    context.onToolCall({
+      id: 'a',
+      tool: 'ui_tap',
+      argsSummary: '{}',
+      startedAt: 1,
+      durationMs: 1,
+      ok: true,
+      detail: { args: '{}' }
+    })
     const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
 
     expect(snapshot.toolCalls.map((record) => record.id)).toEqual(['a'])

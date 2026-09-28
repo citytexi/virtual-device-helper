@@ -89,7 +89,8 @@ describe('createAppState snapshot', () => {
         argsSummary: '{}',
         startedAt: i,
         durationMs: 1,
-        ok: true
+        ok: true,
+        detail: { args: '{}' }
       })
     }
 
@@ -135,7 +136,8 @@ describe('createAppState events', () => {
       argsSummary: '{}',
       startedAt: 1,
       durationMs: 2,
-      ok: true
+      ok: true,
+      detail: { args: '{}' }
     }
     state.recordToolCall(record)
 

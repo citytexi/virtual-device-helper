@@ -92,7 +92,15 @@ describe('useAppState', () => {
     const { result } = renderHook(() => useAppState())
     await waitFor(() => expect(result.current.loading).toBe(false))
 
-    const record = { id: 'a', tool: 'ui_tap', argsSummary: '{}', startedAt: 1, durationMs: 2, ok: true }
+    const record = {
+      id: 'a',
+      tool: 'ui_tap',
+      argsSummary: '{}',
+      startedAt: 1,
+      durationMs: 2,
+      ok: true,
+      detail: { args: '{}' }
+    }
     act(() => listener?.({ type: 'tool_call', record }))
 
     expect(result.current.snapshot?.toolCalls).toEqual([record])
@@ -157,7 +165,15 @@ describe('useAppState', () => {
   })
 
   it('does not duplicate a tool_call record that is buffered but already present in the resolved snapshot', async () => {
-    const record = { id: 'a', tool: 'ui_tap', argsSummary: '{}', startedAt: 1, durationMs: 2, ok: true }
+    const record = {
+      id: 'a',
+      tool: 'ui_tap',
+      argsSummary: '{}',
+      startedAt: 1,
+      durationMs: 2,
+      ok: true,
+      detail: { args: '{}' }
+    }
     const snapshotWithRecord: AppSnapshot = { ...baseSnapshot, toolCalls: [record] }
     const pending = deferred<AppSnapshot>()
     installApi(vi.fn(() => pending.promise))

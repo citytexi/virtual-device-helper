@@ -2,6 +2,17 @@ import type { AvdEntry, ScreenshotResult } from './device'
 import type { ToolError, ToolErrorKind } from './errors'
 
 /**
+ * 활동 탭 상세 패널이 쓰는 값. `args`는 가린 인자의 JSON(2KB 넘으면 자름), `error`는
+ * 실패했을 때의 `ToolError`(`details`도 같은 상한), `resultSummary`는 성공했을 때의
+ * 결과 한 줄 요약이다.
+ */
+export interface ToolCallDetail {
+  args: string
+  error?: ToolError
+  resultSummary?: string
+}
+
+/**
  * 에이전트의 화면 동작. 좌표는 디스플레이 전체 크기 기준 0..1 정규화 값이다.
  * renderer는 비디오 크기를 곱하기만 하면 된다 — 회전은 이미 정규화 단계에서 반영됐다.
  */
@@ -20,6 +31,10 @@ export interface ToolCallRecord {
   errorKind?: ToolErrorKind
   /** 화면 위 동작이 있는 툴(ui_tap·ui_swipe)이 성공했을 때만 붙는다. 실시간 화면 오버레이가 쓴다. */
   gesture?: Gesture
+  /** 핸들러가 실제로 대상으로 삼은 기기. 콜백이 없거나 던지면 뺀다. */
+  serial?: string
+  /** 활동 탭 상세 패널용 가린 인자·에러·결과 요약. */
+  detail: ToolCallDetail
 }
 
 /** 채널 이름은 여기 한곳에만 둔다. preload와 main이 같은 상수를 본다. */

@@ -12,6 +12,7 @@ function record(overrides: Partial<ToolCallRecord> = {}): ToolCallRecord {
     startedAt: Date.UTC(2026, 8, 22, 2, 6, 21),
     durationMs: 42,
     ok: true,
+    detail: { args: '{"x":540,"y":930}' },
     ...overrides
   }
 }

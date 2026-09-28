@@ -12,6 +12,7 @@ function toolCall(id: string, gesture?: Gesture): MainEvent {
     startedAt: 0,
     durationMs: 1,
     ok: true,
+    detail: { args: '{}' },
     ...(gesture ? { gesture } : {})
   }
   return { type: 'tool_call', record }

@@ -190,6 +190,7 @@ describe('DeviceScreen', () => {
             startedAt: 0,
             durationMs: 1,
             ok: true,
+            detail: { args: '{}' },
             gesture: { kind: 'tap', serial: 'emulator-5554', x: 0.5, y: 0.3875 }
           }
         })
