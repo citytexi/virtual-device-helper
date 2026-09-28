@@ -150,5 +150,10 @@ export function createNodeRefs(opts?: { keep?: number }): NodeRefs {
   return { remember, resolve }
 }
 
-/** MCP 세션마다 McpServer가 새로 생기므로 스냅샷은 이 모듈 기본 인스턴스에 둔다. */
+/**
+ * MCP 세션마다 McpServer가 새로 생기므로 스냅샷은 이 모듈 기본 인스턴스에 둔다.
+ * 이 인스턴스는 모든 MCP 세션이 공유한다 — 한 기기에 두 에이전트가 번갈아
+ * `ui_find`를 부르면 서로의 ref를 8세대 창 밖으로 밀어낼 수 있다. 이 경우도
+ * resolve는 stale_ref로 안전하게 실패한다.
+ */
 export const nodeRefs: NodeRefs = createNodeRefs()

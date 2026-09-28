@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Device, DisplayFrame } from '../../../shared/types/device'
 import { runTool } from '../runTool'
 import type { ToolContext } from '../toolContext'
-import { DEFAULT_SWIPE_MS, centerOf, swipeWithin, toPixel, type Direction, type NormalizedPoint } from '../coordinates'
+import { DEFAULT_SWIPE_MS, centerOf, round4, swipeWithin, toPixel, type Direction, type NormalizedPoint } from '../coordinates'
 import { formatRef, nodeRefs } from '../nodeRefs'
 
 const serial = z
@@ -58,7 +58,9 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
               resolvedPoint = centerOf(resolved.node.bounds)
               frame = resolved.frame
             } else {
-              resolvedPoint = { x: args.x as number, y: args.y as number }
+              // 캐스팅 전 원본 값을 소수 4자리로 반올림한다 — 좌표 경로도 ref 경로처럼
+              // 응답·gesture가 4자리를 넘지 않게 맞춘다.
+              resolvedPoint = { x: round4(args.x as number), y: round4(args.y as number) }
               frame = await device.displayFrame()
             }
             point = resolvedPoint
@@ -152,8 +154,10 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
               frame = resolved.frame
               durationMs = args.durationMs ?? DEFAULT_SWIPE_MS
             } else {
-              fromPoint = { x: args.x1 as number, y: args.y1 as number }
-              toPoint = { x: args.x2 as number, y: args.y2 as number }
+              // 캐스팅 전 원본 값을 소수 4자리로 반올림한다 — 좌표 경로도 ref 경로처럼
+              // 응답·gesture가 4자리를 넘지 않게 맞춘다.
+              fromPoint = { x: round4(args.x1 as number), y: round4(args.y1 as number) }
+              toPoint = { x: round4(args.x2 as number), y: round4(args.y2 as number) }
               frame = await device.displayFrame()
               durationMs = args.durationMs as number
             }

@@ -105,7 +105,11 @@ describe('parsers against real output', () => {
     await adb.exec(serial, ['shell', 'uiautomator', 'dump', '/sdcard/window_dump.xml'])
     const xml = (await adb.exec(serial, ['exec-out', 'cat', '/sdcard/window_dump.xml'])).stdout
     const wmSize = (await adb.exec(serial, ['shell', 'wm', 'size'])).stdout
-    const match = /(?:Override|Physical) size:\s*(\d+)x(\d+)/.exec(wmSize)
+    // androidDevice.ts의 parseWmSize와 같은 우선순위: Override가 있으면 Physical보다
+    // 먼저 쓴다. 출력에는 보통 Physical이 먼저 나오므로 첫 매치만 고르면 어긋난다.
+    const override = /Override size:\s*(\d+)x(\d+)/.exec(wmSize)
+    const physical = /Physical size:\s*(\d+)x(\d+)/.exec(wmSize)
+    const match = override ?? physical
     if (!match) throw new Error(`wm size 출력에서 화면 크기를 읽지 못했다: ${wmSize}`)
     const natural = { width: Number(match[1]), height: Number(match[2]) }
 

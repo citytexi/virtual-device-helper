@@ -115,6 +115,20 @@ describe('ui_tap', () => {
     await harness.close()
   })
 
+  it('rounds echoed coordinates to 4 decimals', async () => {
+    const tap = vi.fn(async () => {})
+    const harness = await harnessFor({ tap })
+
+    const result = (await harness.call('ui_tap', { x: 0.123456, y: 0.5 })) as {
+      tapped: { x: number; y: number }
+    }
+
+    expect(result.tapped.x).toBe(0.1235)
+    expect(harness.records.at(-1)?.gesture).toMatchObject({ x: 0.1235 })
+
+    await harness.close()
+  })
+
   it('rejects pixel coordinates from an old client', async () => {
     const tap = vi.fn(async () => {})
     const harness = await harnessFor({ tap })

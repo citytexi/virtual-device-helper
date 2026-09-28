@@ -13,7 +13,7 @@ export const DEFAULT_SWIPE_MS = 300
 /**
  * 소수 4자리로 반올림한다.
  */
-function round4(v: number): number {
+export function round4(v: number): number {
   return Math.round(v * 10000) / 10000
 }
 

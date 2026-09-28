@@ -117,6 +117,13 @@ describe('parseUiDump', () => {
     )
   })
 
+  it('throws command_failed when rotation is empty rather than treating it as 0', () => {
+    // Number("") === 0이라 곧이곧대로 두면 회전을 못 읽은 걸 0으로 오인한다.
+    expect(() => parseUiDump(sample.replace('rotation="0"', 'rotation=""'), natural)).toThrow(
+      expect.objectContaining({ toolError: expect.objectContaining({ kind: 'command_failed' }) })
+    )
+  })
+
   it('clamps bounds of a node whose center is on screen but edge is not', () => {
     // 버튼 픽셀 [900,2300][1200,2500], 중심 (1050,2400)은 화면 안
     const n = parseUiDump(edgeSample, natural).nodes.find((x) => x.resourceId === 'edge')!

@@ -117,6 +117,13 @@ const ROTATION_HINT = '화면 전환이나 애니메이션이 끝난 뒤 다시 
 
 /** `<hierarchy rotation="N">`의 N을 읽는다. 없거나 0~3이 아니면 0으로 추측하지 않고 던진다. */
 function parseRotation(value: unknown): 0 | 1 | 2 | 3 {
+  // `rotation=""`처럼 빈 문자열이면 Number("") === 0이라 그냥 두면 0으로 오인한다.
+  // 공백뿐인 값도 같은 이유로 거절한다.
+  if (typeof value === 'string' && value.trim() === '') {
+    throw deviceError('command_failed', 'UI 덤프에서 화면 회전을 읽지 못했다', ROTATION_HINT, {
+      rotation: value
+    })
+  }
   const n = Number(value)
   if (!Number.isInteger(n) || n < 0 || n > 3) {
     throw deviceError('command_failed', 'UI 덤프에서 화면 회전을 읽지 못했다', ROTATION_HINT, {

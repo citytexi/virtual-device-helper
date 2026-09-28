@@ -93,6 +93,24 @@ describe('nodeRefs', () => {
     expect(deviceA.dumpUi).not.toHaveBeenCalled()
   })
 
+  it('defaults keep to 8 generations: the 9th remember evicts the 1st, the 8th-oldest still resolves', async () => {
+    const refs = createNodeRefs()
+    const gen1 = refs.remember(deviceA, dump([login])) // 1번째 remember
+    let gen8 = gen1
+    for (let i = 0; i < 7; i++) {
+      gen8 = refs.remember(deviceA, dump([login])) // 2~8번째 remember
+    }
+    // gen1..gen8 8세대가 쌓였다. gen8은 8번째(최신)다.
+    refs.remember(deviceA, dump([login])) // 9번째 remember, gen1을 창 밖으로 민다
+
+    await expect(refs.resolve(deviceA, formatRef(gen1, login.index))).rejects.toMatchObject({
+      toolError: { kind: 'stale_ref', hint: STALE_REF_HINT }
+    })
+
+    deviceA.dumpUi.mockResolvedValueOnce(dump([login]))
+    await expect(refs.resolve(deviceA, formatRef(gen8, login.index))).resolves.toBeTruthy()
+  })
+
   it('rejects a malformed ref without dumping', async () => {
     const refs = createNodeRefs()
     refs.remember(deviceA, dump([login]))
