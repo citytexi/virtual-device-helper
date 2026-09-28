@@ -63,7 +63,8 @@ function appendRows(buf: RowBuffer, capacity: number, next: LogRow[]): void {
  * serial의 로그 포트를 받아 버퍼에 쌓는다. 포트는 main이 열고(openLogs), 실제 포트는
  * onLogPort로 따로 온다 — streamPort.ts#onStreamPort/useScrcpyStream.ts와 같은 얼개다.
  *
- * 활성 기기가 바뀌면(serial 변경) 옛 포트를 닫고 새로 연다. 같은 serial이라도 새 포트가
+ * 활성 기기가 바뀌면(serial 변경) 옛 포트를 닫고 새로 연다. 기기에서 null로 바뀌면(기기 끊김으로
+ * registry가 active를 비움) 포트만 닫고 버퍼는 남긴 채 status를 stopped로 둔다. 같은 serial이라도 새 포트가
  * 오면(재연결) 이전 포트를 닫고 버퍼를 비워 새로 채운다. status가 stopped가 된 뒤 포트가
  * 닫혀도 버퍼는 남겨 두고 상태만 보인다 — 여기서 자동으로 다시 열지 않는다.
  */
@@ -100,21 +101,36 @@ export function useLogStream(
     setVersion((v) => v + 1)
   }
 
+  // 직전 effect의 serial. 기기 → null 전환(기기 끊김)을 알아보려고 둔다.
+  const prevSerialRef = useRef<string | null>(null)
+
   useEffect(() => {
     const d = depsRef.current as LogStreamDeps
     let active = true
-
-    // 새 effect 실행(serial·capacity 변경, 마운트) = 새 세션 취급.
-    clearBuffer()
-    setStatus('idle')
-    setPackages([])
-    setCaughtUp(false)
+    const prevSerial = prevSerialRef.current
+    prevSerialRef.current = serial
 
     if (serial === null) {
+      setCaughtUp(false)
+      if (prevSerial !== null) {
+        // 기기가 끊겨 활성 기기가 null이 됐다. 포트는 옛 effect의 정리에서 이미 닫혔다.
+        // 받은 줄은 남겨 두고 상태만 stopped로 보인다.
+        setStatus('stopped')
+      } else {
+        clearBuffer()
+        setStatus('idle')
+        setPackages([])
+      }
       return () => {
         active = false
       }
     }
+
+    // 기기가 있는 새 effect 실행(serial·capacity 변경, 마운트) = 새 세션 취급.
+    clearBuffer()
+    setStatus('idle')
+    setPackages([])
+    setCaughtUp(false)
 
     function release(): void {
       portRef.current?.close()

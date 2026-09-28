@@ -27,6 +27,12 @@ describe('findJumpIndex', () => {
     expect(findJumpIndex([gap(0, 3), ...all.slice(3)], [all[4] as LogRow], 250)).toBe('evicted')
   })
 
+  it('checks eviction only against the live part of the buffer from start', () => {
+    // all[0..2)는 이미 밀려난 앞부분이다. 살아있는 가장 오래된 줄은 at=300.
+    expect(findJumpIndex(all, [all[4] as LogRow], 250, 2)).toBe('evicted')
+    expect(findJumpIndex(all, [all[4] as LogRow], 350, 2)).toEqual({ index: 0 })
+  })
+
   it('returns -1 when nothing is visible', () => {
     expect(findJumpIndex(all, [], 150)).toEqual({ index: -1 })
     expect(findJumpIndex([], [], 150)).toEqual({ index: -1 })

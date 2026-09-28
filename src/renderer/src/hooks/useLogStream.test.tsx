@@ -268,6 +268,43 @@ describe('useLogStream', () => {
     expect(liveRows(result.current)).toHaveLength(1)
   })
 
+  it('keeps rows and shows stopped when the serial goes from a device to null', () => {
+    const h = harness()
+    const { result, rerender } = renderHook(
+      ({ serial }: { serial: string | null }) => useLogStream(serial, true, h.deps),
+      { initialProps: { serial: 'emulator-5554' as string | null } }
+    )
+    const port = fakePort()
+    h.deliverPort('emulator-5554', port)
+    h.deliver(port, { type: 'batch', entries: [entry(0), entry(1)] })
+
+    // 기기가 끊기면 registry가 active를 null로 돌린다 — 받은 줄은 남긴다.
+    rerender({ serial: null })
+
+    expect(port.close).toHaveBeenCalled()
+    expect(h.deps.closeLogs).toHaveBeenCalled()
+    expect(result.current.status).toBe('stopped')
+    expect(liveRows(result.current).map((r) => (r.kind === 'line' ? r.entry.seq : -1))).toEqual([0, 1])
+  })
+
+  it('clears the kept rows and opens the new device when a serial comes back after null', async () => {
+    const h = harness()
+    const { result, rerender } = renderHook(
+      ({ serial }: { serial: string | null }) => useLogStream(serial, true, h.deps),
+      { initialProps: { serial: 'emulator-5554' as string | null } }
+    )
+    const port = fakePort()
+    h.deliverPort('emulator-5554', port)
+    h.deliver(port, { type: 'batch', entries: [entry(0)] })
+    rerender({ serial: null })
+
+    rerender({ serial: 'emulator-5556' })
+
+    expect(liveRows(result.current)).toHaveLength(0)
+    expect(result.current.status).toBe('idle')
+    await waitFor(() => expect(h.deps.openLogs).toHaveBeenLastCalledWith('emulator-5556'))
+  })
+
   it('tracks packages and status', () => {
     const h = harness()
     const { result } = renderHook(() => useLogStream('emulator-5554', true, h.deps))

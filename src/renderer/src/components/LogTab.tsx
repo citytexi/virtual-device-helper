@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { JSX, UIEvent } from 'react'
+import type { JSX, KeyboardEvent, PointerEvent, UIEvent, WheelEvent } from 'react'
 import type { LogEntry } from '../../../shared/types/logs'
 import { useLogStream, type LogRow, type LogStream, type LogStreamDeps } from '../hooks/useLogStream'
 import { EMPTY_FILTER, compileFilter, topTags, type CompiledFilter, type LogFilter } from '../logs/logFilter'
@@ -141,14 +141,33 @@ export function LogTab({ serial, visible, stream, deps, highlight }: LogTabProps
     return [...top, ...extra]
   }, [s.version, s.start, s.rows, filter.chips])
 
+  const liveCount = s.rows.length - s.start
+  // 기기가 끊겨 serial이 null이 돼도 받은 줄이 남아 있으면 목록을 그대로 보인다.
+  const showHint = serial === null && liveCount === 0
+
   const listRef = useRef<HTMLDivElement | null>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewport, setViewport] = useState(0)
   const [following, setFollowing] = useState(true)
+  const followingRef = useRef(following)
+  followingRef.current = following
   // 직접 맞춘 scrollTop. 그 결과로 오는 scroll 이벤트를 사용자 스크롤로 오해하지 않으려고 둔다.
   const autoTopRef = useRef<number | null>(null)
   const appliedRef = useRef({ epoch: -1, dropped: 0 })
+  const prevVisibleRef = useRef(visible)
   const [selected, setSelected] = useState<LogEntry | null>(null)
+
+  // 세션이 바뀌면(버퍼 배열이 새로 생김, 또는 다른 기기로 바뀜) 선택·따라가기·스크롤을 처음으로 돌린다.
+  // 렌더 중에 이전 값과 비교해 state를 고치는 React의 "이전 렌더 정보 저장" 패턴이다.
+  // session.serial은 마지막으로 본 null 아닌 serial이다 — 기기가 끊겨 null이 된 것은 세션 변경이 아니다.
+  const [session, setSession] = useState({ rows: s.rows, serial })
+  const sessionSerial = serial ?? session.serial
+  if (session.rows !== s.rows || sessionSerial !== session.serial) {
+    setSelected(null)
+    setFollowing(true)
+    setScrollTop(0)
+    setSession({ rows: s.rows, serial: sessionSerial })
+  }
 
   function scrollToBottom(): void {
     const el = listRef.current
@@ -162,34 +181,75 @@ export function LogTab({ serial, visible, stream, deps, highlight }: LogTabProps
 
   useLayoutEffect(() => {
     const el = listRef.current
+    const becameVisible = visible && !prevVisibleRef.current
+    prevVisibleRef.current = visible
     if (!el) return
     const applied = appliedRef.current
     const shift = applied.epoch === cache.epoch ? cache.dropped - applied.dropped : 0
     appliedRef.current = { epoch: cache.epoch, dropped: cache.dropped }
+    const maxTop = Math.max(0, count * LOG_ROW_HEIGHT - el.clientHeight)
+
+    if (!visible) {
+      // 숨겨진 패널(display: none)은 clientHeight·scrollTop이 0이다. 따라가지 않는 중이면
+      // 보던 자리는 state에만 두고, 다시 보일 때 되돌린다.
+      if (following) scrollToBottom()
+      else if (shift > 0) setScrollTop((top) => Math.max(0, top - shift * LOG_ROW_HEIGHT))
+      return
+    }
+
+    // scroll 이벤트는 한 프레임 늦게 온다. 그 사이 batch가 렌더되면 사용자가 올린 위치를 맨 아래로
+    // 되돌려 버린다. 마지막으로 맞춘 위치보다 위에 있으면(그 위치가 아직 닿을 수 있는데도) 사용자
+    // 스크롤로 보고 따라가기를 멈춘다. 방금 보이게 된 경우는 display: none이 위치를 0으로 돌린
+    // 것이라 뺀다.
+    if (
+      following &&
+      !becameVisible &&
+      autoTopRef.current !== null &&
+      autoTopRef.current <= maxTop &&
+      el.scrollTop < autoTopRef.current
+    ) {
+      autoTopRef.current = null
+      setFollowing(false)
+      setScrollTop(el.scrollTop)
+      setViewport(el.clientHeight)
+      return
+    }
 
     if (following) {
       scrollToBottom()
-    } else {
-      // 버퍼 앞이 잘려 결과가 위로 당겨졌으면 보던 줄이 제자리에 있도록 그만큼 올린다.
-      if (shift > 0) {
-        el.scrollTop = Math.max(0, el.scrollTop - shift * LOG_ROW_HEIGHT)
-        autoTopRef.current = el.scrollTop
-        setScrollTop(el.scrollTop)
-      }
-      setViewport(el.clientHeight)
+      return
     }
-  }, [count, cache.epoch, cache.dropped, visible, following, serial])
 
-  // 창 크기가 바뀌면 보이는 범위를 다시 잡는다. jsdom에는 ResizeObserver가 없다.
+    if (becameVisible) {
+      // display: none이 버린 스크롤 위치를 state에서 되돌린다.
+      el.scrollTop = Math.min(Math.max(0, scrollTop - shift * LOG_ROW_HEIGHT), maxTop)
+      autoTopRef.current = el.scrollTop
+      setScrollTop(el.scrollTop)
+    } else if (shift > 0) {
+      // 버퍼 앞이 잘려 결과가 위로 당겨졌으면 보던 줄이 제자리에 있도록 그만큼 올린다.
+      el.scrollTop = Math.max(0, el.scrollTop - shift * LOG_ROW_HEIGHT)
+      autoTopRef.current = el.scrollTop
+      setScrollTop(el.scrollTop)
+    }
+    setViewport(el.clientHeight)
+  }, [count, cache.epoch, cache.dropped, visible, following, showHint])
+
+  // 창 크기가 바뀌면 보이는 범위를 다시 잡고, 따라가는 중이면 맨 아래를 다시 맞춘다.
+  // jsdom에는 ResizeObserver가 없다.
   useEffect(() => {
     const el = listRef.current
     if (!el || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(() => setViewport(el.clientHeight))
+    const observer = new ResizeObserver(() => {
+      if (followingRef.current) scrollToBottom()
+      else setViewport(el.clientHeight)
+    })
     observer.observe(el)
     return () => observer.disconnect()
-  }, [serial])
+  }, [showHint])
 
   function onScroll(event: UIEvent<HTMLDivElement>): void {
+    // 숨겨지면서 위치가 0으로 돌아간 것은 사용자 스크롤이 아니다.
+    if (!visible) return
     const el = event.currentTarget
     const top = el.scrollTop
     setScrollTop(top)
@@ -200,12 +260,31 @@ export function LogTab({ serial, visible, stream, deps, highlight }: LogTabProps
     setFollowing(top + el.clientHeight >= total - LOG_ROW_HEIGHT)
   }
 
+  // 위로 가려는 의도가 보이면 scroll 이벤트를 기다리지 않고 바로 따라가기를 멈춘다.
+  function stopFollowing(): void {
+    autoTopRef.current = null
+    setFollowing(false)
+  }
+
+  function onWheel(event: WheelEvent<HTMLDivElement>): void {
+    if (event.deltaY < 0) stopFollowing()
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    if (event.key === 'PageUp' || event.key === 'ArrowUp' || event.key === 'Home') stopFollowing()
+  }
+
+  function onPointerDown(event: PointerEvent<HTMLDivElement>): void {
+    // 목록 자체(스크롤바)를 잡은 것만 본다. 행을 누르는 것은 상세 보기다.
+    if (event.target === event.currentTarget) stopFollowing()
+  }
+
   function jumpToBottom(): void {
     setFollowing(true)
     scrollToBottom()
   }
 
-  if (serial === null) {
+  if (showHint) {
     return (
       <div className="log-tab">
         <p className="empty">활성 기기가 없다. 기기를 고르면 로그가 여기 흐른다.</p>
@@ -214,8 +293,6 @@ export function LogTab({ serial, visible, stream, deps, highlight }: LogTabProps
   }
 
   const range = visibleRange(scrollTop, viewport, LOG_ROW_HEIGHT, count)
-  const liveCount = s.rows.length - s.start
-
   return (
     <div className="log-tab">
       {s.status === 'reconnecting' && (
@@ -238,7 +315,15 @@ export function LogTab({ serial, visible, stream, deps, highlight }: LogTabProps
       />
 
       <div className="log-list-wrap">
-        <div className="log-list mono" data-testid="log-list" ref={listRef} onScroll={onScroll}>
+        <div
+          className="log-list mono"
+          data-testid="log-list"
+          ref={listRef}
+          onScroll={onScroll}
+          onWheel={onWheel}
+          onKeyDown={onKeyDown}
+          onPointerDown={onPointerDown}
+        >
           <div className="log-spacer" style={{ height: `${count * LOG_ROW_HEIGHT}px` }}>
             {visibleRows.slice(range.start, range.end).map((row, offset) => {
               const index = range.start + offset

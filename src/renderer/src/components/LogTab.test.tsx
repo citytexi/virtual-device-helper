@@ -2,9 +2,9 @@
 import { StrictMode } from 'react'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { LogEntry } from '../../../shared/types/logs'
-import type { LogRow, LogStream } from '../hooks/useLogStream'
+import type { LogRow, LogStream, LogStreamDeps } from '../hooks/useLogStream'
 import { EMPTY_FILTER, compileFilter } from '../logs/logFilter'
 import { LOG_ROW_HEIGHT, LogTab, createFilterCache, refreshFilter } from './LogTab'
 
@@ -102,6 +102,95 @@ describe('LogTab', () => {
     rows.push(line(103))
     rerender(<LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 4 })} />)
     expect(list.scrollTop).toBe(104 * LOG_ROW_HEIGHT - 200)
+  })
+
+  it('stops following on a wheel up even before the scroll event arrives', () => {
+    const rows = Array.from({ length: 100 }, (_, i) => line(i))
+    const { rerender } = render(<LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 1 })} />)
+    const list = sizeList(200)
+    rows.push(line(100))
+    rerender(<LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 2 })} />)
+    const bottom = 101 * LOG_ROW_HEIGHT - 200
+    expect(list.scrollTop).toBe(bottom)
+
+    // 휠을 올렸다. scroll 이벤트는 아직 안 왔고, 그 사이 batch가 렌더된다.
+    fireEvent.wheel(list, { deltaY: -40 })
+    list.scrollTop = bottom - 40
+    rows.push(line(101))
+    rerender(<LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 3 })} />)
+
+    expect(list.scrollTop).toBe(bottom - 40)
+    expect(screen.getByRole('button', { name: '맨 아래로' })).toBeDefined()
+  })
+
+  it('treats a position above the last auto scroll as a user scroll when a batch lands first', () => {
+    const rows = Array.from({ length: 100 }, (_, i) => line(i))
+    const { rerender } = render(<LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 1 })} />)
+    const list = sizeList(200)
+    rows.push(line(100))
+    rerender(<LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 2 })} />)
+
+    // 스크롤바를 끌어 올렸지만 scroll 이벤트가 한 프레임 늦다.
+    list.scrollTop = 300
+    rows.push(line(101))
+    rerender(<LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 3 })} />)
+
+    expect(list.scrollTop).toBe(300)
+    expect(screen.getByRole('button', { name: '맨 아래로' })).toBeDefined()
+  })
+
+  it('restores the reading place when the tab is shown again while not following', () => {
+    const rows = Array.from({ length: 100 }, (_, i) => line(i))
+    const stream = makeStream(rows)
+    const { rerender } = render(<LogTab serial="emulator-5554" visible stream={stream} />)
+    const list = sizeList(200)
+    list.scrollTop = 600
+    fireEvent.scroll(list)
+    expect(screen.getByRole('button', { name: '맨 아래로' })).toBeDefined()
+
+    rerender(<LogTab serial="emulator-5554" visible={false} stream={stream} />)
+    // display: none이 스크롤 위치를 버린다.
+    list.scrollTop = 0
+    rerender(<LogTab serial="emulator-5554" visible stream={stream} />)
+
+    expect(list.scrollTop).toBe(600)
+    expect(renderedRows().some((row) => row.textContent?.includes('line 30'))).toBe(true)
+  })
+
+  it('keeps showing the received rows with the stopped banner after the device goes away', () => {
+    render(<LogTab serial={null} visible stream={makeStream([line(0), line(1)], { status: 'stopped' })} />)
+
+    expect(screen.queryByText('활성 기기가 없다. 기기를 고르면 로그가 여기 흐른다.')).toBeNull()
+    expect(renderedRows()).toHaveLength(2)
+    expect(screen.getByRole('status').textContent).toContain('로그 수집이 멈췄다')
+  })
+
+  it('never opens logs through the real hook without a serial', () => {
+    const deps: LogStreamDeps = {
+      openLogs: vi.fn(async () => ({ ok: true as const, value: undefined })),
+      closeLogs: vi.fn(async () => ({ ok: true as const, value: undefined })),
+      onLogPort: vi.fn(() => () => {})
+    }
+
+    render(<LogTab serial={null} visible deps={deps} />)
+
+    expect(deps.openLogs).not.toHaveBeenCalled()
+    expect(screen.getByText('활성 기기가 없다. 기기를 고르면 로그가 여기 흐른다.')).toBeDefined()
+  })
+
+  it('resets selection and following when a new session starts', async () => {
+    const { rerender } = render(<LogTab serial="emulator-5554" visible stream={makeStream([line(0), line(1)])} />)
+    const list = sizeList(200)
+    await userEvent.click(renderedRows()[0] as HTMLElement)
+    list.scrollTop = 0
+    fireEvent.wheel(list, { deltaY: -40 })
+    expect(screen.getByRole('button', { name: '맨 아래로' })).toBeDefined()
+
+    // 새 포트 = 새 버퍼 배열.
+    rerender(<LogTab serial="emulator-5554" visible stream={makeStream([line(0, { message: 'fresh' })], { version: 5 })} />)
+
+    expect(screen.queryByRole('region', { name: '로그 상세' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '맨 아래로' })).toBeNull()
   })
 
   it('shows the full message of the clicked row in the detail area', async () => {
