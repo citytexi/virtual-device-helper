@@ -1,13 +1,30 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { parseLogcat } from './logcat'
+import { parseLogcat, parseLogcatLine } from './logcat'
 
 const fixture = readFileSync(join(__dirname, '__fixtures__', 'logcat-threadtime.txt'), 'utf8')
 const emulatorFixture = readFileSync(
   join(__dirname, '__fixtures__', 'logcat-threadtime-emulator.txt'),
   'utf8'
 )
+
+describe('parseLogcatLine', () => {
+  it('parses one threadtime line', () => {
+    expect(parseLogcatLine('09-22 11:06:21.123  1234  1256 I ActivityManager: Start proc')).toEqual({
+      timestamp: '09-22 11:06:21.123',
+      level: 'I',
+      tag: 'ActivityManager',
+      pid: 1234,
+      message: 'Start proc'
+    })
+  })
+
+  it('returns null for a buffer divider and garbage', () => {
+    expect(parseLogcatLine('--------- beginning of main')).toBeNull()
+    expect(parseLogcatLine('not a log line')).toBeNull()
+  })
+})
 
 describe('parseLogcat', () => {
   it('splits a threadtime line into its fields', () => {
