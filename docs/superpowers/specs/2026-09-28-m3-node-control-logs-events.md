@@ -574,8 +574,15 @@ vitest와 TDD로 간다. 실기기가 필요한 테스트는 `*.integration.test
     상태에서도 tracker가 기억한 pid로 `androidDevice.ts`의 `readLogs({ pids })`를 부르면 `FATAL EXCEPTION`
     또는 태그 `AndroidRuntime`인 크래시 스택이 돌아온다는 것을 확인했다. `pidTracker.ts`의 pid 기록과
     `readLogs`의 pid 필터가 실제 크래시 위에서 맞물려 동작함을 보인다.
+- **통합 테스트** (`npm run test:integration -- src/main/logs/logRead.integration.test.ts`, PASS,
+  대상 emulator-5554): `index.ts`와 같은 조각 — `trackDevices` 기반 `createDeviceRegistry`, 실제 `createLogTail`을
+  쓰는 `createLogManager`, `adbLogDeps.ts`의 `createSeedPids`·`createPidof` — 을 묶고, MCP 툴 층은
+  `testHarness.ts`의 `createToolHarness`(인메모리 전송)에 `pidHistory: logs.pidHistory`로 붙였다. 설정 앱을 띄워
+  tail이 `Start proc` 줄을 받은 뒤 `adb shell am crash com.android.settings`로 죽이고, `pidof`가 빈 값이 된 뒤
+  MCP `log_read({ package: 'com.android.settings' })`를 부르면 크래시 스택이 돌아온다는 것을 확인했다.
 - `adb shell am crash com.android.settings`로 크래시시킨 뒤 `log_read({ package: 'com.android.settings' })`가
-  크래시 스택을 준다. 프로세스가 죽은 뒤에도 준다 — 미검증 — 앱+MCP 클라이언트로 사용자 확인 필요
+  크래시 스택을 준다. 프로세스가 죽은 뒤에도 준다 — MCP 툴 경로는 위 통합 테스트로 프로세스 안에서 검증됨.
+  HTTP 전송과 앱 조립(`bootstrap.ts`)을 거친 경로만 미검증 — 앱+MCP 클라이언트로 사용자 확인 필요
 
 ## 계획 분할
 
