@@ -10,7 +10,7 @@ superseded_by:                  # 이 스펙을 대체한 새 스펙 id (없으�
 related_adr: [ADR-0011, ADR-0012, ADR-0013, ADR-0004, ADR-0008, ADR-0010]
 related_spec: [m1-device-core-mcp-server, m2-live-streaming, agent-guide]
 related_architecture: main-layers
-related_plan:
+related_plan: [m3-1-node-control, m3-2a-log-core, m3-2b-log-panel, m3-3-event-timeline]
 related_code: [ui.ts#registerUiTools, uiDump.ts#parseUiDump, device.ts#UiNode, device.ts#Device, runTool.ts#runTool, toolContext.ts#ToolCallSink, ipc.ts#ToolCallRecord, ipc.ts#Gesture, ipc.ts#MainEvent, appState.ts#createAppState, useAppState.ts#reduce, logcat.ts#parseLogcat, adbClient.ts#AdbStream, observe.ts#registerObserveTools, app.ts#waitForSettle, ActivityTab.tsx#ActivityTab, WorkArea.tsx#WorkArea, GestureOverlay.tsx#GestureOverlay, agentGuide.ts]
 tags: [spec, node, logs, timeline]
 ---
@@ -527,10 +527,11 @@ vitest와 TDD로 간다. 실기기가 필요한 테스트는 `*.integration.test
   - 화면을 바꾼 뒤 옛 ref로 누르면 아무것도 누르지 않고 `stale_ref`로 멈춘다.
   - 가로 화면에서 좌표 탭이 의도한 위치에 맞고 오버레이도 그 위치에 뜬다.
   - 다이얼로그가 떠 있을 때 `ui_find`의 bounds로 다이얼로그 버튼을 누를 수 있다.
-- **M3-2**
-  - `adb shell am crash com.android.settings`로 크래시시킨 뒤, 앱 필터로 크래시 스택이 보인다.
-    프로세스가 죽은 뒤에도 보인다.
-  - `log_read({ package: 'com.android.settings' })`가 같은 크래시 스택을 준다.
+- **M3-2a**
+  - `adb shell am crash com.android.settings`로 크래시시킨 뒤 `log_read({ package: 'com.android.settings' })`가
+    크래시 스택을 준다. 프로세스가 죽은 뒤에도 준다.
+- **M3-2b**
+  - 같은 크래시 뒤 로그 탭의 앱 필터로 크래시 스택이 보인다. 프로세스가 죽은 뒤에도 보인다.
   - `adb shell 'while true; do log -t M3LOAD load; done'`로 부하를 거는 동안 스크롤, 필터 입력, 탭 전환이 멈추지
     않는다. main 버퍼와 renderer 버퍼가 5만 줄에서 더 늘지 않는다.
 - **M3-3**
@@ -541,12 +542,13 @@ vitest와 TDD로 간다. 실기기가 필요한 테스트는 `*.integration.test
 ## 계획 분할
 
 - **M3-1 노드 기반 제어** — 로그·타임라인과 독립이다.
-- **M3-2 로그 파이프라인과 로그 패널** — M3-1과 독립이다. 계획을 쓰다 너무 커지면 로그 코어(main·preload·
-  `log_read`)와 로그 UI(renderer)로 나눈다.
+- **M3-2 로그 파이프라인과 로그 패널** — M3-1과 독립이다. 계획은 둘로 나눈다.
+  - **M3-2a 로그 코어** — main의 tail·버퍼·pid 추적·포트, preload, `log_read`의 `package`.
+  - **M3-2b 로그 패널** — renderer의 포트 수신, 로그 탭 UI. M3-2a에 기댄다.
 - **M3-3 이벤트 타임라인** — 두 계획 모두에 기댄다. 로그 점프와 `log_stopped`는 M3-2에, `Gesture` 모양과
   `GestureOverlay` 수정은 M3-1에 기댄다.
 
-실행 순서는 M3-1 → M3-2 → M3-3이다. M3-1과 M3-2는 순서를 바꿔도 된다. `toolContext.ts`와 `testHarness.ts`는
+실행 순서는 M3-1 → M3-2a → M3-2b → M3-3이다. M3-1과 M3-2는 순서를 바꿔도 된다. `toolContext.ts`와 `testHarness.ts`는
 M3-2와 M3-3이 모두 고친다.
 
 ## 열린 질문
