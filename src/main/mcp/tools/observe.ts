@@ -3,6 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { runTool } from '../runTool'
 import type { ToolContext } from '../toolContext'
 import { DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT } from '../../../shared/limits'
+import { ANDROID_PACKAGE_PATTERN } from '../../../shared/packageName'
 import { deviceError } from '../../../shared/types/errors'
 import type { LogLine } from '../../../shared/types/device'
 
@@ -146,6 +147,7 @@ export function registerObserveTools(server: McpServer, context: ToolContext): v
           ),
         package: z
           .string()
+          .regex(ANDROID_PACKAGE_PATTERN, 'package는 안드로이드 패키지명이어야 한다. 예: com.example.app')
           .optional()
           .describe('이 패키지의 로그만. 앱이 죽은 뒤에도 이 연결 동안의 로그를 찾는다'),
         serial

@@ -9,6 +9,7 @@ import { createDeviceRegistry } from './device/registry'
 import { electronResizeImage } from './device/resizeImage'
 import { createLogManager } from './logs/logManager'
 import { createLogTail } from './logs/logTail'
+import { createPidof, createSeedPids } from './logs/adbLogDeps'
 import { startMcpHttpServer } from './mcp/httpServer'
 import { defaultLocateSdkDeps, locateSdk } from './sdk/locateSdk'
 import { resolveScrcpyJar } from './stream/scrcpyJar'
@@ -111,22 +112,8 @@ app
         return createLogManager({
           createTail: (serial, handlers) =>
             createLogTail({ serial, adb, isConnected: () => registry.serials().includes(serial) }, handlers),
-          seedPids: async (serial) => {
-            const result = await adb.exec(serial, ['shell', 'ps', '-A', '-o', 'PID,NAME'])
-            return result.stdout
-          },
-          pidof: async (serial, pkg) => {
-            try {
-              const result = await adb.exec(serial, ['shell', 'pidof', pkg])
-              return result.stdout
-                .split(/\s+/)
-                .map((token) => Number(token))
-                .filter((pid) => Number.isInteger(pid) && pid > 0)
-            } catch {
-              // 대상 패키지가 안 떠 있으면 pidof는 exit 1이고 exec은 이를 reject한다.
-              return []
-            }
-          },
+          seedPids: createSeedPids(adb),
+          pidof: createPidof(adb),
           createChannel: () => createPortChannel<LogDown>(),
           postPort: (meta, remote) => postPortToRenderer(IPC_CHANNELS.logPort, meta, remote)
         })

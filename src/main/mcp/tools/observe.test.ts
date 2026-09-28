@@ -252,6 +252,23 @@ describe('log_read', () => {
     await harness.close()
   })
 
+  it('rejects a package that is not an Android package name before asking pidHistory', async () => {
+    // 기기 셸이 다시 파싱하는 문자(; 공백 등)가 pidof까지 흘러가면 안 된다.
+    const readLogs = vi.fn(async () => ({ lines: [], truncated: false, droppedCount: 0 }))
+    const pidHistory = vi.fn(async () => [9000])
+    const harness = await harnessFor({ readLogs }, { pidHistory })
+
+    const result = await harness.raw('log_read', { package: 'x; reboot' })
+
+    expect(result.isError).toBe(true)
+    const first = result.content[0] as { type: string; text?: string }
+    expect(first.text).toMatch(/package/i)
+    expect(pidHistory).not.toHaveBeenCalled()
+    expect(readLogs).not.toHaveBeenCalled()
+
+    await harness.close()
+  })
+
   it('asks pidHistory for the resolved device serial', async () => {
     const readLogs = vi.fn(async () => ({ lines: [], truncated: false, droppedCount: 0 }))
     const pidHistory = vi.fn(async () => [9000])
