@@ -7,7 +7,14 @@ import { onLogPort } from '../logs/logPort'
 export type LogRow = { kind: 'line'; entry: LogEntry } | { kind: 'gap'; fromSeq: number; toSeq: number }
 
 export interface LogStream {
-  rows: LogRow[]
+  /**
+   * 버퍼의 실제 배열이다 — 복사하지 않는다. 100ms마다 오는 batch마다 최대 5만 줄을 복사하는
+   * 비용을 피하려고 이렇게 노출한다. 살아있는 행은 `rows[start..rows.length)`이고, 그 앞은
+   * 용량을 넘겨 이미 밀려난 구간이다. `version`이 바뀔 때만 다시 읽으면 된다.
+   */
+  rows: readonly LogRow[]
+  /** 살아있는 첫 인덱스. */
+  start: number
   status: TailState | 'idle'
   packages: string[]
   caughtUp: boolean
@@ -41,6 +48,8 @@ interface RowBuffer {
 
 function appendRows(buf: RowBuffer, capacity: number, next: LogRow[]): void {
   if (next.length === 0) return
+  // main이 snapshot·batch를 5000줄(logManager.ts의 DEFAULT_SNAPSHOT_CHUNK)씩 쪼개 보내므로
+  // 스프레드 인자 개수는 항상 안전하다.
   buf.rows.push(...next)
   const size = buf.rows.length - buf.start
   if (size > capacity) buf.start += size - capacity
@@ -73,7 +82,6 @@ export function useLogStream(
   const [version, setVersion] = useState(0)
 
   const bufRef = useRef<RowBuffer>({ rows: [], start: 0 })
-  const viewRef = useRef<{ version: number; rows: LogRow[] }>({ version: -1, rows: [] })
   // 처리한 마지막 seq. 이 값 이하의 줄·gap은 다시 와도 무시한다 — StrictMode 이중 호출에서도
   // 결과가 같아야 하기 때문이다.
   const lastSeqRef = useRef(-1)
@@ -130,7 +138,8 @@ export function useLogStream(
     function handleDown(message: LogDown): void {
       if (message.type === 'snapshot') {
         appendFreshEntries(message.entries)
-        if (message.done) setCaughtUp(true)
+        // 숨겨진 동안 온 done은 무시한다 — caughtUp은 다음 resume 뒤 resumed로만 true가 된다.
+        if (message.done && visibleRef.current) setCaughtUp(true)
       } else if (message.type === 'batch') {
         appendFreshEntries(message.entries)
       } else if (message.type === 'gap') {
@@ -212,9 +221,13 @@ export function useLogStream(
     }
   }, [visible])
 
-  if (viewRef.current.version !== version) {
-    viewRef.current = { version, rows: bufRef.current.rows.slice(bufRef.current.start) }
+  return {
+    rows: bufRef.current.rows,
+    start: bufRef.current.start,
+    status,
+    packages,
+    // 숨겨져 있으면 그 자리에서 false다 — effect가 아직 caughtUp state를 못 내렸어도 마찬가지다.
+    caughtUp: visible && caughtUp,
+    version
   }
-
-  return { rows: viewRef.current.rows, status, packages, caughtUp, version }
 }
