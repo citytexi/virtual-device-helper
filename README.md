@@ -97,7 +97,7 @@ Claude Code가 아닌 MCP 클라이언트는 상단 바의 "설정 JSON 복사"�
 | app | `app_reset_and_launch` | 종료, 데이터 삭제, 재실행 후 첫 화면이 안정될 때까지 기다린다 |
 | ui | `ui_find` | 화면 요소와 ref. 조작 전에 먼저 부른다 |
 | ui | `ui_tap` | ref 또는 0..1 좌표를 누른다 |
-| ui | `ui_swipe` | 스와이프. 스크롤에 쓴다 |
+| ui | `ui_swipe` | ref + `direction`(보고 싶은 쪽) 또는 0..1 좌표 두 점으로 스와이프한다. 스크롤에 쓴다 |
 | ui | `ui_text` | ref의 입력칸에, 또는 포커스된 칸에 텍스트를 넣는다 |
 | ui | `ui_key` | back, home, enter, tab 키 |
 | observe | `screenshot` | 지금 화면. 기본으로 축소해서 준다 |

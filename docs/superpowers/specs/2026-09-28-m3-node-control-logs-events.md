@@ -528,6 +528,18 @@ vitest와 TDD로 간다. 실기기가 필요한 테스트는 `*.integration.test
   - 가로 화면에서 좌표 탭이 의도한 위치에 맞고 오버레이도 그 위치에 뜬다.
   - 다이얼로그가 떠 있을 때 `ui_find`의 bounds로 다이얼로그 버튼을 누를 수 있다.
 
+- **M3-2a**
+  - `adb shell am crash com.android.settings`로 크래시시킨 뒤 `log_read({ package: 'com.android.settings' })`가
+    크래시 스택을 준다. 프로세스가 죽은 뒤에도 준다.
+- **M3-2b**
+  - 같은 크래시 뒤 로그 탭의 앱 필터로 크래시 스택이 보인다. 프로세스가 죽은 뒤에도 보인다.
+  - `adb shell 'while true; do log -t M3LOAD load; done'`로 부하를 거는 동안 스크롤, 필터 입력, 탭 전환이 멈추지
+    않는다. main 버퍼와 renderer 버퍼가 5만 줄에서 더 늘지 않는다.
+- **M3-3**
+  - 실패한 툴 호출의 상세에서 "이 시점 로그 보기"로 그 호출 시각 근처 로그에 도착한다.
+  - 기기를 끊었다 붙이면 타임라인에 기기 이벤트가 끼인다.
+  - `ui_text`로 넣은 텍스트가 타임라인 어디에도 원문으로 남지 않는다.
+
 ### M3-1 검증 결과 (2026-09-28)
 
 - **통합 테스트** (`npm run test:integration -- src/main/device/androidDevice.nodeRefs.integration.test.ts`, PASS,
@@ -545,18 +557,6 @@ vitest와 TDD로 간다. 실기기가 필요한 테스트는 `*.integration.test
   미검증 — 앱+MCP 클라이언트로 사용자 확인 필요
 - 다이얼로그가 떠 있을 때 `ui_find`의 bounds로 다이얼로그 버튼을 누를 수 있다 —
   미검증 — 앱+MCP 클라이언트로 사용자 확인 필요
-
-- **M3-2a**
-  - `adb shell am crash com.android.settings`로 크래시시킨 뒤 `log_read({ package: 'com.android.settings' })`가
-    크래시 스택을 준다. 프로세스가 죽은 뒤에도 준다.
-- **M3-2b**
-  - 같은 크래시 뒤 로그 탭의 앱 필터로 크래시 스택이 보인다. 프로세스가 죽은 뒤에도 보인다.
-  - `adb shell 'while true; do log -t M3LOAD load; done'`로 부하를 거는 동안 스크롤, 필터 입력, 탭 전환이 멈추지
-    않는다. main 버퍼와 renderer 버퍼가 5만 줄에서 더 늘지 않는다.
-- **M3-3**
-  - 실패한 툴 호출의 상세에서 "이 시점 로그 보기"로 그 호출 시각 근처 로그에 도착한다.
-  - 기기를 끊었다 붙이면 타임라인에 기기 이벤트가 끼인다.
-  - `ui_text`로 넣은 텍스트가 타임라인 어디에도 원문으로 남지 않는다.
 
 ## 계획 분할
 
