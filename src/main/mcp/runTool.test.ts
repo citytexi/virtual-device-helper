@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { deviceError } from '../../shared/types/errors'
-import { runTool } from './runTool'
+import { GESTURE_TIMEOUT_MS, runTool } from './runTool'
 import type { ToolCallRecord } from './toolContext'
 
 function collector(): { onToolCall: (record: ToolCallRecord) => void; records: ToolCallRecord[] } {
@@ -151,5 +151,107 @@ describe('runTool sink isolation', () => {
       throw deviceError('no_device', '없다', '부팅해라')
     })
     expect(calls).toBe(1)
+  })
+})
+
+describe('runTool gesture', () => {
+  it('attaches the gesture of a successful call', async () => {
+    const sink = collector()
+    const gesture = { kind: 'tap' as const, serial: 's', screen: { width: 1, height: 2 }, x: 0, y: 0 }
+
+    await runTool(sink, 'ui_tap', {}, async () => ({ ok: true }), {
+      gesture: async () => gesture
+    })
+
+    expect(sink.records[0]?.gesture).toEqual(gesture)
+  })
+
+  it('does not ask for a gesture when the call fails', async () => {
+    const sink = collector()
+    const gesture = vi.fn(async () => undefined)
+
+    await runTool(sink, 'ui_tap', {}, async () => {
+      throw new Error('boom')
+    }, { gesture })
+
+    expect(gesture).not.toHaveBeenCalled()
+    expect(sink.records[0]?.gesture).toBeUndefined()
+  })
+
+  it('keeps the success when building the gesture throws', async () => {
+    const sink = collector()
+
+    const result = await runTool(sink, 'ui_tap', {}, async () => ({ ok: true }), {
+      gesture: async () => {
+        throw new Error('no size')
+      }
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(sink.records[0]).toMatchObject({ ok: true })
+    expect(sink.records[0]?.gesture).toBeUndefined()
+  })
+
+  it('does not let a slow gesture delay an already-successful result', async () => {
+    vi.useFakeTimers()
+    try {
+      const sink = collector()
+      const neverSettles = new Promise<never>(() => {})
+
+      const pending = runTool(sink, 'ui_tap', {}, async () => ({ ok: true }), {
+        gesture: () => neverSettles
+      })
+
+      await vi.advanceTimersByTimeAsync(GESTURE_TIMEOUT_MS)
+      const result = await pending
+
+      expect(result.isError).toBeFalsy()
+      expect(sink.records[0]).toMatchObject({ ok: true })
+      expect(sink.records[0]?.gesture).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('excludes the gesture wait from the recorded durationMs', async () => {
+    vi.useFakeTimers()
+    try {
+      const sink = collector()
+      let releaseGesture: (() => void) | undefined
+      const slowGesture = new Promise<undefined>((resolve) => {
+        releaseGesture = () => resolve(undefined)
+      })
+
+      const pending = runTool(sink, 'ui_tap', {}, async () => ({ ok: true }), {
+        gesture: () => slowGesture
+      })
+
+      // handler는 이미 끝났지만 gesture는 아직이다 — 이 시간만큼 durationMs가
+      // 부풀면 안 된다.
+      await vi.advanceTimersByTimeAsync(500)
+      releaseGesture?.()
+      const result = await pending
+
+      expect(result.isError).toBeFalsy()
+      expect(sink.records[0]?.durationMs).toBeLessThan(500)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('leaves no pending timer once a gesture resolves quickly', async () => {
+    vi.useFakeTimers()
+    try {
+      const sink = collector()
+      const gesture = { kind: 'tap' as const, serial: 's', screen: { width: 1, height: 2 }, x: 0, y: 0 }
+
+      await runTool(sink, 'ui_tap', {}, async () => ({ ok: true }), {
+        gesture: async () => gesture
+      })
+
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { Device } from '../../../shared/types/device'
 import { runTool } from '../runTool'
+import { screenSizeOf } from '../screenSize'
 import type { ToolContext } from '../toolContext'
 
 const serial = z
@@ -22,12 +24,32 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
         serial
       }
     },
-    async (args) =>
-      runTool(context, 'ui_tap', args, async () => {
-        const device = context.registry.resolve(args.serial)
-        await context.registry.run(device.serial, () => device.tap(args.x, args.y))
-        return { tapped: { x: args.x, y: args.y } }
-      })
+    async (args) => {
+      // 핸들러가 고른 기기를 gesture도 쓴다. 다시 resolve하면 그사이 활성 기기가 바뀔 수 있다.
+      let target: Device | null = null
+      return runTool(
+        context,
+        'ui_tap',
+        args,
+        async () => {
+          const device = context.registry.resolve(args.serial)
+          target = device
+          // 미리 조회를 걸어 탭과 병렬로 돈다; 실패는 gesture 쪽에서 다시 처리한다.
+          // device.info()가 동기적으로 던질 수도 있으니 microtask 뒤로 미뤄 .catch로 받는다.
+          Promise.resolve()
+            .then(() => screenSizeOf(device))
+            .catch(() => {})
+          await context.registry.run(device.serial, () => device.tap(args.x, args.y))
+          return { tapped: { x: args.x, y: args.y } }
+        },
+        {
+          gesture: async () => {
+            if (!target) return undefined
+            return { kind: 'tap', serial: target.serial, screen: await screenSizeOf(target), x: args.x, y: args.y }
+          }
+        }
+      )
+    }
   )
 
   server.registerTool(
@@ -43,14 +65,41 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
         serial
       }
     },
-    async (args) =>
-      runTool(context, 'ui_swipe', args, async () => {
-        const device = context.registry.resolve(args.serial)
-        await context.registry.run(device.serial, () =>
-          device.swipe(args.x1, args.y1, args.x2, args.y2, args.durationMs)
-        )
-        return { swiped: true }
-      })
+    async (args) => {
+      let target: Device | null = null
+      return runTool(
+        context,
+        'ui_swipe',
+        args,
+        async () => {
+          const device = context.registry.resolve(args.serial)
+          target = device
+          // 미리 조회를 걸어 탭과 병렬로 돈다; 실패는 gesture 쪽에서 다시 처리한다.
+          // device.info()가 동기적으로 던질 수도 있으니 microtask 뒤로 미뤄 .catch로 받는다.
+          Promise.resolve()
+            .then(() => screenSizeOf(device))
+            .catch(() => {})
+          await context.registry.run(device.serial, () =>
+            device.swipe(args.x1, args.y1, args.x2, args.y2, args.durationMs)
+          )
+          return { swiped: true }
+        },
+        {
+          gesture: async () => {
+            if (!target) return undefined
+            return {
+              kind: 'swipe',
+              serial: target.serial,
+              screen: await screenSizeOf(target),
+              x1: args.x1,
+              y1: args.y1,
+              x2: args.x2,
+              y2: args.y2
+            }
+          }
+        }
+      )
+    }
   )
 
   server.registerTool(

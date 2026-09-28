@@ -3,6 +3,7 @@ import type { JSX, KeyboardEvent, PointerEvent, WheelEvent } from 'react'
 import type { DeviceKey, SessionStatus } from '../../../shared/types/stream'
 import { useScrcpyStream } from '../hooks/useScrcpyStream'
 import { keyToIntent, toVideoPoint, wheelToScroll } from '../stream/inputMapper'
+import { GestureOverlay } from './GestureOverlay'
 import { ScreenshotView } from './ScreenshotView'
 
 export interface DeviceScreenProps {
@@ -133,6 +134,7 @@ function LiveScreen({ serial }: { serial: string }): JSX.Element {
               onWheel={onWheel}
               onKeyDown={onKeyDown}
             />
+            <GestureOverlay serial={serial} video={video} />
             {overlayText ? (
               <p role="status" className="screen-status">
                 {overlayText}

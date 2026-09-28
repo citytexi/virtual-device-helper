@@ -1,8 +1,8 @@
 ---
 id: m2-live-streaming         # 파일명에서 날짜 접두사를 뺀 slug
 title: M2 — 실시간 스트리밍과 사람 입력
-status: in-progress             # draft | in-progress | implemented | superseded
-verified: 2026-09-23          # 코드와 대조해 확인한 날짜
+status: implemented             # draft | in-progress | implemented | superseded
+verified: 2026-09-28          # 코드와 대조해 확인한 날짜
 scope: [main, renderer, preload, shared, streaming, android]
 hosts: []                       # windows | macos — 호스트 OS마다 동작이 갈릴 때만 채운다
 supersedes:                     # 이 스펙이 대체하는 기존 스펙 id (없으면 비움)
@@ -11,7 +11,7 @@ related_adr: [ADR-0002, ADR-0010, ADR-0005]
 related_spec: m1-device-core-mcp-server
 related_architecture:
 related_plan: [m2-1-stream-core, m2-2-renderer-stream, m2-3-gesture-overlay]
-related_code: [DeviceScreen.tsx#DeviceScreen, runTool.ts#runTool, ui.ts#registerUiTools, ipc.ts#ToolCallRecord, preload/index.ts#api]
+related_code: [DeviceScreen.tsx#DeviceScreen, runTool.ts#runTool, ui.ts#registerUiTools, ipc.ts#ToolCallRecord, preload/index.ts#api, scrcpySession.ts#createScrcpySession, streamManager.ts#createStreamManager, useScrcpyStream.ts#useScrcpyStream, GestureOverlay.tsx#GestureOverlay]
 tags: [spec, streaming, scrcpy, webcodecs, input]
 ---
 
@@ -394,7 +394,39 @@ interface ToolCallRecord {
 5. 기기를 전환하거나 종료해도 우리 forward나 서버 프로세스가 남지 않는다.
 6. 스트림을 강제로 끊으면 재연결되고, 끝내 실패하면 스크린샷 모드로 떨어진다.
 
+### 검증 결과 (2026-09-28)
+
+macOS 호스트, `npm run dev`로 앱을 띄우고 에뮬레이터 한 대를 붙여 확인했다. 에이전트 호출은 Claude Code를
+거치지 않고 MCP HTTP 엔드포인트에 직접 JSON-RPC로 보냈다(같은 툴을 그대로 씀).
+
+1. 기기를 고르자 수 초 안에 실시간 화면이 떴다. 에이전트가 설정 앱을 열고 메뉴를 옮겨 다니는 동안 새로고침
+   없이 화면이 따라갔다. PASS.
+2. 탭·스와이프마다 표시가 눌린 위치와 스크롤 방향에 맞게 나타났다 사라졌다. 짧은 간격으로 연이은 탭도
+   각자 표시가 뜨고 제때 사라졌다. PASS.
+3. 마우스 탭·드래그(캔버스 밖에서 놓아도 처리됨)·휠, 영문 텍스트 입력(Backspace·Enter 포함), 툴바의
+   뒤로·홈·최근 앱·볼륨·전원이 모두 먹었다. 앱 단축키(Cmd+R, Shift+Tab)는 기기로 가지 않고 앱에서 처리됐다.
+   에이전트 표시가 떠 있는 동안 사람이 그 위를 드래그해도 입력이 막히지 않았다. PASS.
+4. 화면을 가로로 돌린 뒤에도 에이전트 탭이 회전된 좌표의 실제 항목 위에 그려졌다. PASS. 곁가지로 두 가지를
+   봤는데 앱 결함은 아니다 — 에이전트가 화면 제한 시간 항목을 건드려 기기가 잠들며 화면이 어두워진 채로도
+   스트림과 표시는 계속 그려졌고, 회전 직후 설정 앱 자체가 빈 화면을 그린 적이 있는데(기기 스크린샷도 같은
+   빈 화면) 설정 앱을 다시 열어 넘어갔다.
+5. 기기를 두 대 띄워 전환하는 경로는 이번 라운드에 확인하지 못했다(에뮬레이터 한 대로만 확인). 앱을 끈 뒤의
+   정리는 확인했다 — 우리 forward와 scrcpy 서버 프로세스가 남지 않았다. NOT VERIFIED(전환) / PASS(종료 정리).
+6. 스트리밍 중 서버를 한 번 죽이자 재연결 중 표시가 잠깐 뜨고 실시간 화면으로 돌아왔다. 서버를 반복해서
+   죽여 재시도를 모두 소진시키자 스크린샷 화면으로 떨어졌고, 다시 연결 버튼을 누르자 실시간 화면으로
+   돌아왔다. PASS.
+
+이번 라운드에 확인하지 못한 항목과 남은 확인거리:
+
+- 기기 두 대를 띄워 놓고 여러 번 전환하는 경로(완료 조건 5의 앞부분) — 에뮬레이터 두 대를 띄워 반복 전환하며
+  `adb forward --list`·`ps -A`로 우리 흔적이 하나 이하인지 다시 봐야 한다.
+- reduced-motion 설정과 라이트·다크 테마에서 오버레이 표시의 대비 — 각 조합에서 표시가 보이는지 직접 봐야 한다.
+- `npm run test:integration` — 이번 라운드에는 연결된 첫 기기가 우리 에뮬레이터가 아니어서 돌리지 못했다.
+  `VDH_TEST_SERIAL`로 우리 에뮬레이터를 지정해 다시 돌려야 한다.
+
 ## 열린 질문
 
-- `decodeQueueSize` 임계값. 실제 에뮬레이터에서 지연을 보며 정한다.
-- `max_size=1024`가 에이전트를 지켜보기에 충분한 선명도인지. 부족하면 설정으로 뺄지 이때 정한다.
+- `decodeQueueSize` 임계값. 이번 세션에서는 이 호스트 기준으로 지연이 쌓이는 모습이 보이지 않았지만
+  큐 크기 자체를 재지는 않았다. 더 느린 호스트나 더 무거운 상황에서 다시 보고 정할 때까지 열어 둔다.
+- `max_size=1024`가 에이전트를 지켜보기에 충분한 선명도인지. 이번 라운드에는 선명도를 따로 재거나
+  평가하지 않았다. 다른 값과 비교해 보고 정할 때까지 열어 둔다.
