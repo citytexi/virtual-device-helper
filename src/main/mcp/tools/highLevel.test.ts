@@ -53,12 +53,30 @@ function harnessFor(device: Partial<Device>) {
 }
 
 describe('ui_find', () => {
-  it('returns summarised nodes ready to feed into ui_tap', async () => {
+  it('returns summarised nodes with a ref ready to feed into ui_tap', async () => {
     const harness = await harnessFor({ dumpUi: async () => dump([node()]) })
 
-    const payload = (await harness.call('ui_find')) as { nodes: UiNode[]; truncated: boolean }
+    const payload = (await harness.call('ui_find')) as {
+      generation: number
+      nodes: Array<Record<string, unknown>>
+      truncated: boolean
+    }
 
-    expect(payload.nodes).toEqual([node()])
+    expect(payload.nodes).toEqual([
+      {
+        ref: `g${payload.generation}:0`,
+        parentRef: null,
+        text: '로그인',
+        contentDesc: null,
+        resourceId: 'login',
+        className: 'Button',
+        bounds: { x: 0.5, y: 0.3875, w: 0.8519, h: 0.0583 },
+        clickable: true,
+        enabled: true,
+        focused: false,
+        scrollable: false
+      }
+    ])
     expect(payload.truncated).toBe(false)
 
     await harness.close()
@@ -73,7 +91,9 @@ describe('ui_find', () => {
         ])
     })
 
-    const payload = (await harness.call('ui_find', { query: 'CANCEL' })) as { nodes: UiNode[] }
+    const payload = (await harness.call('ui_find', { query: 'CANCEL' })) as {
+      nodes: Array<{ resourceId: string | null }>
+    }
 
     expect(payload.nodes.map((n) => n.resourceId)).toEqual(['cancel'])
 
@@ -87,7 +107,7 @@ describe('ui_find', () => {
     const harness = await harnessFor({ dumpUi: async () => dump(many) })
 
     const payload = (await harness.call('ui_find')) as {
-      nodes: UiNode[]
+      nodes: Array<Record<string, unknown>>
       truncated: boolean
       droppedCount: number
     }
@@ -99,7 +119,7 @@ describe('ui_find', () => {
     await harness.close()
   })
 
-  it('keeps the dump index after filtering', async () => {
+  it('keeps the dump index in the ref after filtering', async () => {
     const harness = await harnessFor({
       dumpUi: async () =>
         dump([
@@ -108,9 +128,12 @@ describe('ui_find', () => {
         ])
     })
 
-    const payload = (await harness.call('ui_find', { query: '로그인' })) as { nodes: UiNode[] }
+    const payload = (await harness.call('ui_find', { query: '로그인' })) as {
+      generation: number
+      nodes: Array<{ ref: string }>
+    }
 
-    expect(payload.nodes[0]?.index).toBe(1)
+    expect(payload.nodes[0]?.ref).toBe(`g${payload.generation}:1`)
 
     await harness.close()
   })

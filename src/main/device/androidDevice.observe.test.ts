@@ -178,7 +178,7 @@ describe('AndroidDevice.dumpUi', () => {
 
     const dump = await device.dumpUi()
 
-    // 자연 방향 크기는 인스턴스당 한 번만 캐시해서 묻는다 — mcp/screenSize.ts와 같은 규칙이다.
+    // 자연 방향 크기는 인스턴스당 한 번만 캐시해서 묻는다.
     expect(calls.filter((args) => args.join(' ').includes('wm size'))).toHaveLength(1)
     expect(dump).toEqual({
       nodes: [

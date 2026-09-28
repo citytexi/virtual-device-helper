@@ -55,51 +55,6 @@ export interface RunToolOpts {
   gesture?: () => Promise<Gesture | undefined>
 }
 
-/**
- * gesture 조회(화면 크기 등)를 이 시간까지만 기다린다. `screenSizeOf`가 캐시 미스일 때 부르는
- * `Device.info()`는 adb exec 타임아웃(30초)까지 걸릴 수 있는데, 이미 성공한 tap·swipe 결과를
- * gesture 하나 때문에 그만큼 붙잡아 두면 안 된다. 오버레이 표시 하나 놓치는 것보다 훨씬 싸다.
- */
-export const GESTURE_TIMEOUT_MS = 1000
-
-/**
- * gesture 콜백을 GESTURE_TIMEOUT_MS 안에서만 기다린다. 시간 안에 못 끝나거나 던지면
- * undefined로 낙착한다 — 원래 promise는 취소하지 않고 그대로 흘려보낸다. `screenSizeOf`
- * 내부 캐시는 그 promise가 끝나야 채워지므로, 지금 호출은 gesture 없이 기록되더라도
- * 다음 호출은 캐시 덕분에 바로 끝난다. 타이머는 둘 중 먼저 끝나는 쪽에서 정리해
- * 유령 타이머를 남기지 않는다.
- */
-function withGestureTimeout(build?: () => Promise<Gesture | undefined>): Promise<Gesture | undefined> {
-  if (!build) return Promise.resolve(undefined)
-
-  return new Promise((resolve) => {
-    let settled = false
-
-    const timer = setTimeout(() => {
-      if (settled) return
-      settled = true
-      resolve(undefined)
-    }, GESTURE_TIMEOUT_MS)
-
-    // build()가 (async 함수가 아니어서) 동기적으로 던질 수도 있으니 Promise.resolve로 감싸
-    // 항상 프라미스 체인 안에서 실패를 받는다.
-    Promise.resolve()
-      .then(build)
-      .then((gesture) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        resolve(gesture)
-      })
-      .catch(() => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        resolve(undefined)
-      })
-  })
-}
-
 export async function runTool(
   sink: ToolCallSink,
   tool: string,
@@ -125,11 +80,19 @@ export async function runTool(
   try {
     const payload = await handler()
     // 활동 탭에 보일 소요 시간은 handler가 끝난 시점까지만 잰다. gesture 조회는 그 뒤에
-    // 이어지는 부가 작업이라 GESTURE_TIMEOUT_MS까지 더 기다릴 수 있는데, 그 대기를
-    // durationMs에 얹으면 이미 끝난 호출이 실제보다 오래 걸린 것처럼 보인다.
+    // 이어지는 부가 작업이라 그 대기를 durationMs에 얹으면 이미 끝난 호출이 실제보다
+    // 오래 걸린 것처럼 보인다.
     const durationMs = Date.now() - startedAt
 
-    const gesture = await withGestureTimeout(opts.gesture)
+    // gesture 콜백은 성공 뒤에만, 실패해도 툴 결과에 영향 없이 직접 기다린다.
+    let gesture: Gesture | undefined
+    if (opts.gesture) {
+      try {
+        gesture = await opts.gesture()
+      } catch {
+        gesture = undefined
+      }
+    }
 
     recordSafely({
       id,

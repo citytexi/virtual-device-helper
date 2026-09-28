@@ -191,7 +191,7 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
   const { serial, adb, resizeImage, fileExists = existsSync } = deps
 
   // 자연 방향 크기(wm size)는 연결 동안 바뀌지 않으므로 인스턴스당 한 번만 묻는다.
-  // 실패한 promise는 캐시에서 지운다 — mcp/screenSize.ts#screenSizeOf와 같은 규칙이다.
+  // 실패한 promise는 캐시에서 지운다 — 부팅 직후처럼 잠깐 실패해도 다음 호출에서 다시 묻는다.
   let naturalSizeCache: Promise<{ width: number; height: number }> | null = null
 
   async function shell(args: string[], timeoutMs?: number): Promise<string> {
