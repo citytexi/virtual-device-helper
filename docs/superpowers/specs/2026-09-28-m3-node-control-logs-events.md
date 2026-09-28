@@ -345,7 +345,7 @@ type TimelineEntry =
     }
 ```
 
-- `ToolCallRecord`는 `TimelineEntry`의 `tool_call`로 바뀐다. `toolContext.ts`의 `ToolCallSink`도 이 타입을 받는다.
+- `ToolCallRecord`에 `serial`과 `detail`이 붙는다. `toolContext.ts`의 `ToolCallSink`는 계속 `ToolCallRecord`를 받고, 앱 상태가 이것을 `TimelineEntry`의 `tool_call`로 감싼다.
 - `RunToolOpts`에 세 가지를 추가한다. 각각 던지면 그 필드 없이 기록한다. 툴 결과는 바꾸지 않는다.
   - `serial?: () => string | undefined` — 핸들러가 resolve한 기기. 지금 `ui.ts`가 gesture용으로 `target`을 잡아
     두는 방식과 같다. resolve 전에 실패했으면 비운다.
@@ -370,7 +370,7 @@ type TimelineEntry =
 
 - `running` — tail 프로세스가 줄을 내고 있다.
 - `reconnecting` — 연결 중인데 프로세스가 끝났다. `RECONNECT_DELAYS_MS` 간격으로 다시 띄운다.
-  다시 띄울 때는 `-T '<마지막 timestamp>'`로 이어 받는다. 이 방식은 마지막 timestamp와 같은 시각의 줄을 다시 준다.
+  다시 띄울 때는 `-T '<마지막 timestamp>'`로 이어 받는다(셸 표기다. `adbClient.stream`에는 따옴표 없이 인자 하나로 넘긴다). 이 방식은 마지막 timestamp와 같은 시각의 줄을 다시 준다.
   버퍼 끝에서 그 timestamp를 가진 줄과 `(timestamp, pid, tag, message)`가 같은 줄은 버린다. 버린 줄은 `seq`를
   받지 않으므로 `seq`는 끊김 없이 이어진다.
 - `stopped` — 재시도가 다 실패했거나 기기가 끊겼다. 기기가 다시 연결되면 `running`부터 새로 시작한다.
@@ -401,15 +401,16 @@ type TimelineEntry =
 - 툴 호출은 지금 모양의 행이다. 기기 이벤트는 흐린 구분선 행으로 끼운다.
 - 행을 누르면 그 자리에서 펼친다. 전체 인자(들여쓰기한 JSON), 실패면 message와 hint, 성공이면 결과 요약을
   보여 준다. 가상 스크롤은 쓰지 않는다. 펼친 행 높이가 제각각이라 고정 높이 가상화와 맞지 않는다.
-- 필터: 툴 이름, 성공·실패, 기기 이벤트 표시, 텍스트 검색(툴 이름·인자·에러 message).
+- 필터: 툴 이름, 성공·실패, 기기 이벤트 표시, 텍스트 검색(툴 이름·`detail.args`·에러 message).
+- 타임라인은 기록한 순서대로 쌓는다. 툴 호출은 끝날 때 기록되므로 `at`이 앞 항목보다 이를 수 있다.
 
 ### 로그 점프
 
 - 툴 호출 상세의 "이 시점 로그 보기"를 누르면 로그 탭으로 바꾼다.
-- 로그 탭이 숨겨져 있었다면 `resume`을 보내고 `resumed`를 받은 뒤에 점프한다. 그전에 점프하면 아직 오지 않은
+- 점프 요청은 `WorkArea`가 들고 로그 탭에 prop으로 넘긴다. 로그 탭이 숨겨져 있었다면 `resume`을 보내고 `resumed`를 받은 뒤에 점프한다. 그전에 점프하면 아직 오지 않은
   줄 때문에 위치가 틀린다.
 - `at >= 호출.at - 2000`인 첫 줄로 스크롤하고 따라가기를 멈춘다. `[호출.at, 호출.at + durationMs]` 구간의 줄은 강조한다.
-- 호출의 `serial`이 활성 기기가 아니거나 비어 있으면 버튼을 끄고 이유를 보여 준다. 점프 때문에 활성 기기를
+- 호출의 `serial`이 로그 탭의 기기(`targetSerial`)가 아니거나 비어 있으면 버튼을 끄고 이유를 보여 준다. 점프 때문에 활성 기기를
   바꾸지 않는다. 활성 기기는 에이전트의 기본 대상이다.
 - 밀려남은 renderer 버퍼로 판단한다. renderer 버퍼는 main과 같은 상한이고 `gap`을 받으므로 같은 구간을 든다.
   그 시각이 renderer 버퍼의 가장 오래된 줄보다 앞이면 "로그 버퍼에서 밀려난 구간이다"라고 알린다.
@@ -438,7 +439,7 @@ type TimelineEntry =
 - `src/shared/types/device.ts` — `UiNode`, `UiDump`, `NormalizedRect`, `DisplayFrame`, `Device.displayFrame`.
 - `src/shared/types/errors.ts` — `stale_ref`.
 - `src/shared/types/ipc.ts` — 정규화된 `Gesture`, `ScreenSize` 삭제.
-- `src/main/device/parsers/uiDump.ts` — 부모 index, 정규화 bounds, 상태 플래그, `<hierarchy rotation>` 읽기.
+- `src/main/device/parsers/uiDump.ts` — 부모 index, 정규화 bounds(0..1 clamp), 상태 플래그, `<hierarchy rotation>` 읽기. 파서 안의 `query` 옵션은 없앤다.
 - `src/main/device/androidDevice.ts` — `dumpUi`의 새 반환 모양, `wm size` 캐시, `displayFrame`.
 - `src/main/mcp/nodeRefs.ts` — 스냅샷, 지문, 재검증.
 - `src/main/mcp/coordinates.ts` — 정규화 좌표와 기기 픽셀 변환, ref 스와이프 궤적.
@@ -471,11 +472,10 @@ type TimelineEntry =
 
 - `src/shared/types/ipc.ts` — `TimelineEntry`, `ToolCallDetail`, `AppSnapshot.timeline`, `MainEvent.timeline`.
 - `src/main/mcp/runTool.ts` — `serial`, `detail`, `summarise`, `redact`.
-- `src/main/mcp/toolContext.ts`, `src/main/mcp/testHarness.ts` — `ToolCallSink`의 새 타입.
 - `src/main/mcp/tools/*.ts` — 툴별 `serial`·`summarise`, `ui_text`의 `redact`.
 - `src/main/app/appState.ts` — 타임라인 링과 기기·스트림·로그 이벤트 기록.
 - `src/main/stream/streamManager.ts`, `src/main/logs/logManager.ts` — 상태 콜백.
-- `src/renderer/src/state/useAppState.ts` — `reduce`의 `timeline` 분기와 상한, 로그 점프 요청.
+- `src/renderer/src/state/useAppState.ts` — `reduce`의 `timeline` 분기와 상한.
 - `src/renderer/src/components/GestureOverlay.tsx` — `timeline` 이벤트 구독.
 - `src/renderer/src/components/WorkArea.tsx` — `snapshot.timeline` 전달.
 - `src/renderer/src/components/ActivityTab.tsx`, `TimelineDetail.tsx`, `TimelineFilters.tsx`.
@@ -548,8 +548,7 @@ vitest와 TDD로 간다. 실기기가 필요한 테스트는 `*.integration.test
 - **M3-3 이벤트 타임라인** — 두 계획 모두에 기댄다. 로그 점프와 `log_stopped`는 M3-2에, `Gesture` 모양과
   `GestureOverlay` 수정은 M3-1에 기댄다.
 
-실행 순서는 M3-1 → M3-2a → M3-2b → M3-3이다. M3-1과 M3-2는 순서를 바꿔도 된다. `toolContext.ts`와 `testHarness.ts`는
-M3-2와 M3-3이 모두 고친다.
+실행 순서는 M3-1 → M3-2a → M3-2b → M3-3이다. M3-1과 M3-2a는 순서를 바꿔도 된다. `toolContext.ts`와 `testHarness.ts`는 M3-2a가 고친다.
 
 ## 열린 질문
 
