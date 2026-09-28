@@ -236,15 +236,13 @@ describe('runTool detail', () => {
   })
 
   it('applies redact to both argsSummary and detail.args', async () => {
-    await (async () => {
-      const sink = collector()
-      await runTool(sink, 'ui_text', { text: 'hunter2' }, async () => ({}), {
-        redact: (a) => ({ ...(a as object), text: redactText('hunter2') })
-      })
-      const r = sink.records[0]!
-      expect(r.argsSummary).not.toContain('hunter2')
-      expect(r.detail.args).toContain('<7자 가림>')
-    })()
+    const sink = collector()
+    await runTool(sink, 'ui_text', { text: 'hunter2' }, async () => ({}), {
+      redact: (a) => ({ ...(a as object), text: redactText('hunter2') })
+    })
+    const r = sink.records[0]!
+    expect(r.argsSummary).not.toContain('hunter2')
+    expect(r.detail.args).toContain('<7자 가림>')
   })
 
   it('replaces args with <가림 실패> when redact throws', async () => {

@@ -56,6 +56,7 @@ function truncateToBytes(text: string, limitBytes: number): string {
   return `${kept}${TRUNCATION_MARK}`
 }
 
+/** 직렬화가 안 되면(순환 참조 등) `SERIALIZE_FAILURE` 표식으로 대체한다. */
 function safeStringify(value: unknown): string {
   try {
     return JSON.stringify(value ?? {})
@@ -64,39 +65,34 @@ function safeStringify(value: unknown): string {
   }
 }
 
-function summariseArgs(args: unknown): string {
-  const text = safeStringify(args)
+function summariseArgs(text: string): string {
   return text.length <= ARGS_SUMMARY_LIMIT ? text : `${text.slice(0, ARGS_SUMMARY_LIMIT - 1)}…`
 }
 
-/** `detail.args`용 JSON을 만든다. 직렬화가 안 되면(순환 참조 등) 표식만 남긴다. */
-function buildDetailArgs(redactedArgs: unknown): string {
-  let text: string
-  try {
-    text = JSON.stringify(redactedArgs ?? {})
-  } catch {
-    return SERIALIZE_FAILURE
-  }
-  return truncateToBytes(text, DETAIL_LIMIT_BYTES)
+/** `detail.args`용 문자열을 만든다. 이미 직렬화 실패 표식이면 그대로 두고, 아니면 2KB로 자른다. */
+function buildDetailArgs(text: string): string {
+  return text === SERIALIZE_FAILURE ? text : truncateToBytes(text, DETAIL_LIMIT_BYTES)
 }
 
 /**
- * `redact`를 먼저 적용하고 그 결과로 `argsSummary`와 `detail.args`를 함께 만든다.
- * `redact`가 던지면 인자를 통째로 표식으로 바꿔서 원본이 어느 필드에도 남지 않는다.
+ * `redact`를 먼저 적용하고 그 결과를 한 번만 직렬화해서 `argsSummary`와 `detail.args`를
+ * 함께 만든다. `redact`가 던지면 인자를 통째로 표식으로 바꿔서 원본이 어느 필드에도
+ * 남지 않는다.
  */
 function buildArgsFields(
   args: unknown,
   redact?: (args: unknown) => unknown
 ): { argsSummary: string; detailArgs: string } {
-  if (!redact) {
-    return { argsSummary: summariseArgs(args), detailArgs: buildDetailArgs(args) }
+  let redactedArgs: unknown = args
+  if (redact) {
+    try {
+      redactedArgs = redact(args)
+    } catch {
+      return { argsSummary: REDACT_FAILURE, detailArgs: REDACT_FAILURE }
+    }
   }
-  try {
-    const redacted = redact(args)
-    return { argsSummary: summariseArgs(redacted), detailArgs: buildDetailArgs(redacted) }
-  } catch {
-    return { argsSummary: REDACT_FAILURE, detailArgs: REDACT_FAILURE }
-  }
+  const text = safeStringify(redactedArgs)
+  return { argsSummary: summariseArgs(text), detailArgs: buildDetailArgs(text) }
 }
 
 /**
