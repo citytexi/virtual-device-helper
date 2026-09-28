@@ -25,10 +25,10 @@ tags: [spec, streaming, scrcpy, webcodecs, input]
 조작하는 모습을 사람이 지켜보는 것**이다. 그래서 스트림이 먼저이고, 에이전트의 탭·스와이프를 화면 위에
 표시하는 오버레이가 그다음이다. 사람이 화면을 직접 조작하는 입력은 보조 기능이라 최소한으로 넣는다.
 
-구현 방식은 [ADR-0002](../../adr/0002-screen-streaming-via-scrcpy-server.md)를 따른다.
+구현 방식은 [ADR-0002](../../../adr/0002-screen-streaming-via-scrcpy-server.md)를 따른다.
 `scrcpy-server.jar` v4.1(`vendor/scrcpy/VERSION`)을 기기에서 띄우고, main은 H.264 패킷을 디코딩하지 않고
 릴레이하며, renderer가 WebCodecs `VideoDecoder`로 디코딩한다. main과 renderer 사이 전송은
-[ADR-0010](../../adr/0010-stream-transport-message-port.md)의 전용 포트다.
+[ADR-0010](../../../adr/0010-stream-transport-message-port.md)의 전용 포트다.
 
 ## 전체 마일스톤에서의 위치
 
