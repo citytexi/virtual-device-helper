@@ -31,7 +31,7 @@ tags: [plan, streaming, webcodecs, renderer]
 
 **Tech Stack:** TypeScript, React 19, WebCodecs(`VideoDecoder`, `EncodedVideoChunk`), Vitest, @testing-library/react, jsdom
 
-**Spec:** [`../specs/2026-09-23-m2-live-streaming.md`](../specs/2026-09-23-m2-live-streaming.md)
+**Spec:** [`../../specs/archive/2026-09-23-m2-live-streaming.md`](../../specs/archive/2026-09-23-m2-live-streaming.md)
 
 **선행 조건:** [M2-1](2026-09-23-m2-1-stream-core.md)이 끝나 있어야 한다. 이 계획은 M2-1이 만든
 `src/shared/types/stream.ts`, `IPC_CHANNELS.streamPort`, `RendererApi.startStream`·`stopStream`을 쓴다.

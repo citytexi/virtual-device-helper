@@ -31,7 +31,7 @@ tags: [plan, streaming, mcp, overlay]
 
 **Tech Stack:** TypeScript, React 19, SVG, `@modelcontextprotocol/sdk`, Vitest, @testing-library/react, jsdom
 
-**Spec:** [`../specs/2026-09-23-m2-live-streaming.md`](../specs/2026-09-23-m2-live-streaming.md)
+**Spec:** [`../../specs/archive/2026-09-23-m2-live-streaming.md`](../../specs/archive/2026-09-23-m2-live-streaming.md)
 
 **선행 조건:** [M2-1](2026-09-23-m2-1-stream-core.md)과 [M2-2](2026-09-23-m2-2-renderer-stream.md)가 끝나 있어야 한다.
 이 계획은 M2-2의 `DeviceScreen` 안 `screen-stage`와 `useScrcpyStream`의 `video`를 쓴다.

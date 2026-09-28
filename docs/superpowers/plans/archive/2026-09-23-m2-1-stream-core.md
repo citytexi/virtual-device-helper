@@ -32,7 +32,7 @@ renderer 화면은 이 계획의 범위가 아니다(M2-2).
 
 **Tech Stack:** TypeScript, Electron(`MessageChannelMain`, `webContents.postMessage`), Node `net`·`crypto`, Vitest
 
-**Spec:** [`../specs/2026-09-23-m2-live-streaming.md`](../specs/2026-09-23-m2-live-streaming.md)
+**Spec:** [`../../specs/archive/2026-09-23-m2-live-streaming.md`](../../specs/archive/2026-09-23-m2-live-streaming.md)
 
 ## Global Constraints
 
