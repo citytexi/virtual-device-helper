@@ -308,6 +308,13 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
       )
     }
 
+    // package 필터(log_read의 pidHistory)는 pid로 거른다. 줄 수 상한을 적용하기 전에
+    // 걸러야, 다른 프로세스의 줄이 상한을 먼저 채워 찾는 pid의 줄이 밀려나지 않는다.
+    if (opts.pids) {
+      const pids = new Set(opts.pids)
+      lines = lines.filter((line) => pids.has(line.pid))
+    }
+
     if (lines.length <= limit) {
       return { lines, truncated: false, droppedCount: 0 }
     }

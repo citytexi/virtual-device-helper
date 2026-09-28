@@ -6,9 +6,15 @@ import type { DeviceRegistry } from '../../device/registry'
 import type { Device, LogLine } from '../../../shared/types/device'
 import { parseLogcat } from '../../device/parsers/logcat'
 import { createToolHarness } from '../testHarness'
-import { LOG_READ_DEFAULT_LIMIT, LOG_READ_MAX_LIMIT, LOG_READ_RESPONSE_BUDGET_BYTES } from './observe'
+import type { ToolContext } from '../toolContext'
+import {
+  LOG_READ_DEFAULT_LIMIT,
+  LOG_READ_MAX_LIMIT,
+  LOG_READ_RESPONSE_BUDGET_BYTES,
+  PACKAGE_NOT_RUN_HINT
+} from './observe'
 
-function harnessFor(device: Partial<Device>) {
+function harnessFor(device: Partial<Device>, context: Partial<Pick<ToolContext, 'pidHistory'>> = {}) {
   const full = { serial: 'emulator-5554', ...device } as Device
   const registry = {
     start: vi.fn(),
@@ -28,7 +34,7 @@ function harnessFor(device: Partial<Device>) {
     shutdown: async () => {}
   } as AvdController
 
-  return createToolHarness({ registry, avd })
+  return createToolHarness({ registry, avd, ...context })
 }
 
 const line: LogLine = {
@@ -219,6 +225,41 @@ describe('log_read', () => {
     await harness.call('log_read', { limit: LOG_READ_MAX_LIMIT })
 
     expect(readLogs).toHaveBeenCalledWith({ limit: LOG_READ_MAX_LIMIT })
+
+    await harness.close()
+  })
+
+  it('filters by package through pidHistory', async () => {
+    const readLogs = vi.fn(async () => ({ lines: [], truncated: false, droppedCount: 0 }))
+    const harness = await harnessFor({ readLogs }, { pidHistory: async () => [9000, 9100] })
+
+    await harness.call('log_read', { package: 'com.example.app' })
+
+    expect(readLogs).toHaveBeenCalledWith(expect.objectContaining({ pids: [9000, 9100] }))
+
+    await harness.close()
+  })
+
+  it('returns package_not_found with the launch hint when no pid is known', async () => {
+    const readLogs = vi.fn(async () => ({ lines: [], truncated: false, droppedCount: 0 }))
+    const harness = await harnessFor({ readLogs }, { pidHistory: async () => [] })
+
+    const error = await harness.callExpectingError('log_read', { package: 'com.none' })
+
+    expect(error).toEqual(expect.objectContaining({ kind: 'package_not_found', hint: PACKAGE_NOT_RUN_HINT }))
+    expect(readLogs).not.toHaveBeenCalled()
+
+    await harness.close()
+  })
+
+  it('asks pidHistory for the resolved device serial', async () => {
+    const readLogs = vi.fn(async () => ({ lines: [], truncated: false, droppedCount: 0 }))
+    const pidHistory = vi.fn(async () => [9000])
+    const harness = await harnessFor({ serial: 'emulator-5554', readLogs }, { pidHistory })
+
+    await harness.call('log_read', { package: 'com.example.app' })
+
+    expect(pidHistory).toHaveBeenCalledWith('emulator-5554', 'com.example.app')
 
     await harness.close()
   })

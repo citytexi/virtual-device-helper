@@ -158,6 +158,26 @@ describe('AndroidDevice.readLogs', () => {
     expect(result.lines.map((line) => line.tag)).toEqual(['Tag2'])
   })
 
+  it('keeps only lines from the given pids before limiting', async () => {
+    // 5줄 중 pid 9000이 2줄이다. pids로 거른 뒤 limit을 적용해야 하므로, pid로
+    // 안 거르면 limit 1로는 최신 줄(Tag4, pid 1)이 남아 이 테스트가 실패한다.
+    const mixed = [
+      `09-22 11:06:20.000  9000 2 I Tag0: message 0`,
+      `09-22 11:06:21.000  9000 2 I Tag1: message 1`,
+      `09-22 11:06:22.000  1 2 I Tag2: message 2`,
+      `09-22 11:06:23.000  1 2 I Tag3: message 3`,
+      `09-22 11:06:24.000  1 2 I Tag4: message 4`
+    ].join('\n')
+    const { adb } = fakeAdb({ logcat: mixed })
+    const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })
+
+    const result = await device.readLogs({ pids: [9000], limit: 1 })
+
+    expect(result.lines.map((line) => line.tag)).toEqual(['Tag1'])
+    expect(result.truncated).toBe(true)
+    expect(result.droppedCount).toBe(1)
+  })
+
   it('passes -v threadtime and -d so the parser format is fixed', async () => {
     const { adb, calls } = fakeAdb({ logcat: logs })
     const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })

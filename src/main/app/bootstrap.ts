@@ -128,7 +128,8 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
   let server: McpServerHandle | null = null
   try {
     server = await deps.startServer({
-      context: { registry, avd, onToolCall: (record) => state.recordToolCall(record) }
+      // pidHistory는 임시로 빈 결과다. Task 7에서 logManager.pidHistory로 교체한다.
+      context: { registry, avd, pidHistory: async () => [], onToolCall: (record) => state.recordToolCall(record) }
     })
     state.setServer(server)
   } catch (thrown) {
