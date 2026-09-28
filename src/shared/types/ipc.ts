@@ -31,8 +31,12 @@ export const IPC_CHANNELS = {
   captureScreenshot: 'app:capture-screenshot',
   startStream: 'app:start-stream',
   stopStream: 'app:stop-stream',
+  openLogs: 'app:open-logs',
+  closeLogs: 'app:close-logs',
   /** main → renderer. 스트림 포트 하나를 싣는다. preload가 main world로 다시 건넨다. */
   streamPort: 'app:stream-port',
+  /** main → renderer. 로그 포트 하나를 싣는다. preload가 main world로 다시 건넨다. */
+  logPort: 'app:log-port',
   event: 'app:event'
 } as const
 
@@ -90,5 +94,8 @@ export interface RendererApi {
   /** 이 기기로 스트림을 연다. 이전 스트림은 main이 닫는다. 포트는 IPC_CHANNELS.streamPort로 따로 온다. */
   startStream(serial: string): Promise<Outcome<void>>
   stopStream(): Promise<Outcome<void>>
+  /** 이 기기의 로그를 연다. 이전 로그 포트는 main이 닫는다. 포트는 IPC_CHANNELS.logPort로 따로 온다. */
+  openLogs(serial: string): Promise<Outcome<void>>
+  closeLogs(): Promise<Outcome<void>>
   onEvent(callback: (event: MainEvent) => void): () => void
 }

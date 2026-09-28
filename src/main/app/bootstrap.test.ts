@@ -43,6 +43,14 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
     stop: vi.fn(async () => {}),
     handleDisconnect: vi.fn(async () => {})
   }
+  const logs = {
+    handleConnect: vi.fn(),
+    handleDisconnect: vi.fn(),
+    open: vi.fn(),
+    close: vi.fn(),
+    pidHistory: vi.fn(async () => [] as number[]),
+    stopAll: vi.fn()
+  }
   const server: McpServerHandle = {
     url: 'http://127.0.0.1:9321/mcp',
     port: 9321,
@@ -58,6 +66,7 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
     send: vi.fn(),
     createDeviceStack: vi.fn(() => ({ registry: stack.registry, avd: stack.avd })),
     createStreamManager: vi.fn(() => stream),
+    createLogManager: vi.fn(() => logs),
     startServer: vi.fn(async () => server),
     ...overrides
   }
@@ -75,6 +84,7 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
     stack,
     server,
     stream,
+    logs,
     fireRegistry: (event: unknown) => registryListeners.forEach((listener) => listener(event))
   }
 }
@@ -106,6 +116,7 @@ describe('bootstrapApp without an SDK', () => {
 
     expect(h.deps.startServer).not.toHaveBeenCalled()
     expect(h.deps.createDeviceStack).not.toHaveBeenCalled()
+    expect(h.deps.createLogManager).not.toHaveBeenCalled()
   })
 
   it('answers every action with sdk_not_found', async () => {
@@ -117,7 +128,9 @@ describe('bootstrapApp without an SDK', () => {
       IPC_CHANNELS.selectDevice,
       IPC_CHANNELS.bootAvd,
       IPC_CHANNELS.shutdownDevice,
-      IPC_CHANNELS.captureScreenshot
+      IPC_CHANNELS.captureScreenshot,
+      IPC_CHANNELS.openLogs,
+      IPC_CHANNELS.closeLogs
     ]) {
       const result = await h.invoke<Outcome<unknown>>(channel, 'emulator-5554')
       expect(result.ok).toBe(false)
@@ -126,6 +139,96 @@ describe('bootstrapApp without an SDK', () => {
         expect(result.error.hint).toEqual(expect.any(String))
       }
     }
+  })
+})
+
+describe('bootstrapApp with an SDK: logs', () => {
+  it('subscribes the log manager before registry.start so initial devices get a tail', async () => {
+    const h = harness()
+
+    await bootstrapApp(h.deps)
+    h.fireRegistry({ type: 'device_connected', serial: 'emulator-5554' })
+
+    expect(h.logs.handleConnect).toHaveBeenCalledWith('emulator-5554')
+    const onOrder = vi.mocked(h.stack.registry.on).mock.invocationCallOrder[0]!
+    const startOrder = vi.mocked(h.stack.registry.start).mock.invocationCallOrder[0]!
+    expect(onOrder).toBeLessThan(startOrder)
+  })
+
+  it('closes the log tail when its device disconnects', async () => {
+    const h = harness()
+    await bootstrapApp(h.deps)
+
+    h.fireRegistry({ type: 'device_disconnected', serial: 'emulator-5554' })
+
+    expect(h.logs.handleDisconnect).toHaveBeenCalledWith('emulator-5554')
+  })
+
+  it('hands logManager.pidHistory to the MCP tool context', async () => {
+    const h = harness()
+    h.logs.pidHistory.mockResolvedValueOnce([111])
+
+    await bootstrapApp(h.deps)
+    const context = vi.mocked(h.deps.startServer).mock.calls[0]![0].context
+    const result = await context.pidHistory('emulator-5554', 'com.example')
+
+    expect(result).toEqual([111])
+    expect(h.logs.pidHistory).toHaveBeenCalledWith('emulator-5554', 'com.example')
+  })
+
+  it('stops all tails on app stop even if the stream stop throws', async () => {
+    const h = harness()
+    h.stream.stop.mockRejectedValueOnce(new Error('boom'))
+    const app = await bootstrapApp(h.deps)
+
+    await expect(app.stop()).rejects.toThrow('boom')
+
+    expect(h.logs.stopAll).toHaveBeenCalled()
+  })
+
+  it('opens logs for a known serial', async () => {
+    const h = harness()
+    await bootstrapApp(h.deps)
+
+    await h.invoke<Outcome<void>>(IPC_CHANNELS.openLogs, 'emulator-5554')
+
+    expect(h.logs.open).toHaveBeenCalledWith('emulator-5554')
+  })
+
+  it('refuses to open logs for a serial the registry does not know', async () => {
+    const h = harness()
+    ;(h.stack.registry.resolve as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw deviceError('no_device', 'gone', 'x')
+    })
+    await bootstrapApp(h.deps)
+
+    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.openLogs, 'emulator-9999')
+
+    expect(result.ok).toBe(false)
+    expect(h.logs.open).not.toHaveBeenCalled()
+  })
+
+  it('closes logs', async () => {
+    const h = harness()
+    await bootstrapApp(h.deps)
+
+    await h.invoke<Outcome<void>>(IPC_CHANNELS.closeLogs)
+
+    expect(h.logs.close).toHaveBeenCalled()
+  })
+
+  it('refuses log actions without an SDK and never builds a log manager', async () => {
+    const h = harness({ located: missing })
+    await bootstrapApp(h.deps)
+
+    const openResult = await h.invoke<Outcome<void>>(IPC_CHANNELS.openLogs, 'emulator-5554')
+    const closeResult = await h.invoke<Outcome<void>>(IPC_CHANNELS.closeLogs)
+
+    expect(openResult.ok).toBe(false)
+    if (!openResult.ok) expect(openResult.error.kind).toBe('sdk_not_found')
+    expect(closeResult.ok).toBe(false)
+    if (!closeResult.ok) expect(closeResult.error.kind).toBe('sdk_not_found')
+    expect(h.deps.createLogManager).not.toHaveBeenCalled()
   })
 })
 

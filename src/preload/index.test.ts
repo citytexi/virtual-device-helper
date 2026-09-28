@@ -35,7 +35,18 @@ describe('preload API surface', () => {
     const api = await loadPreload()
 
     expect(Object.keys(api).sort()).toEqual(
-      ['bootAvd', 'captureScreenshot', 'getSnapshot', 'onEvent', 'selectDevice', 'shutdownDevice', 'startStream', 'stopStream'].sort()
+      [
+        'bootAvd',
+        'captureScreenshot',
+        'closeLogs',
+        'getSnapshot',
+        'onEvent',
+        'openLogs',
+        'selectDevice',
+        'shutdownDevice',
+        'startStream',
+        'stopStream'
+      ].sort()
     )
   })
 
@@ -54,7 +65,9 @@ describe('preload API surface', () => {
     ['shutdownDevice', IPC_CHANNELS.shutdownDevice, ['emulator-5554']],
     ['captureScreenshot', IPC_CHANNELS.captureScreenshot, ['emulator-5554']],
     ['startStream', IPC_CHANNELS.startStream, ['emulator-5554']],
-    ['stopStream', IPC_CHANNELS.stopStream, []]
+    ['stopStream', IPC_CHANNELS.stopStream, []],
+    ['openLogs', IPC_CHANNELS.openLogs, ['emulator-5554']],
+    ['closeLogs', IPC_CHANNELS.closeLogs, []]
   ] as const)('routes %s to its own named channel with its argument', async (method, channel, args) => {
     const api = await loadPreload()
 
@@ -114,6 +127,40 @@ describe('stream port forwarding', () => {
     await loadPreload()
 
     portListener()({ ports: [] }, { serial: 'emulator-5554', sessionId: 's1' })
+    portListener()({ ports: [{}, {}] }, { serial: 'emulator-5554', sessionId: 's1' })
+
+    expect(postMessage).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('log port forwarding', () => {
+  function portListener(): (event: { ports: unknown[] }, meta: unknown) => void {
+    const call = on.mock.calls.find((args) => args[0] === IPC_CHANNELS.logPort)
+    return call?.[1] as (event: { ports: unknown[] }, meta: unknown) => void
+  }
+
+  it('forwards exactly one log port to the main world', async () => {
+    const postMessage = vi.fn()
+    vi.stubGlobal('window', { postMessage })
+    await loadPreload()
+    const port = { fake: 'port' }
+
+    portListener()({ ports: [port] }, { serial: 'emulator-5554', sessionId: 's1' })
+
+    expect(postMessage).toHaveBeenCalledWith(
+      { channel: IPC_CHANNELS.logPort, serial: 'emulator-5554', sessionId: 's1' },
+      '*',
+      [port]
+    )
+    vi.unstubAllGlobals()
+  })
+
+  it('drops a log-port event carrying two ports', async () => {
+    const postMessage = vi.fn()
+    vi.stubGlobal('window', { postMessage })
+    await loadPreload()
+
     portListener()({ ports: [{}, {}] }, { serial: 'emulator-5554', sessionId: 's1' })
 
     expect(postMessage).not.toHaveBeenCalled()
