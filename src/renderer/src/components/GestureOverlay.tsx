@@ -11,18 +11,18 @@ export type VideoGesture =
   | { kind: 'swipe'; x1: number; y1: number; x2: number; y2: number }
 
 /**
- * 기기 픽셀 좌표를 비디오 좌표로 바꾼다. screen은 자연 방향 크기이고 툴 좌표는 현재 방향
- * 공간에 있다. 비디오의 가로·세로 방향이 screen과 다르면 회전된 것으로 보고 축을 바꿔 나눈다.
+ * 정규화 좌표(0..1, 디스플레이 전체 기준)를 비디오 좌표로 바꾼다. 회전은 main이 만든
+ * 정규화 값에 이미 반영돼 있으므로 여기서는 비디오 크기를 곱하기만 하면 된다.
  */
 export function gestureToVideo(gesture: Gesture, video: VideoSize): VideoGesture {
-  const rotated = video.width > video.height !== gesture.screen.width > gesture.screen.height
-  const screenWidth = rotated ? gesture.screen.height : gesture.screen.width
-  const screenHeight = rotated ? gesture.screen.width : gesture.screen.height
-  const fx = video.width / screenWidth
-  const fy = video.height / screenHeight
-
-  if (gesture.kind === 'tap') return { kind: 'tap', x: gesture.x * fx, y: gesture.y * fy }
-  return { kind: 'swipe', x1: gesture.x1 * fx, y1: gesture.y1 * fy, x2: gesture.x2 * fx, y2: gesture.y2 * fy }
+  if (gesture.kind === 'tap') return { kind: 'tap', x: gesture.x * video.width, y: gesture.y * video.height }
+  return {
+    kind: 'swipe',
+    x1: gesture.x1 * video.width,
+    y1: gesture.y1 * video.height,
+    x2: gesture.x2 * video.width,
+    y2: gesture.y2 * video.height
+  }
 }
 
 export interface GestureOverlayProps {

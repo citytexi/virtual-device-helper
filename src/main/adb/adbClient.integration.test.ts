@@ -104,15 +104,23 @@ describe('parsers against real output', () => {
   it('parses a real uiautomator dump into tappable nodes', async () => {
     await adb.exec(serial, ['shell', 'uiautomator', 'dump', '/sdcard/window_dump.xml'])
     const xml = (await adb.exec(serial, ['exec-out', 'cat', '/sdcard/window_dump.xml'])).stdout
+    const wmSize = (await adb.exec(serial, ['shell', 'wm', 'size'])).stdout
+    // androidDevice.ts의 parseWmSize와 같은 우선순위: Override가 있으면 Physical보다
+    // 먼저 쓴다. 출력에는 보통 Physical이 먼저 나오므로 첫 매치만 고르면 어긋난다.
+    const override = /Override size:\s*(\d+)x(\d+)/.exec(wmSize)
+    const physical = /Physical size:\s*(\d+)x(\d+)/.exec(wmSize)
+    const match = override ?? physical
+    if (!match) throw new Error(`wm size 출력에서 화면 크기를 읽지 못했다: ${wmSize}`)
+    const natural = { width: Number(match[1]), height: Number(match[2]) }
 
-    // parseUiDump는 opts.screenWidth/Height를 받지 않는다 — 화면 사각형은 덤프
-    // 자신의 루트 bounds에서 뽑는다(uiDump.ts screenRect 참고). 브리프가 예시로
-    // 든 서명은 그 결정 이전 버전이라 여기서 현재 시그니처(query만 받음)에 맞춘다.
-    const nodes = parseUiDump(xml)
+    // parseUiDump(xml, natural) — 정규화 기준은 디스플레이 전체 크기(natural에 회전을
+    // 적용한 값)다. 덤프 자신의 루트 bounds는 화면 밖 판정에만 쓴다(uiDump.ts
+    // screenRect 참고).
+    const dump = parseUiDump(xml, natural)
 
-    expect(nodes.length).toBeGreaterThan(0)
+    expect(dump.nodes.length).toBeGreaterThan(0)
     // 요약이 원본보다 확실히 작아야 한다. 이게 ui_find의 존재 이유다.
-    expect(JSON.stringify(nodes).length).toBeLessThan(xml.length)
+    expect(JSON.stringify(dump.nodes).length).toBeLessThan(xml.length)
   })
 
   it('parses real logcat output', async () => {

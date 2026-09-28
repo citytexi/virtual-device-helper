@@ -172,7 +172,7 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
           await device.launch(args.pkg)
 
           const settle = await waitForSettle(
-            () => device.dumpUi(),
+            () => device.dumpUi().then((dump) => dump.nodes),
             SETTLE_DEFAULT_TIMEOUT_MS,
             (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
             () => Date.now()

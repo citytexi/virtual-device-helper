@@ -1,7 +1,7 @@
 ---
 id: ADR-0011
 title: 요소 지정은 스냅샷 ref와 실행 직전 재검증으로 한다
-status: proposed                # proposed | accepted | superseded | deprecated
+status: accepted                # proposed | accepted | superseded | deprecated
 date: 2026-09-28
 deciders: virtual-device-helper 팀   # 팀/역할 (실명·개인정보 금지)
 scope: [main, mcp, android, shared]
@@ -47,7 +47,7 @@ Orca의 emulator 기능(`orca emulator ax`)은 접근성 트리를 노드 단위
 - ref를 받는 툴은 동작 직전에 다시 덤프한다. 새 덤프에서 같은 지문을 찾는다.
 - 같은 지문이 여럿이면 두 조건이 모두 맞을 때만 받아들인다. 옛 덤프와 새 덤프에서 그 지문의 개수가 같아야
   하고, 옛 순번으로 고른 노드가 옛 bounds에 가장 가까운 노드와 같아야 한다.
-- 조건이 맞지 않거나 찾지 못하면 `stale_ref` 에러를 준다. hint는 "`ui_find`를 다시 불러라"다. 추측해서 누르지 않는다.
+- 조건이 맞지 않거나 찾지 못하면 `stale_ref` 에러를 준다. hint는 "`ui_find`를 다시 불러 새 ref를 받아라"다. 추측해서 누르지 않는다.
 - `ui_tap`, `ui_swipe`, `ui_text`가 ref를 받는다. 좌표 입력은 노드가 없는 화면을 위해 남긴다.
 
 ## 대안

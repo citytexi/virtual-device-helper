@@ -11,6 +11,7 @@ export type ToolErrorKind =
   | 'apk_path_invalid'
   | 'device_unresponsive'
   | 'command_failed'
+  | 'stale_ref'
 
 export interface ToolError {
   kind: ToolErrorKind

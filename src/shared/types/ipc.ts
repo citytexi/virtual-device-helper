@@ -1,19 +1,13 @@
 import type { AvdEntry, ScreenshotResult } from './device'
 import type { ToolError, ToolErrorKind } from './errors'
 
-/** wm size가 돌려주는 자연 방향 화면 크기(기기 픽셀) */
-export interface ScreenSize {
-  width: number
-  height: number
-}
-
 /**
- * 에이전트의 화면 동작. 좌표는 툴이 받은 기기 픽셀 그대로다. 회전 상태는 main이 모르므로
- * 정규화는 renderer가 비디오 크기와 screen을 비교해서 한다.
+ * 에이전트의 화면 동작. 좌표는 디스플레이 전체 크기 기준 0..1 정규화 값이다.
+ * renderer는 비디오 크기를 곱하기만 하면 된다 — 회전은 이미 정규화 단계에서 반영됐다.
  */
 export type Gesture =
-  | { kind: 'tap'; serial: string; screen: ScreenSize; x: number; y: number }
-  | { kind: 'swipe'; serial: string; screen: ScreenSize; x1: number; y1: number; x2: number; y2: number }
+  | { kind: 'tap'; serial: string; x: number; y: number }
+  | { kind: 'swipe'; serial: string; x1: number; y1: number; x2: number; y2: number }
 
 export interface ToolCallRecord {
   id: string

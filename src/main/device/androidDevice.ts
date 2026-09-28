@@ -5,13 +5,14 @@ import { DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT } from '../../shared/limits'
 import type {
   Device,
   DeviceInfo,
+  DisplayFrame,
   InstallOpts,
   KeyName,
   LogOpts,
   LogReadResult,
   ScreenshotOpts,
   ScreenshotResult,
-  UiNode
+  UiDump
 } from '../../shared/types/device'
 import { parseLogcat } from './parsers/logcat'
 import { parseUiDump } from './parsers/uiDump'
@@ -151,8 +152,47 @@ function parseWmSize(stdout: string): { width: number; height: number } {
   return { width: Number(match[1]), height: Number(match[2]) }
 }
 
+const ROTATION_DEGREES: Record<string, 0 | 1 | 2 | 3> = { '0': 0, '90': 1, '180': 2, '270': 3 }
+
+/**
+ * `dumpsys window displays`의 기본 디스플레이(mDisplayId=0) 블록에서 회전을 읽는다.
+ * 스트리밍 중에는 scrcpy 가상 디스플레이 블록이 섞여 mDisplayId=0이 아닌 블록이
+ * 먼저 나올 수 있어, mDisplayId=0 줄부터 다음 mDisplayId= 줄 전까지로 블록을
+ * 좁힌 뒤 그 안에서만 읽는다. mDisplayId=0 줄에는 `(organized)` 같은 꼬리가 붙을
+ * 수 있다.
+ */
+function defaultDisplayBlock(stdout: string): string | null {
+  const start = /Display:\s*mDisplayId=0(?!\d)[^\n]*/.exec(stdout)
+  if (!start) return null
+
+  const rest = stdout.slice(start.index + start[0].length)
+  const next = /Display:\s*mDisplayId=/.exec(rest)
+  return next ? rest.slice(0, next.index) : rest
+}
+
+/** 테스트에서 직접 부를 수 있도록 export한다. */
+export function parseDisplayRotation(stdout: string): 0 | 1 | 2 | 3 {
+  const block = defaultDisplayBlock(stdout)
+  const match = block ? /mDisplayRotation=ROTATION_(0|90|180|270)/.exec(block) : null
+
+  if (!match) {
+    throw deviceError(
+      'command_failed',
+      '기본 디스플레이(mDisplayId=0)의 회전 값을 읽지 못했다',
+      '기기가 완전히 부팅됐는지 확인해라',
+      { stdout }
+    )
+  }
+
+  return ROTATION_DEGREES[match[1] as string] as 0 | 1 | 2 | 3
+}
+
 export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
   const { serial, adb, resizeImage, fileExists = existsSync } = deps
+
+  // 자연 방향 크기(wm size)는 연결 동안 바뀌지 않으므로 인스턴스당 한 번만 묻는다.
+  // 실패한 promise는 캐시에서 지운다 — 부팅 직후처럼 잠깐 실패해도 다음 호출에서 다시 묻는다.
+  let naturalSizeCache: Promise<{ width: number; height: number }> | null = null
 
   async function shell(args: string[], timeoutMs?: number): Promise<string> {
     const result = await adb.exec(serial, ['shell', ...args], timeoutMs ? { timeoutMs } : undefined)
@@ -163,15 +203,22 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     return (await shell(['getprop', name])).trim()
   }
 
-  async function screenSize(): Promise<{ width: number; height: number }> {
-    return parseWmSize(await shell(['wm', 'size']))
+  function naturalSize(): Promise<{ width: number; height: number }> {
+    if (naturalSizeCache) return naturalSizeCache
+
+    const pending = shell(['wm', 'size']).then(parseWmSize)
+    naturalSizeCache = pending
+    pending.catch(() => {
+      if (naturalSizeCache === pending) naturalSizeCache = null
+    })
+    return pending
   }
 
   async function info(): Promise<DeviceInfo> {
     const [model, sdk, size] = await Promise.all([
       getprop('ro.product.model'),
       getprop('ro.build.version.sdk'),
-      screenSize()
+      naturalSize()
     ])
 
     return { serial, model, apiLevel: Number(sdk), width: size.width, height: size.height }
@@ -186,7 +233,7 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     // 한 번 아낀다.
     let maxLongEdge = DEFAULT_MAX_LONG_EDGE
     if (opts.scale !== undefined) {
-      const size = await screenSize()
+      const size = await naturalSize()
       maxLongEdge = Math.round(Math.max(size.width, size.height) * opts.scale)
     }
 
@@ -199,7 +246,7 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     return { base64: resized.png.toString('base64'), width: resized.width, height: resized.height }
   }
 
-  async function dumpUi(): Promise<UiNode[]> {
+  async function dumpUi(): Promise<UiDump> {
     // uiautomator dump는 화면이 안정되지 않으면 "ERROR: could not get idle state."를
     // 내고 파일을 건드리지 않는다. 앞선 덤프가 그 자리에 남아 있으면 지난 화면의
     // 좌표가 지금 화면인 것처럼 돌아간다 — 틀린 성공은 UI를 조작하는 에이전트에게
@@ -221,9 +268,24 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     const xml = (await adb.exec(serial, ['exec-out', 'cat', DUMP_PATH])).stdout
     if (!xml.includes('<hierarchy')) dumpFailed()
 
-    // 화면 사각형은 덤프의 루트 노드 bounds에 들어 있다. wm size는 회전을 반영하지
-    // 않아 가로 화면에서 틀린 답을 준다.
-    return parseUiDump(xml)
+    // 정규화 기준(natural)은 실패 경로를 모두 지난 뒤에만 구한다 — 그래야 덤프
+    // 자체가 실패했을 때 엉뚱하게 wm size 실패로 원인이 뒤바뀌지 않는다.
+    const natural = await naturalSize()
+    return parseUiDump(xml, natural)
+  }
+
+  /**
+   * 현재 방향 기준 디스플레이 전체 크기. `dumpsys display`는 쓰지 않는다 —
+   * 스트리밍 중에는 scrcpy 가상 디스플레이 블록이 섞여 rotation이 여러 번
+   * 나오기 때문이다. 회전은 호출마다 다시 읽는다(캐시하지 않는다).
+   */
+  async function displayFrame(): Promise<DisplayFrame> {
+    const [natural, displays] = await Promise.all([naturalSize(), shell(['dumpsys', 'window', 'displays'])])
+    const rotation = parseDisplayRotation(displays)
+
+    return rotation === 1 || rotation === 3
+      ? { width: natural.height, height: natural.width }
+      : { width: natural.width, height: natural.height }
   }
 
   async function readLogs(opts: LogOpts = {}): Promise<LogReadResult> {
@@ -470,6 +532,7 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     info,
     screenshot,
     dumpUi,
+    displayFrame,
     readLogs,
     clearLogs,
     install,

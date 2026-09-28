@@ -527,6 +527,7 @@ vitest와 TDD로 간다. 실기기가 필요한 테스트는 `*.integration.test
   - 화면을 바꾼 뒤 옛 ref로 누르면 아무것도 누르지 않고 `stale_ref`로 멈춘다.
   - 가로 화면에서 좌표 탭이 의도한 위치에 맞고 오버레이도 그 위치에 뜬다.
   - 다이얼로그가 떠 있을 때 `ui_find`의 bounds로 다이얼로그 버튼을 누를 수 있다.
+
 - **M3-2a**
   - `adb shell am crash com.android.settings`로 크래시시킨 뒤 `log_read({ package: 'com.android.settings' })`가
     크래시 스택을 준다. 프로세스가 죽은 뒤에도 준다.
@@ -538,6 +539,24 @@ vitest와 TDD로 간다. 실기기가 필요한 테스트는 `*.integration.test
   - 실패한 툴 호출의 상세에서 "이 시점 로그 보기"로 그 호출 시각 근처 로그에 도착한다.
   - 기기를 끊었다 붙이면 타임라인에 기기 이벤트가 끼인다.
   - `ui_text`로 넣은 텍스트가 타임라인 어디에도 원문으로 남지 않는다.
+
+### M3-1 검증 결과 (2026-09-28)
+
+- **통합 테스트** (`npm run test:integration -- src/main/device/androidDevice.nodeRefs.integration.test.ts`, PASS,
+  대상 emulator-5554): 설정 앱에서 `ui_find`로 얻은 ref를 `nodeRefs.resolve`로 동작 직전 재검증한 뒤
+  `androidDevice.tap`으로 누르면 실제로 화면이 바뀐다는 것, 그리고 화면이 바뀐 뒤 옛 ref로 `resolve`를 부르면
+  아무것도 누르지 않고 `stale_ref`로 거절한다는 것을 실기기로 확인했다. `nodeRefs.ts`의 재검증·지문 규칙과
+  `coordinates.ts`의 `centerOf`·`toPixel` 변환이 실제 uiautomator 덤프·탭 위에서 맞물려 동작함을 보인다.
+- 에이전트가 좌표 없이 ref만으로 설정 앱에서 검색창을 누르고, 검색어를 입력하고, 결과 항목을 누른다 —
+  미검증 — 앱+MCP 클라이언트로 사용자 확인 필요
+- `ui_swipe({ ref, direction: 'down' })`로 설정 메인 목록이 아래로 스크롤된다 —
+  미검증 — 앱+MCP 클라이언트로 사용자 확인 필요
+- 화면을 바꾼 뒤 옛 ref로 누르면 아무것도 누르지 않고 `stale_ref`로 멈춘다(MCP `ui_tap` 툴 경로) —
+  미검증 — 앱+MCP 클라이언트로 사용자 확인 필요
+- 가로 화면에서 좌표 탭이 의도한 위치에 맞고 오버레이도 그 위치에 뜬다 —
+  미검증 — 앱+MCP 클라이언트로 사용자 확인 필요
+- 다이얼로그가 떠 있을 때 `ui_find`의 bounds로 다이얼로그 버튼을 누를 수 있다 —
+  미검증 — 앱+MCP 클라이언트로 사용자 확인 필요
 
 ## 계획 분할
 

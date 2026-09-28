@@ -24,7 +24,9 @@ export interface PromptTemplate {
 
 const RULES = [
   '대상 기기가 불분명하면 `device_list`로 확인하고 `device_select`로 고른다.',
-  '좌표를 추측하지 않는다. `ui_find`로 요소를 찾고, 돌려받은 x, y로 `ui_tap`을 부른다.',
+  '`ui_find`로 요소를 찾고, 돌려받은 `ref`로 `ui_tap`·`ui_text`·`ui_swipe`를 부른다.',
+  'stale_ref 에러가 오면 화면이 바뀐 것이다. `ui_find`를 다시 불러 새 ref를 받는다.',
+  '노드가 없는 화면(지도·게임 캔버스)에서만 0..1 좌표를 쓴다. `screenshot` 크기와 무관하다.',
   '조작한 뒤에는 `screenshot` 또는 `ui_find`로 결과를 확인하고 나서 다음 단계로 간다.',
   '실패하거나 앱이 죽은 것 같으면 `log_read`로 로그를 본다. 새 시도 전에 `log_clear`를 부르면 그 뒤 로그만 보인다.',
   '깨끗한 상태에서 다시 시작하려면 `app_reset_and_launch`를 쓴다.',
@@ -97,7 +99,7 @@ export function promptTemplates(targetSerial: string | null): PromptTemplate[] {
           '1. `app_install`로 APK를 설치한다.',
           '2. `log_clear`로 로그를 비운다.',
           '3. `app_reset_and_launch`로 깨끗한 상태에서 실행한다.',
-          '4. 시나리오의 단계마다 `ui_find`로 요소를 찾고, `ui_tap`·`ui_text`·`ui_swipe`·`ui_key`로 조작하고, `screenshot` 또는 `ui_find`로 기대 결과를 확인한다.',
+          '4. 시나리오의 단계마다 `ui_find`로 요소를 찾아 ref를 받고, 그 ref로 `ui_tap`·`ui_text`·`ui_swipe`를 부르거나 `ui_key`로 조작하고, `screenshot` 또는 `ui_find`로 기대 결과를 확인한다.',
           '5. 기대와 다르면 그 단계에서 멈추고 `screenshot`과 `log_read`로 증거를 모은다.'
         ].join('\n'),
         reportSection(['멈춘 단계와 기대 결과, 실제 결과'])
