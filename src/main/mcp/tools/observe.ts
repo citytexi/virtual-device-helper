@@ -5,7 +5,7 @@ import type { ToolContext } from '../toolContext'
 import { DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT } from '../../../shared/limits'
 import { ANDROID_PACKAGE_PATTERN } from '../../../shared/packageName'
 import { deviceError } from '../../../shared/types/errors'
-import type { LogLine } from '../../../shared/types/device'
+import type { Device, LogLine, ScreenshotResult } from '../../../shared/types/device'
 
 const serial = z
   .string()
@@ -111,17 +111,30 @@ export function registerObserveTools(server: McpServer, context: ToolContext): v
         serial
       }
     },
-    async (args) =>
-      runTool(context, 'screenshot', args, async () => {
-        const device = context.registry.resolve(args.serial)
-        const shot = await context.registry.run(device.serial, () =>
-          device.screenshot(args.scale === undefined ? undefined : { scale: args.scale })
-        )
+    async (args) => {
+      let target: Device | null = null
+      let shot: ScreenshotResult | null = null
+      return runTool(
+        context,
+        'screenshot',
+        args,
+        async () => {
+          const device = context.registry.resolve(args.serial)
+          target = device
+          shot = await context.registry.run(device.serial, () =>
+            device.screenshot(args.scale === undefined ? undefined : { scale: args.scale })
+          )
 
-        return {
-          content: [{ type: 'image' as const, data: shot.base64, mimeType: 'image/png' }]
+          return {
+            content: [{ type: 'image' as const, data: shot.base64, mimeType: 'image/png' }]
+          }
+        },
+        {
+          serial: () => target?.serial,
+          summarise: () => (shot ? `${shot.width}×${shot.height} PNG` : '')
         }
-      })
+      )
+    }
   )
 
   server.registerTool(
@@ -153,35 +166,47 @@ export function registerObserveTools(server: McpServer, context: ToolContext): v
         serial
       }
     },
-    async (args) =>
-      runTool(context, 'log_read', args, async () => {
-        const device = context.registry.resolve(args.serial)
-        const opts: { filter?: string; since?: string; limit: number; pids?: number[] } = {
-          limit: args.limit ?? LOG_READ_DEFAULT_LIMIT
-        }
-        if (args.filter !== undefined) opts.filter = args.filter
-        if (args.since !== undefined) opts.since = args.since
-
-        // pidHistory는 registry.run 밖에서 부른다 — adb pidof 호출이 실제 로그 조회와
-        // 직렬 큐를 나눠 쓰지 않게 한다.
-        if (args.package !== undefined) {
-          const pids = await context.pidHistory(device.serial, args.package)
-          if (pids.length === 0) {
-            throw deviceError(
-              'package_not_found',
-              `${args.package}의 pid 기록이 없다`,
-              PACKAGE_NOT_RUN_HINT,
-              { pkg: args.package }
-            )
+    async (args) => {
+      let target: Device | null = null
+      return runTool(
+        context,
+        'log_read',
+        args,
+        async () => {
+          const device = context.registry.resolve(args.serial)
+          target = device
+          const opts: { filter?: string; since?: string; limit: number; pids?: number[] } = {
+            limit: args.limit ?? LOG_READ_DEFAULT_LIMIT
           }
-          opts.pids = pids
+          if (args.filter !== undefined) opts.filter = args.filter
+          if (args.since !== undefined) opts.since = args.since
+
+          // pidHistory는 registry.run 밖에서 부른다 — adb pidof 호출이 실제 로그 조회와
+          // 직렬 큐를 나눠 쓰지 않게 한다.
+          if (args.package !== undefined) {
+            const pids = await context.pidHistory(device.serial, args.package)
+            if (pids.length === 0) {
+              throw deviceError(
+                'package_not_found',
+                `${args.package}의 pid 기록이 없다`,
+                PACKAGE_NOT_RUN_HINT,
+                { pkg: args.package }
+              )
+            }
+            opts.pids = pids
+          }
+
+          const result = await context.registry.run(device.serial, () => device.readLogs(opts))
+          const formatted = result.lines.map(formatLogLine)
+
+          return enforceResponseBudget(formatted, result.truncated, result.droppedCount)
+        },
+        {
+          serial: () => target?.serial,
+          summarise: (payload) => `로그 ${(payload as LogReadPayload).lines.length}줄`
         }
-
-        const result = await context.registry.run(device.serial, () => device.readLogs(opts))
-        const formatted = result.lines.map(formatLogLine)
-
-        return enforceResponseBudget(formatted, result.truncated, result.droppedCount)
-      })
+      )
+    }
   )
 
   server.registerTool(
@@ -191,11 +216,20 @@ export function registerObserveTools(server: McpServer, context: ToolContext): v
         'logcat 버퍼를 비운다. 테스트 시나리오를 시작하기 직전에 부르면 이후 로그만 보게 된다.',
       inputSchema: { serial }
     },
-    async (args) =>
-      runTool(context, 'log_clear', args, async () => {
-        const device = context.registry.resolve(args.serial)
-        await context.registry.run(device.serial, () => device.clearLogs())
-        return { cleared: true }
-      })
+    async (args) => {
+      let target: Device | null = null
+      return runTool(
+        context,
+        'log_clear',
+        args,
+        async () => {
+          const device = context.registry.resolve(args.serial)
+          target = device
+          await context.registry.run(device.serial, () => device.clearLogs())
+          return { cleared: true }
+        },
+        { serial: () => target?.serial }
+      )
+    }
   )
 }

@@ -168,6 +168,16 @@ describe('device_info', () => {
     await harness.close()
   })
 
+  it('records the resolved serial', async () => {
+    const harness = await createToolHarness({ registry: fakeRegistry(), avd: fakeAvd() })
+
+    await harness.call('device_info')
+
+    expect(harness.records[0]?.serial).toBe('emulator-5554')
+
+    await harness.close()
+  })
+
   it('reports ambiguous_device with candidates when more than one device is attached', async () => {
     const harness = await createToolHarness({
       registry: fakeRegistry({

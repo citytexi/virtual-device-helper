@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Device, DisplayFrame } from '../../../shared/types/device'
-import { runTool } from '../runTool'
+import { redactText, runTool } from '../runTool'
 import type { ToolContext } from '../toolContext'
 import { DEFAULT_SWIPE_MS, centerOf, round4, swipeWithin, toPixel, type Direction, type NormalizedPoint } from '../coordinates'
 import { formatRef, nodeRefs } from '../nodeRefs'
@@ -70,6 +70,7 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
           })
         },
         {
+          serial: () => target?.serial,
           gesture: async () => {
             if (!target || !point) return undefined
             return { kind: 'tap', serial: target.serial, x: point.x, y: point.y }
@@ -172,6 +173,7 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
           })
         },
         {
+          serial: () => target?.serial,
           gesture: async () => {
             if (!target || !from || !to) return undefined
             return { kind: 'swipe', serial: target.serial, x1: from.x, y1: from.y, x2: to.x, y2: to.y }
@@ -215,6 +217,11 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
           })
         },
         {
+          serial: () => target?.serial,
+          redact: (a) => {
+            const withText = a as { text: string }
+            return { ...withText, text: redactText(withText.text) }
+          },
           gesture: async () => {
             if (!target || !tapPoint) return undefined
             return { kind: 'tap', serial: target.serial, x: tapPoint.x, y: tapPoint.y }
@@ -233,12 +240,21 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
         serial
       }
     },
-    async (args) =>
-      runTool(context, 'ui_key', args, async () => {
-        const device = context.registry.resolve(args.serial)
-        await context.registry.run(device.serial, () => device.pressKey(args.name))
-        return { pressed: args.name }
-      })
+    async (args) => {
+      let target: Device | null = null
+      return runTool(
+        context,
+        'ui_key',
+        args,
+        async () => {
+          const device = context.registry.resolve(args.serial)
+          target = device
+          await context.registry.run(device.serial, () => device.pressKey(args.name))
+          return { pressed: args.name }
+        },
+        { serial: () => target?.serial }
+      )
+    }
   )
 
   server.registerTool(
@@ -255,46 +271,58 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
         serial
       }
     },
-    async (args) =>
-      runTool(context, 'ui_find', args, async () => {
-        const device = context.registry.resolve(args.serial)
-        const dump = await context.registry.run(device.serial, () => device.dumpUi())
+    async (args) => {
+      let target: Device | null = null
+      return runTool(
+        context,
+        'ui_find',
+        args,
+        async () => {
+          const device = context.registry.resolve(args.serial)
+          target = device
+          const dump = await context.registry.run(device.serial, () => device.dumpUi())
 
-        const needle = args.query?.toLowerCase()
-        const matched = needle
-          ? dump.nodes.filter((node) =>
-              `${node.text ?? ''}\n${node.contentDesc ?? ''}\n${node.resourceId ?? ''}`
-                .toLowerCase()
-                .includes(needle)
-            )
-          : dump.nodes
+          const needle = args.query?.toLowerCase()
+          const matched = needle
+            ? dump.nodes.filter((node) =>
+                `${node.text ?? ''}\n${node.contentDesc ?? ''}\n${node.resourceId ?? ''}`
+                  .toLowerCase()
+                  .includes(needle)
+              )
+            : dump.nodes
 
-        const kept = matched.slice(0, UI_FIND_MAX_NODES)
+          const kept = matched.slice(0, UI_FIND_MAX_NODES)
 
-        // 세대는 필터 전 전체 덤프를 기준으로 매긴다 — parentRef가 걸러진 조상을
-        // 가리킬 수 있고, ref 재해석(resolve)도 전체 덤프를 스냅샷으로 쓴다.
-        const generation = nodeRefs.remember(device, dump)
+          // 세대는 필터 전 전체 덤프를 기준으로 매긴다 — parentRef가 걸러진 조상을
+          // 가리킬 수 있고, ref 재해석(resolve)도 전체 덤프를 스냅샷으로 쓴다.
+          const generation = nodeRefs.remember(device, dump)
 
-        const nodes = kept.map((node) => ({
-          ref: formatRef(generation, node.index),
-          parentRef: node.parentIndex !== null ? formatRef(generation, node.parentIndex) : null,
-          text: node.text,
-          contentDesc: node.contentDesc,
-          resourceId: node.resourceId,
-          className: node.className,
-          bounds: node.bounds,
-          clickable: node.clickable,
-          enabled: node.enabled,
-          focused: node.focused,
-          scrollable: node.scrollable
-        }))
+          const nodes = kept.map((node) => ({
+            ref: formatRef(generation, node.index),
+            parentRef: node.parentIndex !== null ? formatRef(generation, node.parentIndex) : null,
+            text: node.text,
+            contentDesc: node.contentDesc,
+            resourceId: node.resourceId,
+            className: node.className,
+            bounds: node.bounds,
+            clickable: node.clickable,
+            enabled: node.enabled,
+            focused: node.focused,
+            scrollable: node.scrollable
+          }))
 
-        return {
-          generation,
-          nodes,
-          truncated: matched.length > kept.length,
-          droppedCount: matched.length - kept.length
+          return {
+            generation,
+            nodes,
+            truncated: matched.length > kept.length,
+            droppedCount: matched.length - kept.length
+          }
+        },
+        {
+          serial: () => target?.serial,
+          summarise: (payload) => `노드 ${(payload as { nodes: unknown[] }).nodes.length}개`
         }
-      })
+      )
+    }
   )
 }

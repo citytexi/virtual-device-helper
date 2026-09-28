@@ -493,6 +493,43 @@ describe('gesture records', () => {
   })
 })
 
+describe('detail: serial·redact·summarise', () => {
+  it('never records typed text in the clear', async () => {
+    const harness = await harnessFor({ inputText: vi.fn(async () => {}) })
+
+    await harness.call('ui_text', { text: 'hunter2' })
+
+    expect(JSON.stringify(harness.records)).not.toContain('hunter2')
+    expect(harness.records[0]?.detail.args).toContain('<7자 가림>')
+    expect(harness.records[0]?.argsSummary).toContain('<7자 가림>')
+
+    await harness.close()
+  })
+
+  it('records the serial of ui_tap', async () => {
+    const harness = await harnessFor({ tap: vi.fn(async () => {}) })
+
+    await harness.call('ui_tap', { x: 0.5, y: 0.5 })
+
+    expect(harness.records[0]?.serial).toBe('emulator-5554')
+
+    await harness.close()
+  })
+
+  it('summarises ui_find as 노드 N개', async () => {
+    const harness = await harnessFor({
+      dumpUi: async () =>
+        dump([node({ index: 0, text: 'a' }), node({ index: 1, text: 'b' }), node({ index: 2, text: 'c' })])
+    })
+
+    await harness.call('ui_find')
+
+    expect(harness.records[0]?.detail.resultSummary).toBe('노드 3개')
+
+    await harness.close()
+  })
+})
+
 describe('inputSchema shape', () => {
   it('keeps ui_tap and ui_swipe as object schemas after superRefine', async () => {
     const harness = await harnessFor({})
