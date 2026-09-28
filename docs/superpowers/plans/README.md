@@ -29,6 +29,9 @@
 | [m1-4-electron-shell-ui](archive/2026-09-22-m1-4-electron-shell-ui.md) | done — M1 구현 완료. IPC 계약, main 조립, 최소 renderer UI |
 | [m1-5-integration-verification](archive/2026-09-22-m1-5-integration-verification.md) | done — M1 구현 완료. 실기기 통합 테스트와 완료 조건 검증, 결과는 스펙에 옮김 |
 | [agent-guide](archive/2026-09-23-agent-guide.md) | done — 에이전트 사용 안내 구현 완료. PR #8로 develop에 머지 |
+| [m2-1-stream-core](archive/2026-09-23-m2-1-stream-core.md) | done — M2-1 구현 완료. scrcpy 프로토콜·세션·streamManager, startStream IPC와 포트 전달. PR #11로 develop에 머지 |
+| [m2-2-renderer-stream](archive/2026-09-23-m2-2-renderer-stream.md) | done — M2-2 구현 완료. WebCodecs 디코딩, 캔버스 입력·툴바, 스크린샷 강등. PR #12로 develop에 머지 |
+| [m2-3-gesture-overlay](archive/2026-09-23-m2-3-gesture-overlay.md) | done — M2-3 구현 완료. 에이전트 동작 오버레이와 M2 완료 조건 검증. PR #13으로 develop에 머지 |
 <!-- archive:end -->
 
 ## 작성 가이드

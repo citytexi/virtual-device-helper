@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AvdController } from '../device/avdController'
 import type { DeviceRegistry } from '../device/registry'
 import type { McpServerHandle } from '../mcp/httpServer'
+import { deviceError } from '../../shared/types/errors'
 import { IPC_CHANNELS, type AppSnapshot, type Outcome } from '../../shared/types/ipc'
 import { bootstrapApp, rendererSender, type BootstrapDeps } from './bootstrap'
 
@@ -32,6 +33,16 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
   const handlers = new Map<string, Handler>()
   const ipcMain = { handle: (channel: string, handler: Handler) => handlers.set(channel, handler) }
   const stack = fakeStack()
+  const registryListeners: Array<(event: unknown) => void> = []
+  ;(stack.registry.on as ReturnType<typeof vi.fn>).mockImplementation((listener: (event: unknown) => void) => {
+    registryListeners.push(listener)
+    return () => {}
+  })
+  const stream = {
+    open: vi.fn(async () => {}),
+    stop: vi.fn(async () => {}),
+    handleDisconnect: vi.fn(async () => {})
+  }
   const server: McpServerHandle = {
     url: 'http://127.0.0.1:9321/mcp',
     port: 9321,
@@ -46,6 +57,7 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
     ipcMain: ipcMain as never,
     send: vi.fn(),
     createDeviceStack: vi.fn(() => ({ registry: stack.registry, avd: stack.avd })),
+    createStreamManager: vi.fn(() => stream),
     startServer: vi.fn(async () => server),
     ...overrides
   }
@@ -56,7 +68,15 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
     return (await handler({}, ...args)) as T
   }
 
-  return { deps, handlers, invoke, stack, server }
+  return {
+    deps,
+    handlers,
+    invoke,
+    stack,
+    server,
+    stream,
+    fireRegistry: (event: unknown) => registryListeners.forEach((listener) => listener(event))
+  }
 }
 
 const missing: BootstrapDeps['located'] = { ok: false, searched: ['/opt/sdk/platform-tools/adb'] }
@@ -180,6 +200,68 @@ describe('bootstrapApp with an SDK', () => {
 
     expect(h.stack.registry.stop).toHaveBeenCalled()
     expect(h.server.close).toHaveBeenCalled()
+  })
+
+  it('starts a stream for a known serial', async () => {
+    const h = harness()
+    await bootstrapApp(h.deps)
+
+    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, 'emulator-5554')
+
+    expect(result.ok).toBe(true)
+    expect(h.stream.open).toHaveBeenCalledWith('emulator-5554')
+  })
+
+  it('refuses a stream for a serial the registry does not know', async () => {
+    const h = harness()
+    ;(h.stack.registry.resolve as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw deviceError('no_device', 'gone', 'x')
+    })
+    await bootstrapApp(h.deps)
+
+    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, 'emulator-9999')
+
+    expect(result.ok).toBe(false)
+    expect(h.stream.open).not.toHaveBeenCalled()
+  })
+
+  it('closes the stream when its device disconnects', async () => {
+    const h = harness()
+    await bootstrapApp(h.deps)
+
+    h.fireRegistry({ type: 'device_disconnected', serial: 'emulator-5554' })
+
+    expect(h.stream.handleDisconnect).toHaveBeenCalledWith('emulator-5554')
+  })
+
+  it('stops the stream on shutdown', async () => {
+    const h = harness()
+    const app = await bootstrapApp(h.deps)
+
+    await app.stop()
+
+    expect(h.stream.stop).toHaveBeenCalled()
+  })
+
+  it('still stops tracking and closes the server when stopping the stream throws', async () => {
+    const h = harness()
+    h.stream.stop.mockRejectedValueOnce(new Error('boom'))
+    const app = await bootstrapApp(h.deps)
+
+    await expect(app.stop()).rejects.toThrow('boom')
+
+    expect(h.stack.registry.stop).toHaveBeenCalled()
+    expect(h.server.close).toHaveBeenCalled()
+  })
+
+  it('refuses a stream without an SDK and never builds a stream manager', async () => {
+    const h = harness({ located: missing })
+    await bootstrapApp(h.deps)
+
+    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, 'emulator-5554')
+
+    expect(result.ok).toBe(false)
+    expect(h.deps.createStreamManager).not.toHaveBeenCalled()
   })
 })
 

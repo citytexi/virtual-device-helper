@@ -557,6 +557,122 @@ code {
   opacity: 0.6;
 }
 
+.screenshot-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+}
+
+.screenshot-label {
+  color: var(--text-muted);
+}
+
+.screen-stage {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.screen-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  touch-action: none;
+  border-radius: var(--radius-sm);
+}
+
+.screen-canvas:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.screen-status {
+  position: absolute;
+  inset: auto 0 var(--space-4) 0;
+  margin: 0 auto;
+  width: fit-content;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-muted);
+  box-shadow: var(--shadow);
+}
+
+.device-keys {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.device-key {
+  min-width: 36px;
+  justify-content: center;
+}
+
+.gesture-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.gesture-tap {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: gesture-tap 700ms ease-out forwards;
+}
+
+.gesture-swipe {
+  stroke: var(--accent);
+  stroke-width: 4;
+  stroke-linecap: round;
+  fill: var(--accent);
+  vector-effect: non-scaling-stroke;
+  animation: gesture-fade 700ms ease-out forwards;
+}
+
+.gesture-swipe line,
+.gesture-swipe circle {
+  vector-effect: non-scaling-stroke;
+}
+
+@keyframes gesture-tap {
+  from {
+    transform: scale(0.4);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+@keyframes gesture-fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gesture-tap {
+    animation-name: gesture-fade;
+  }
+}
+
 /* ── 작업 영역 · 활동 ─────────────────────────────────── */
 
 .tablist {

@@ -116,3 +116,69 @@ describe('ui_key', () => {
     await harness.close()
   })
 })
+
+const info = async () => ({ serial: 'emulator-5554', model: 'Pixel', apiLevel: 34, width: 1080, height: 2400 })
+
+describe('gesture records', () => {
+  it('records a successful tap with its pixel position and the natural screen size', async () => {
+    const harness = await harnessFor({ tap: vi.fn(async () => {}), info })
+
+    await harness.call('ui_tap', { x: 540, y: 930 })
+
+    expect(harness.records[0]?.gesture).toEqual({
+      kind: 'tap',
+      serial: 'emulator-5554',
+      screen: { width: 1080, height: 2400 },
+      x: 540,
+      y: 930
+    })
+    await harness.close()
+  })
+
+  it('records a successful swipe with both ends', async () => {
+    const harness = await harnessFor({ swipe: vi.fn(async () => {}), info })
+
+    await harness.call('ui_swipe', { x1: 100, y1: 1800, x2: 100, y2: 400, durationMs: 300 })
+
+    expect(harness.records[0]?.gesture).toEqual({
+      kind: 'swipe',
+      serial: 'emulator-5554',
+      screen: { width: 1080, height: 2400 },
+      x1: 100,
+      y1: 1800,
+      x2: 100,
+      y2: 400
+    })
+    await harness.close()
+  })
+
+  it('records no gesture for a failed tap', async () => {
+    const harness = await harnessFor({
+      tap: vi.fn(async () => {
+        throw deviceError('device_unresponsive', 'timeout', 'retry')
+      }),
+      info
+    })
+
+    await harness.callExpectingError('ui_tap', { x: 1, y: 1 })
+
+    expect(harness.records[0]?.gesture).toBeUndefined()
+    await harness.close()
+  })
+
+  it('still succeeds without a gesture when the screen size cannot be read', async () => {
+    const harness = await harnessFor({
+      tap: vi.fn(async () => {}),
+      info: async () => {
+        throw deviceError('command_failed', 'wm size 출력에서 화면 크기를 읽지 못했다', 'x')
+      }
+    })
+
+    const result = await harness.raw('ui_tap', { x: 1, y: 1 })
+
+    expect(result.isError).toBeFalsy()
+    expect(harness.records[0]?.ok).toBe(true)
+    expect(harness.records[0]?.gesture).toBeUndefined()
+    await harness.close()
+  })
+})

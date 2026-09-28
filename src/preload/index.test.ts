@@ -35,7 +35,7 @@ describe('preload API surface', () => {
     const api = await loadPreload()
 
     expect(Object.keys(api).sort()).toEqual(
-      ['bootAvd', 'captureScreenshot', 'getSnapshot', 'onEvent', 'selectDevice', 'shutdownDevice'].sort()
+      ['bootAvd', 'captureScreenshot', 'getSnapshot', 'onEvent', 'selectDevice', 'shutdownDevice', 'startStream', 'stopStream'].sort()
     )
   })
 
@@ -52,7 +52,9 @@ describe('preload API surface', () => {
     ['selectDevice', IPC_CHANNELS.selectDevice, ['emulator-5554']],
     ['bootAvd', IPC_CHANNELS.bootAvd, ['Pixel_7_API_34']],
     ['shutdownDevice', IPC_CHANNELS.shutdownDevice, ['emulator-5554']],
-    ['captureScreenshot', IPC_CHANNELS.captureScreenshot, ['emulator-5554']]
+    ['captureScreenshot', IPC_CHANNELS.captureScreenshot, ['emulator-5554']],
+    ['startStream', IPC_CHANNELS.startStream, ['emulator-5554']],
+    ['stopStream', IPC_CHANNELS.stopStream, []]
   ] as const)('routes %s to its own named channel with its argument', async (method, channel, args) => {
     const api = await loadPreload()
 
@@ -67,7 +69,8 @@ describe('preload API surface', () => {
 
     ;(api.onEvent as (callback: (event: unknown) => void) => () => void)((event) => received.push(event))
 
-    const handler = on.mock.calls[0]?.[1] as (event: unknown, payload: unknown) => void
+    const call = on.mock.calls.find((args) => args[0] === IPC_CHANNELS.event)
+    const handler = call?.[1] as (event: unknown, payload: unknown) => void
     handler({ sender: 'should not leak' }, { type: 'active_changed', serial: 'emulator-5554' })
 
     expect(received).toEqual([{ type: 'active_changed', serial: 'emulator-5554' }])
@@ -80,5 +83,40 @@ describe('preload API surface', () => {
     off()
 
     expect(removeListener).toHaveBeenCalledWith(IPC_CHANNELS.event, expect.any(Function))
+  })
+})
+
+describe('stream port forwarding', () => {
+  function portListener(): (event: { ports: unknown[] }, meta: unknown) => void {
+    const call = on.mock.calls.find((args) => args[0] === IPC_CHANNELS.streamPort)
+    return call?.[1] as (event: { ports: unknown[] }, meta: unknown) => void
+  }
+
+  it('hands a stream port to the main world with its meta', async () => {
+    const postMessage = vi.fn()
+    vi.stubGlobal('window', { postMessage })
+    await loadPreload()
+    const port = { fake: 'port' }
+
+    portListener()({ ports: [port] }, { serial: 'emulator-5554', sessionId: 's1' })
+
+    expect(postMessage).toHaveBeenCalledWith(
+      { channel: IPC_CHANNELS.streamPort, serial: 'emulator-5554', sessionId: 's1' },
+      '*',
+      [port]
+    )
+    vi.unstubAllGlobals()
+  })
+
+  it('forwards nothing when the message carries no single port', async () => {
+    const postMessage = vi.fn()
+    vi.stubGlobal('window', { postMessage })
+    await loadPreload()
+
+    portListener()({ ports: [] }, { serial: 'emulator-5554', sessionId: 's1' })
+    portListener()({ ports: [{}, {}] }, { serial: 'emulator-5554', sessionId: 's1' })
+
+    expect(postMessage).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
   })
 })
