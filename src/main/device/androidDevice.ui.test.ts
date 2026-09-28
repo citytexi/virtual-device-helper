@@ -1,13 +1,17 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { AdbClient, ExecResult } from '../adb/adbClient'
-import { createAndroidDevice } from './androidDevice'
+import { createAndroidDevice, parseDisplayRotation } from './androidDevice'
 
-function fakeAdb(): { adb: AdbClient; calls: string[][] } {
+/** args 배열을 넘겨 응답을 고를 수 있게 한다. 생략하면 지금처럼 빈 stdout을 준다. */
+function fakeAdb(respond?: (args: string[]) => string): { adb: AdbClient; calls: string[][] } {
   const calls: string[][] = []
   const adb = {
     exec: vi.fn(async (_serial: string | null, args: string[]): Promise<ExecResult> => {
       calls.push(args)
-      return { stdout: '', stdoutRaw: Buffer.alloc(0), stderr: '', exitCode: 0 }
+      const stdout = respond?.(args) ?? ''
+      return { stdout, stdoutRaw: Buffer.from(stdout, 'utf8'), stderr: '', exitCode: 0 }
     }),
     stream: vi.fn()
   } as unknown as AdbClient
@@ -124,5 +128,82 @@ describe('AndroidDevice.pressKey', () => {
       'KEYCODE_ENTER',
       'KEYCODE_TAB'
     ])
+  })
+})
+
+// 스트리밍 중(emulator-5554, scrcpy 가상 디스플레이 연결) dumpsys window displays 픽스처.
+// 0이 아닌 mDisplayId 블록이 mDisplayId=0보다 먼저 나온다.
+const streaming = readFileSync(
+  join(__dirname, 'parsers', '__fixtures__', 'window-displays-streaming.txt'),
+  'utf8'
+)
+
+describe('parseDisplayRotation', () => {
+  it('reads the default display rotation even when a virtual display comes first', () => {
+    expect(parseDisplayRotation(streaming)).toBe(0)
+    expect(
+      parseDisplayRotation(streaming.replace(/(Display: mDisplayId=0[\s\S]*?)ROTATION_0/, '$1ROTATION_90'))
+    ).toBe(1)
+  })
+
+  it('accepts the (organized) suffix on the default display line', () => {
+    expect(
+      parseDisplayRotation('Display: mDisplayId=0 (organized)\n winConfig={ mDisplayRotation=ROTATION_270 }')
+    ).toBe(3)
+  })
+
+  it('throws command_failed when the default display has no rotation', () => {
+    expect(() => parseDisplayRotation('Display: mDisplayId=2\n mDisplayRotation=ROTATION_0')).toThrow(
+      expect.objectContaining({ toolError: expect.objectContaining({ kind: 'command_failed' }) })
+    )
+  })
+})
+
+describe('AndroidDevice.displayFrame', () => {
+  it('swaps axes for a 90 degree rotation', async () => {
+    const rotated90 = streaming.replace(/(Display: mDisplayId=0[\s\S]*?)ROTATION_0/, '$1ROTATION_90')
+    const { adb } = fakeAdb((args) => {
+      const key = args.join(' ')
+      if (key === 'shell wm size') return 'Physical size: 1080x2400\n'
+      if (key === 'shell dumpsys window displays') return rotated90
+      return ''
+    })
+    const device = makeDevice(adb)
+
+    await expect(device.displayFrame()).resolves.toEqual({ width: 2400, height: 1080 })
+  })
+
+  it('asks wm size once per device instance across dumpUi and displayFrame', async () => {
+    const dumpXml = `<?xml version="1.0"?><hierarchy rotation="0"><node index="0" text="로그인" resource-id="com.example:id/login" class="android.widget.Button" content-desc="" clickable="true" enabled="true" focused="false" scrollable="false" bounds="[80,860][1000,1000]" /></hierarchy>`
+    const { adb, calls } = fakeAdb((args) => {
+      const key = args.join(' ')
+      if (key === 'shell wm size') return 'Physical size: 1080x2400\n'
+      if (key.startsWith('exec-out cat')) return dumpXml
+      if (key === 'shell dumpsys window displays') return streaming
+      return ''
+    })
+    const device = makeDevice(adb)
+
+    await device.dumpUi()
+    await device.displayFrame()
+    await device.displayFrame()
+
+    expect(calls.filter((c) => c.join(' ') === 'shell wm size')).toHaveLength(1)
+  })
+
+  it('does not cache a failed wm size', async () => {
+    // 첫 호출 실패 → 두 번째 호출이 wm size를 다시 부른다.
+    let wmSizeCalls = 0
+    const { adb } = fakeAdb((args) => {
+      if (args.join(' ') === 'shell wm size') {
+        wmSizeCalls += 1
+        return wmSizeCalls === 1 ? '' : 'Physical size: 1080x2400\n'
+      }
+      return ''
+    })
+    const device = makeDevice(adb)
+
+    await expect(device.info()).rejects.toMatchObject({ toolError: { kind: 'command_failed' } })
+    await expect(device.info()).resolves.toMatchObject({ width: 1080, height: 2400 })
   })
 })

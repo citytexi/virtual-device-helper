@@ -15,22 +15,47 @@ export interface AvdEntry {
   serial: string | null
 }
 
+/** 정규화된 사각형. 0..1, 소수 4자리로 반올림한다. */
+export interface NormalizedRect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/** 현재 방향 기준 디스플레이 전체 크기(기기 픽셀). */
+export interface DisplayFrame {
+  width: number
+  height: number
+}
+
 /**
  * uiautomator 덤프에서 요약한 요소 하나.
  * 원본 XML은 이 타입으로 바뀐 뒤 버려진다.
  */
 export interface UiNode {
+  /** 이 덤프 안에서의 순번. 필터 뒤 남은 노드 기준이다. ref의 뒷부분이 된다. */
   index: number
+  /** 남은 노드 중 가장 가까운 조상의 index. 없으면 null. */
+  parentIndex: number | null
   text: string | null
   contentDesc: string | null
   /** resource-id의 꼬리. "com.example:id/login" 이면 "login". */
   resourceId: string | null
   /** 클래스의 짧은 이름. "android.widget.Button" 이면 "Button". */
   className: string
-  /** 요소 중심 좌표. ui_tap에 그대로 넣을 수 있다. */
-  x: number
-  y: number
+  /** 디스플레이 전체 크기 기준 정규화 사각형. 덤프 루트 bounds가 아니다. */
+  bounds: NormalizedRect
   clickable: boolean
+  enabled: boolean
+  focused: boolean
+  scrollable: boolean
+}
+
+export interface UiDump {
+  nodes: UiNode[]
+  /** 덤프 시점의 디스플레이 크기. 정규화 기준이자 ref 경로의 픽셀 변환 기준이다. */
+  frame: DisplayFrame
 }
 
 export type LogLevel = 'V' | 'D' | 'I' | 'W' | 'E' | 'F'
@@ -96,7 +121,9 @@ export interface Device {
   swipe(x1: number, y1: number, x2: number, y2: number, durationMs: number): Promise<void>
   inputText(text: string): Promise<void>
   pressKey(key: KeyName): Promise<void>
-  dumpUi(): Promise<UiNode[]>
+  dumpUi(): Promise<UiDump>
+  /** 현재 방향 기준 디스플레이 전체 크기. `dumpsys window displays`의 mDisplayId=0 값을 읽는다. */
+  displayFrame(): Promise<DisplayFrame>
   screenshot(opts?: ScreenshotOpts): Promise<ScreenshotResult>
   readLogs(opts?: LogOpts): Promise<LogReadResult>
   clearLogs(): Promise<void>

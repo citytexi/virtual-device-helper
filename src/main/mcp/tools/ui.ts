@@ -138,7 +138,7 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
     'ui_find',
     {
       description:
-        '지금 화면의 요소 목록을 돌려준다. 각 요소는 누를 수 있는 중심 좌표를 가지므로 받은 x, y를 ui_tap에 그대로 넣으면 된다. 화면을 조작하기 전에 먼저 부른다.',
+        '지금 화면의 요소 목록을 돌려준다. 각 요소의 bounds는 화면 전체 크기 기준 정규화 좌표(0..1)다. 화면을 조작하기 전에 먼저 부른다.',
       inputSchema: {
         query: z
           .string()
@@ -150,21 +150,23 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
     async (args) =>
       runTool(context, 'ui_find', args, async () => {
         const device = context.registry.resolve(args.serial)
-        const all = await context.registry.run(device.serial, () => device.dumpUi())
+        const dump = await context.registry.run(device.serial, () => device.dumpUi())
 
         const needle = args.query?.toLowerCase()
         const matched = needle
-          ? all.filter((node) =>
+          ? dump.nodes.filter((node) =>
               `${node.text ?? ''}\n${node.contentDesc ?? ''}\n${node.resourceId ?? ''}`
                 .toLowerCase()
                 .includes(needle)
             )
-          : all
+          : dump.nodes
 
         const kept = matched.slice(0, UI_FIND_MAX_NODES)
 
+        // 걸러도 덤프 index를 그대로 유지한다 — 다시 매기면 ref(g<세대>:<index>)의
+        // 뜻이 어긋난다. ref는 이후 작업에서 붙인다.
         return {
-          nodes: kept.map((node, index) => ({ ...node, index })),
+          nodes: kept,
           truncated: matched.length > kept.length,
           droppedCount: matched.length - kept.length
         }

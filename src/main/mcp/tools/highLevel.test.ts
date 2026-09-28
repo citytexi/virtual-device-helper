@@ -1,23 +1,32 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AvdController } from '../../device/avdController'
 import type { DeviceRegistry } from '../../device/registry'
-import type { Device, UiNode } from '../../../shared/types/device'
+import type { Device, DisplayFrame, UiDump, UiNode } from '../../../shared/types/device'
 import { createToolHarness } from '../testHarness'
 import { UI_FIND_MAX_NODES } from './ui'
 import { waitForSettle } from './app'
 
+const frame: DisplayFrame = { width: 1080, height: 2400 }
+
 function node(overrides: Partial<UiNode> = {}): UiNode {
   return {
     index: 0,
+    parentIndex: null,
     text: '로그인',
     contentDesc: null,
     resourceId: 'login',
     className: 'Button',
-    x: 540,
-    y: 930,
+    bounds: { x: 0.5, y: 0.3875, w: 0.8519, h: 0.0583 },
     clickable: true,
+    enabled: true,
+    focused: false,
+    scrollable: false,
     ...overrides
   }
+}
+
+function dump(nodes: UiNode[]): UiDump {
+  return { nodes, frame }
 }
 
 function harnessFor(device: Partial<Device>) {
@@ -45,7 +54,7 @@ function harnessFor(device: Partial<Device>) {
 
 describe('ui_find', () => {
   it('returns summarised nodes ready to feed into ui_tap', async () => {
-    const harness = await harnessFor({ dumpUi: async () => [node()] })
+    const harness = await harnessFor({ dumpUi: async () => dump([node()]) })
 
     const payload = (await harness.call('ui_find')) as { nodes: UiNode[]; truncated: boolean }
 
@@ -57,10 +66,11 @@ describe('ui_find', () => {
 
   it('filters by query, case-insensitively, across text and resourceId', async () => {
     const harness = await harnessFor({
-      dumpUi: async () => [
-        node({ index: 0, text: '로그인', resourceId: 'login' }),
-        node({ index: 1, text: '취소', resourceId: 'cancel' })
-      ]
+      dumpUi: async () =>
+        dump([
+          node({ index: 0, text: '로그인', resourceId: 'login' }),
+          node({ index: 1, text: '취소', resourceId: 'cancel' })
+        ])
     })
 
     const payload = (await harness.call('ui_find', { query: 'CANCEL' })) as { nodes: UiNode[] }
@@ -74,7 +84,7 @@ describe('ui_find', () => {
     const many = Array.from({ length: UI_FIND_MAX_NODES + 20 }, (_, i) =>
       node({ index: i, text: `item ${i}`, resourceId: `item${i}` })
     )
-    const harness = await harnessFor({ dumpUi: async () => many })
+    const harness = await harnessFor({ dumpUi: async () => dump(many) })
 
     const payload = (await harness.call('ui_find')) as {
       nodes: UiNode[]
@@ -89,23 +99,24 @@ describe('ui_find', () => {
     await harness.close()
   })
 
-  it('renumbers the returned nodes from zero after filtering', async () => {
+  it('keeps the dump index after filtering', async () => {
     const harness = await harnessFor({
-      dumpUi: async () => [
-        node({ index: 0, text: '취소', resourceId: 'cancel' }),
-        node({ index: 1, text: '로그인', resourceId: 'login' })
-      ]
+      dumpUi: async () =>
+        dump([
+          node({ index: 0, text: '취소', resourceId: 'cancel' }),
+          node({ index: 1, text: '로그인', resourceId: 'login' })
+        ])
     })
 
     const payload = (await harness.call('ui_find', { query: '로그인' })) as { nodes: UiNode[] }
 
-    expect(payload.nodes[0]?.index).toBe(0)
+    expect(payload.nodes[0]?.index).toBe(1)
 
     await harness.close()
   })
 
   it('never returns raw XML', async () => {
-    const harness = await harnessFor({ dumpUi: async () => [node()] })
+    const harness = await harnessFor({ dumpUi: async () => dump([node()]) })
 
     const raw = await harness.raw('ui_find')
     const text = (raw.content[0] as { text: string }).text
@@ -132,7 +143,7 @@ describe('app_reset_and_launch', () => {
       },
       dumpUi: async () => {
         order.push('dump')
-        return [node()]
+        return dump([node()])
       }
     })
 
@@ -149,7 +160,7 @@ describe('app_reset_and_launch', () => {
       stop: async () => {},
       clearData: async () => {},
       launch: async () => {},
-      dumpUi: async () => [node(), node({ index: 1, resourceId: 'cancel' })]
+      dumpUi: async () => dump([node(), node({ index: 1, resourceId: 'cancel' })])
     })
 
     const payload = (await harness.call('app_reset_and_launch', { pkg: 'com.example.app' })) as {
