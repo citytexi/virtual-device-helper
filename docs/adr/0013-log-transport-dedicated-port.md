@@ -38,7 +38,7 @@ ADR-0010은 "범용 포트 통로는 만들지 않는다"고 정했다. 목적�
 
 - renderer가 한 기기의 로그를 열면 main이 `MessageChannelMain`을 만들어 `app:log-port`로 보낸다.
   preload는 `app:stream-port`와 같은 방식으로 main world에 넘긴다.
-- main에서 renderer로는 버퍼 스냅샷, 새 줄 배치, pid 맵, tail 상태가 흐른다.
+- main에서 renderer로는 버퍼 스냅샷, 새 줄 배치, 밀려난 구간 알림, 패키지 목록, tail 상태가 흐른다.
 - renderer에서 main으로는 전송 일시정지와 재개가 흐른다. main은 renderer에서 온 메시지를 모양으로 검증하고,
   맞지 않으면 버린다.
 - 포트는 **전달** 수명만 맡는다. logcat tail과 버퍼는 기기 연결 수명을 따른다. 포트를 닫아도 버퍼는 남는다.
