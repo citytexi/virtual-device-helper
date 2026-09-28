@@ -8,7 +8,7 @@ scope: [main, preload, renderer, streaming]
 hosts: []                       # windows | macos — 호스트 OS마다 결정이 갈릴 때만 채운다
 supersedes:                     # 이 ADR이 대체하는 ADR-NNNN (없으면 비움)
 superseded_by:                  # 이 ADR을 대체한 ADR-NNNN (없으면 비움)
-related_adr: [ADR-0002]
+related_adr: [ADR-0002, ADR-0013]
 related_spec: m2-live-streaming
 related_architecture:
 related_plan:
@@ -38,7 +38,8 @@ M1의 IPC는 요청·응답(`ipcMain.handle`)과 단일 이벤트 채널(`app:ev
 - 비디오 패킷, 세션 상태, 사람 입력 의도가 모두 이 포트를 오간다. `MessagePortMain`은 `ArrayBuffer`
   transfer를 지원하지 않으므로 패킷은 structured clone으로 복사된다. 그래서 패킷은 정확한 크기의 새 버퍼로 만든다.
 - 세션을 닫으면 포트도 닫는다. 늦게 도착한 패킷은 닫힌 포트와 함께 사라진다.
-- preload는 포트를 main world로 넘기는 이 채널 하나만 연다. 범용 포트 통로는 만들지 않는다.
+- preload는 용도가 정해진 포트 채널만 연다. 스트림은 `app:stream-port`를 쓴다. 범용 포트 통로는 만들지 않는다.
+  로그 포트가 같은 규칙으로 붙는다([ADR-0013](0013-log-transport-dedicated-port.md)).
 
 ## 대안
 

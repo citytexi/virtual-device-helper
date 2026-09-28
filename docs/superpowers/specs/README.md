@@ -17,6 +17,7 @@
 <!-- index:start -->
 | 스펙 | 상태 | 내용 |
 |------|------|------|
+| [m3-node-control-logs-events](2026-09-28-m3-node-control-logs-events.md) | draft | ref 기반 노드 제어와 정규화 좌표, logcat 실시간 로그 패널, 툴 호출·기기 이벤트 타임라인 |
 <!-- index:end -->
 
 ## 아카이브
