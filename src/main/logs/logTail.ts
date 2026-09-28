@@ -42,8 +42,16 @@ export function createLogTail(deps: LogTailDeps, handlers: LogTailHandlers): Log
   // 시계 측정이 실패하면 null로 두고 수신 시각으로 폴백한다.
   let offsetMs: number | null = null
   let lastLineTimestamp: string | null = null
-  // 줄을 한 번이라도 받으면 0으로 되돌아간다. RECONNECT_DELAYS_MS.length에 닿으면 포기한다.
+  // 이번 스트림을 재시작할 때 넘긴 -T 값(=재생 기준 timestamp). 최초 스트림('2000'으로 시작)은
+  // 실제 timestamp가 아니므로 null — 이 경우 줄을 하나라도 받으면 곧장 재시도 카운터를 되돌린다.
+  let restartedFromTimestamp: string | null = null
+  // 줄의 timestamp가 restartedFromTimestamp와 달라야(=재생분이 아니어야) 0으로 되돌아간다.
+  // 재시작 직후 받는 줄은 -T로 지정한 timestamp를 다시 주므로(재생), 그 줄만으로는 리셋하지 않는다
+  // — 그러지 않으면 재생 줄을 받자마자 죽는 기기에서 재시도가 끝없이 이어진다.
+  // RECONNECT_DELAYS_MS.length에 닿으면 포기한다.
   let attempt = 0
+  // stop()과 포기(재시도 소진·기기 끊김) 양쪽이 공유하는 종결 플래그다. 한 번 서면
+  // 'stopped'는 다시 나가지 않고, 뒤늦게 오는 close·stop() 호출은 전부 조용히 물러난다.
   let stopped = false
   let currentStream: ReturnType<AdbClient['stream']> | null = null
 
@@ -55,8 +63,10 @@ export function createLogTail(deps: LogTailDeps, handlers: LogTailHandlers): Log
     const parsed = parseLogcatLine(raw)
     if (!parsed) return // 파싱 못 하는 줄은 버린다
 
+    if (restartedFromTimestamp === null || parsed.timestamp !== restartedFromTimestamp) {
+      attempt = 0
+    }
     lastLineTimestamp = parsed.timestamp
-    attempt = 0
 
     const at = offsetMs === null ? now() : toHostEpoch(parsed.timestamp, offsetMs, now())
     handlers.onLine(parsed, at)
@@ -68,9 +78,14 @@ export function createLogTail(deps: LogTailDeps, handlers: LogTailHandlers): Log
     void handleUnexpectedClose()
   }
 
-  function spawnStream(sinceArg: string): void {
+  /**
+   * @param sinceArg 이번 스트림에 넘길 -T 값
+   * @param resumeTimestamp sinceArg가 실제 마지막 줄의 timestamp면 그 값, 최초 시작('2000')이면 null
+   */
+  function spawnStream(sinceArg: string, resumeTimestamp: string | null): void {
     const stream = deps.adb.stream(deps.serial, [...LOGCAT_BASE_ARGS, '-T', sinceArg])
     currentStream = stream
+    restartedFromTimestamp = resumeTimestamp
     stream.onLine(handleLine)
     stream.onClose(handleClose)
     // 에러 뒤에는 반드시 onClose가 뒤따르므로(adbClient.ts) 재시작 판단은 handleClose 하나로 충분하다.
@@ -81,10 +96,12 @@ export function createLogTail(deps: LogTailDeps, handlers: LogTailHandlers): Log
 
   async function handleUnexpectedClose(): Promise<void> {
     if (!deps.isConnected()) {
+      stopped = true
       setState('stopped')
       return
     }
     if (attempt >= RECONNECT_DELAYS_MS.length) {
+      stopped = true
       setState('stopped')
       return
     }
@@ -96,7 +113,7 @@ export function createLogTail(deps: LogTailDeps, handlers: LogTailHandlers): Log
     await sleep(delay)
     if (stopped) return
 
-    spawnStream(lastLineTimestamp ?? INITIAL_SINCE)
+    spawnStream(lastLineTimestamp ?? INITIAL_SINCE, lastLineTimestamp)
   }
 
   async function start(): Promise<void> {
@@ -109,8 +126,11 @@ export function createLogTail(deps: LogTailDeps, handlers: LogTailHandlers): Log
     } catch {
       offsetMs = null
     }
+    // exec을 기다리는 동안 stop()이 왔으면 여기서 멈춘다. 그러지 않으면 이미 'stopped'를
+    // 알린 뒤에 아무도 못 끄는 logcat 프로세스를 새로 띄우게 된다.
+    if (stopped) return
 
-    spawnStream(INITIAL_SINCE)
+    spawnStream(INITIAL_SINCE, null)
   }
 
   function stop(): void {
