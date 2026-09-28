@@ -764,6 +764,244 @@ code {
   color: var(--danger);
 }
 
+/* ── 로그 탭 ──────────────────────────────────────────── */
+
+/* 패널이 스크롤하지 않고 안쪽 목록이 스크롤한다. .tabpanel[hidden]의 명시도가 더 높아서
+   숨김은 여전히 이긴다. */
+.tabpanel-logs {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.log-tab {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  padding-top: var(--space-2);
+}
+
+.log-filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.log-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.log-select,
+.log-search {
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+.log-search {
+  flex: 1;
+  min-width: 120px;
+}
+
+.log-search[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.log-pkg {
+  max-width: 180px;
+}
+
+.log-regex {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.log-filter-error {
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.log-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+/* 칩 상태는 색 말고도 테두리 모양(실선·점선)과 취소선으로 구분한다. */
+.log-chip {
+  padding: 1px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.log-chip[data-state='include'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.log-chip[data-state='exclude'] {
+  border-style: dashed;
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+  text-decoration: line-through;
+}
+
+.log-list-wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.log-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.log-spacer {
+  position: relative;
+  min-width: 100%;
+}
+
+/* 높이는 LogTab.tsx의 LOG_ROW_HEIGHT와 같다. 메시지는 한 줄로 자른다. */
+.log-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 20px;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.log-row:hover {
+  background: var(--surface-muted);
+}
+
+.log-row[aria-current='true'] {
+  background: var(--accent-soft);
+}
+
+.log-row[data-highlight='true'] {
+  box-shadow: inset 3px 0 0 var(--warn);
+  background: var(--warn-soft);
+}
+
+.log-time {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.log-level {
+  flex: none;
+  width: 1ch;
+  font-weight: 600;
+}
+
+.log-tag {
+  flex: none;
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-muted);
+}
+
+.log-message {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-row[data-level='W'] .log-level,
+.log-row[data-level='W'] .log-message {
+  color: var(--warn);
+}
+
+.log-row[data-level='E'] .log-level,
+.log-row[data-level='E'] .log-message,
+.log-row[data-level='F'] .log-level,
+.log-row[data-level='F'] .log-message {
+  color: var(--danger);
+}
+
+.log-gap {
+  justify-content: center;
+  border-block: 1px dashed var(--border);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.log-empty {
+  position: absolute;
+  inset: var(--space-4) 0 auto 0;
+  text-align: center;
+  pointer-events: none;
+}
+
+.log-to-bottom {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  box-shadow: var(--shadow);
+}
+
+.log-detail {
+  flex: none;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+
+.log-detail-meta {
+  color: var(--text-muted);
+}
+
+.log-detail-message {
+  margin: var(--space-1) 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* ── 에이전트 탭 ──────────────────────────────────────── */
 
 .agent-tab {

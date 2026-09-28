@@ -1,16 +1,21 @@
 import { useRef, useState } from 'react'
 import type { JSX, KeyboardEvent } from 'react'
 import type { AppSnapshot } from '../../../shared/types/ipc'
+import type { LogStreamDeps } from '../hooks/useLogStream'
 import { targetSerial } from '../state/useAppState'
 import { ActivityTab } from './ActivityTab'
 import { AgentTab } from './AgentTab'
+import { LogTab } from './LogTab'
 
 export interface WorkAreaProps {
   snapshot: AppSnapshot
+  /** 로그 탭의 useLogStream에 넘길 의존성(테스트용). */
+  logDeps?: LogStreamDeps
 }
 
 const TABS = [
   { id: 'activity', label: '활동' },
+  { id: 'logs', label: '로그' },
   { id: 'agent', label: '에이전트' }
 ] as const
 
@@ -19,9 +24,9 @@ type TabId = (typeof TABS)[number]['id']
 /**
  * 오른쪽 작업 영역. WAI-ARIA tabs 패턴을 따른다 — 선택된 탭만 Tab 순서에 두고,
  * 좌우 화살표로 옮기며 끝에서 반대쪽 끝으로 돈다. 선택되지 않은 패널은 hidden이다.
- * M3에서 "로그" 탭이 여기 붙는다.
+ * 숨겨진 패널도 마운트된 채로 남는다 — 로그 탭은 숨겨진 동안 pause, 다시 보이면 resume한다.
  */
-export function WorkArea({ snapshot }: WorkAreaProps): JSX.Element {
+export function WorkArea({ snapshot, logDeps }: WorkAreaProps): JSX.Element {
   const [selected, setSelected] = useState<TabId>('activity')
   const tabRefs = useRef<Partial<Record<TabId, HTMLButtonElement | null>>>({})
 
@@ -71,6 +76,16 @@ export function WorkArea({ snapshot }: WorkAreaProps): JSX.Element {
         hidden={selected !== 'activity'}
       >
         <ActivityTab records={snapshot.toolCalls} />
+      </div>
+
+      <div
+        role="tabpanel"
+        className="tabpanel tabpanel-logs"
+        id="panel-logs"
+        aria-labelledby="tab-logs"
+        hidden={selected !== 'logs'}
+      >
+        <LogTab serial={targetSerial(snapshot)} visible={selected === 'logs'} deps={logDeps} />
       </div>
 
       <div role="tabpanel" className="tabpanel" id="panel-agent" aria-labelledby="tab-agent" hidden={selected !== 'agent'}>
