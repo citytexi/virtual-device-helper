@@ -134,6 +134,15 @@ describe('createLogTail', () => {
     expect(s.lines[0]!.at).toBe(expectedAt)
   })
 
+  it('keeps a streamed line that ends in \\r', async () => {
+    const s = setup()
+    await s.tail.start()
+
+    s.streams[0]!.line('09-28 10:00:00.000  1  1 I T: a\r')
+
+    expect(s.lines.map((entry) => entry.line.message)).toEqual(['a'])
+  })
+
   it('falls back to host receive time when date fails', async () => {
     // '%3N'이 펼쳐지지 않은 값 → parseDeviceEpoch가 null
     const s = setup({ execStdout: '1790000000%3N' })

@@ -10,8 +10,11 @@ const THREADTIME =
 
 /**
  * 한 줄의 logcat을 파싱한다. 파싱할 수 없는 줄은 null을 돌려준다.
+ * 줄 끝 공백·`\r`은 여기서 떼어 낸다. `(.*)$`의 `.`은 `\r`과 맞지 않아서, 떼지 않으면
+ * `\r`이 붙은 줄은 통째로 버려진다. `parseLogcat`과 tail(`logTail.ts`)이 같은 규칙을 쓴다.
  */
-export function parseLogcatLine(line: string): LogLine | null {
+export function parseLogcatLine(raw: string): LogLine | null {
+  const line = raw.trimEnd()
   if (!line) return null
   if (line.startsWith('---------')) return null
 
@@ -35,7 +38,7 @@ export function parseLogcat(stdout: string): LogLine[] {
   const lines: LogLine[] = []
 
   for (const rawLine of stdout.split('\n')) {
-    const parsed = parseLogcatLine(rawLine.trimEnd())
+    const parsed = parseLogcatLine(rawLine)
     if (parsed) {
       lines.push(parsed)
     }

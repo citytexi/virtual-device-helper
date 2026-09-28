@@ -20,6 +20,17 @@ describe('parseLogcatLine', () => {
     })
   })
 
+  it('parses a line that still carries a trailing \\r', () => {
+    // Windows 호스트의 adb나 pty를 거친 스트림은 줄 끝에 \r을 남긴다. tail 경로는 이 줄을 그대로 넘긴다.
+    expect(parseLogcatLine('09-22 11:06:21.123  1234  1256 I ActivityManager: Start proc\r')).toEqual({
+      timestamp: '09-22 11:06:21.123',
+      level: 'I',
+      tag: 'ActivityManager',
+      pid: 1234,
+      message: 'Start proc'
+    })
+  })
+
   it('returns null for a buffer divider and garbage', () => {
     expect(parseLogcatLine('--------- beginning of main')).toBeNull()
     expect(parseLogcatLine('not a log line')).toBeNull()
