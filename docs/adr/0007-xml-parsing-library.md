@@ -41,7 +41,7 @@ tags: [adr, android, parsing, dependency]
 
 - `XMLParser`를 `ignoreAttributes: false`, `attributeNamePrefix: ''`로 설정해 속성을 읽는다.
   uiautomator 덤프는 정보가 전부 속성에 있다.
-- 파서가 만든 raw 트리는 `parseUiDump` 밖으로 나가지 않는다. 경계를 넘는 것은 `UiNode[]`뿐이다.
+- 파서가 만든 raw 트리는 `parseUiDump` 밖으로 나가지 않는다. 경계를 넘는 것은 `UiDump`뿐이다.
   층 규칙([ADR-0005](0005-device-interface-abstraction.md))을 여기서도 지킨다.
 - 버전은 설치 시점의 최신 안정판을 쓰고 `package-lock.json`으로 고정한다.
 - 라이브러리를 갈아야 할 때 고칠 파일은 `uiDump.ts` 하나다.

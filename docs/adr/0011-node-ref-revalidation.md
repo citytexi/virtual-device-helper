@@ -1,7 +1,7 @@
 ---
 id: ADR-0011
 title: 요소 지정은 스냅샷 ref와 실행 직전 재검증으로 한다
-status: proposed                # proposed | accepted | superseded | deprecated
+status: accepted                # proposed | accepted | superseded | deprecated
 date: 2026-09-28
 deciders: virtual-device-helper 팀   # 팀/역할 (실명·개인정보 금지)
 scope: [main, mcp, android, shared]

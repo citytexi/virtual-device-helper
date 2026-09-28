@@ -1,7 +1,7 @@
 ---
 id: m3-1-node-control         # 파일명에서 날짜 접두사를 뺀 slug
 title: M3-1 — 노드 기반 제어
-status: draft                   # draft | in-progress | done | abandoned | superseded
+status: in-progress             # draft | in-progress | done | abandoned | superseded
 type: work-order                # work-order | handoff
 created: 2026-09-28
 updated: 2026-09-28

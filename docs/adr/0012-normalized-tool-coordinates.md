@@ -1,7 +1,7 @@
 ---
 id: ADR-0012
 title: MCP 툴 좌표는 0..1 정규화 좌표로 한다
-status: proposed                # proposed | accepted | superseded | deprecated
+status: accepted                # proposed | accepted | superseded | deprecated
 date: 2026-09-28
 deciders: virtual-device-helper 팀   # 팀/역할 (실명·개인정보 금지)
 scope: [main, mcp, renderer, shared, android]
