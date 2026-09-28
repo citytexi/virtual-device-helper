@@ -86,7 +86,8 @@ export function createPidTracker(): PidTracker {
   }
 
   function pidsOf(pkg: string): number[] {
-    return packageToPids.get(pkg) ?? []
+    // 내부 기록을 그대로 넘기면 호출한 쪽이 기록을 바꿀 수 있다. 복사본을 준다.
+    return [...(packageToPids.get(pkg) ?? [])]
   }
 
   function packages(): string[] {

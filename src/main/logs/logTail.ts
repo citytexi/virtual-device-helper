@@ -5,7 +5,7 @@ import { RECONNECT_DELAYS_MS } from '../stream/streamManager'
 import { parseLogcatLine } from '../device/parsers/logcat'
 import { clockOffset, DEVICE_CLOCK_ARGS, parseDeviceClock, toHostEpoch } from './logClock'
 
-/** logcat -v threadtime 고정 인자. -T 뒤에 시작 시각을 붙인다. */
+/** logcat -v threadtime 고정 인자. -T 뒤에 시작 지점(최초는 줄 수, 재시작은 마지막 timestamp)을 붙인다. */
 const LOGCAT_BASE_ARGS = ['logcat', '-v', 'threadtime']
 /** 최초 시작에 쓰는 -T 값. 초가 아니라 줄 수다 — 버퍼의 마지막 2000줄만 받아 과거 로그 폭주를 피한다. */
 const INITIAL_SINCE = '2000'

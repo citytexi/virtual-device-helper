@@ -78,7 +78,8 @@ export function toLogUp(value: unknown): LogUp | null {
   if (value.type === 'pause') return { type: 'pause' }
   if (value.type === 'resume') {
     const afterSeq = value.afterSeq
-    if (typeof afterSeq !== 'number' || !Number.isFinite(afterSeq)) return null
+    // seq는 0부터의 정수이고, -1은 "아무것도 못 받았다"는 뜻이다. 그 밖의 값은 버린다.
+    if (typeof afterSeq !== 'number' || !Number.isInteger(afterSeq) || afterSeq < -1) return null
     return { type: 'resume', afterSeq }
   }
   return null
@@ -126,7 +127,9 @@ export function createLogManager(deps: LogManagerDeps): LogManager {
     const device = devices.get(entry.serial)
     if (!device) return
     if (device.buffer.lastSeq() <= entry.sentSeq) return // 새 줄이 없으면 아무것도 보내지 않는다
-    const { entries } = device.buffer.since(entry.sentSeq)
+    // 한 flush 사이에 capacity를 넘는 줄이 들어오면 보내기 전에 밀려난 줄이 생긴다. resume과 같은 모양으로 알린다.
+    const { gap, entries } = device.buffer.since(entry.sentSeq)
+    if (gap) post(entry, { type: 'gap', fromSeq: gap.fromSeq, toSeq: gap.toSeq })
     sendBatches(entry, entries)
     entry.sentSeq = device.buffer.lastSeq()
   }
@@ -156,7 +159,11 @@ export function createLogManager(deps: LogManagerDeps): LogManager {
     // resume
     entry.paused = false
     const device = devices.get(entry.serial)
-    if (!device) return
+    if (!device) {
+      // 연결되지 않은 기기의 포트. 보낼 줄이 없다는 것을 빈 버퍼의 lastSeq로 알린다.
+      post(entry, { type: 'resumed', lastSeq: -1 })
+      return
+    }
     const { gap, entries } = device.buffer.since(msg.afterSeq)
     if (gap) post(entry, { type: 'gap', fromSeq: gap.fromSeq, toSeq: gap.toSeq })
     sendBatches(entry, entries)

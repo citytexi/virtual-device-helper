@@ -56,6 +56,13 @@ describe('createPidTracker', () => {
     expect(t.observe(start(8383, 'com.android.settings'))).toBe(false)
   })
 
+  it('pidsOf returns a copy the caller cannot use to change the history', () => {
+    const t = createPidTracker()
+    t.observe(start(9000, 'com.android.settings'))
+    t.pidsOf('com.android.settings').push(1)
+    expect(t.pidsOf('com.android.settings')).toEqual([9000])
+  })
+
   it('pidsOf includes seeded pids and stays first-seen order without duplicates', () => {
     const t = createPidTracker()
     t.seed(ps)

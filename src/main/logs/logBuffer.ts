@@ -48,8 +48,9 @@ export function createLogBuffer(capacity: number = LOG_BUFFER_CAPACITY): LogBuff
   let nextSeq = 0 // 다음 append에 매길 seq
   let startSeq = 0 // 버퍼의 첫 항목이 가진 seq
 
-  // markResume 상태: 마지막 timestamp와 일치하는 항목의 중복 키를 추적
-  let resumeKeys: Set<string> | null = null
+  // markResume 상태: 마지막 timestamp와 일치하는 항목의 중복 키별 남은 개수.
+  // 같은 줄이 N번 있었으면 재생도 N번 오므로 개수로 센다.
+  let resumeKeys: Map<string, number> | null = null
   let resumeTimestamp: string | null = null
 
   /**
@@ -64,9 +65,11 @@ export function createLogBuffer(capacity: number = LOG_BUFFER_CAPACITY): LogBuff
     // markResume 중이고 timestamp가 같으면 중복을 확인
     if (resumeKeys !== null && line.timestamp === resumeTimestamp) {
       const key = makeDedupeKey(line)
-      if (resumeKeys.has(key)) {
-        // 이 키는 한 번만 소비된다
-        resumeKeys.delete(key)
+      const remaining = resumeKeys.get(key) ?? 0
+      if (remaining > 0) {
+        // 버퍼에 있던 개수만큼만 소비된다
+        if (remaining === 1) resumeKeys.delete(key)
+        else resumeKeys.set(key, remaining - 1)
         return null
       }
     } else if (resumeKeys !== null && line.timestamp !== resumeTimestamp) {
@@ -103,14 +106,14 @@ export function createLogBuffer(capacity: number = LOG_BUFFER_CAPACITY): LogBuff
     }
 
     // 마지막 timestamp와 같은 항목들의 중복 키를 모은다
-    resumeKeys = new Set()
+    resumeKeys = new Map()
     resumeTimestamp = last
     for (let seq = startSeq; seq < nextSeq; seq++) {
       const idx = seq % capacity
       const entry = buffer[idx]
       if (entry && entry.timestamp === last) {
         const key = makeDedupeKey(entry)
-        resumeKeys.add(key)
+        resumeKeys.set(key, (resumeKeys.get(key) ?? 0) + 1)
       }
     }
   }

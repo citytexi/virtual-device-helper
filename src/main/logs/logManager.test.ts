@@ -272,6 +272,29 @@ describe('createLogManager', () => {
     expect(last.entries.map((e) => e.seq)).toEqual([20, 21, 22, 23, 24, 25, 26, 27, 28, 29])
   })
 
+  it('sends a gap before the batch when lines were evicted between two flushes', () => {
+    const { manager, tails, ports } = harness({ capacity: 5 })
+    manager.handleConnect('e1')
+    manager.open('e1')
+    const port = lastPort(ports)
+
+    const push = (n: number, startAt: number) => {
+      for (let i = 0; i < n; i++) tails.e1!.handlers.onLine(line({ message: `m${startAt + i}` }), startAt + i)
+    }
+    push(3, 0)
+    vi.advanceTimersByTime(100) // seq 0..2를 보냈다
+    port.sent.length = 0
+
+    push(10, 3) // seq 3..12, capacity 5라 한 flush 사이에 3..7이 밀려난다
+    vi.advanceTimersByTime(100)
+
+    expect(port.sent.map((m) => m.type)).toEqual(['gap', 'batch'])
+    expect(port.sent[0]).toEqual({ type: 'gap', fromSeq: 3, toSeq: 7 })
+    const batch = port.sent[1]
+    if (batch?.type !== 'batch') throw new Error('expected batch')
+    expect(batch.entries.map((e) => e.seq)).toEqual([8, 9, 10, 11, 12])
+  })
+
   it('splits a long resume into snapshotChunk-sized batches', () => {
     const { manager, tails, ports } = harness({ snapshotChunk: 5 })
     manager.handleConnect('e1')
@@ -373,6 +396,12 @@ describe('createLogManager', () => {
     expect(toLogUp(null)).toBeNull()
     expect(toLogUp({ type: 'pause' })).toEqual({ type: 'pause' })
     expect(toLogUp({ type: 'resume', afterSeq: 5 })).toEqual({ type: 'resume', afterSeq: 5 })
+  })
+
+  it('accepts only an integer afterSeq of -1 or more', () => {
+    expect(toLogUp({ type: 'resume', afterSeq: -1 })).toEqual({ type: 'resume', afterSeq: -1 })
+    expect(toLogUp({ type: 'resume', afterSeq: 1.5 })).toBeNull()
+    expect(toLogUp({ type: 'resume', afterSeq: -2 })).toBeNull()
   })
 
   it('the manager silently drops malformed messages from the port', () => {
@@ -583,6 +612,17 @@ describe('createLogManager', () => {
       { type: 'packages', packages: [] },
       { type: 'status', state: 'stopped' }
     ])
+  })
+
+  it('answers resume with resumed lastSeq -1 on a port whose serial has no device state', () => {
+    const { manager, ports } = harness()
+    manager.open('never-connected')
+    const port = lastPort(ports)
+    port.sent.length = 0
+
+    port.receive({ type: 'resume', afterSeq: 4 })
+
+    expect(port.sent).toEqual([{ type: 'resumed', lastSeq: -1 }])
   })
 
   it('close() clears the timer and closes the port, keeping the buffer', () => {

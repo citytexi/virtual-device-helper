@@ -92,6 +92,17 @@ describe('LogBuffer', () => {
     expect(b.append(line('10:00.001', 'x'))!.seq).toBe(3)
   })
 
+  it('after markResume drops as many repeats as there were identical lines, not just one', () => {
+    // 같은 timestamp에 똑같은 줄이 두 번 있었으면 재생도 두 번 온다. 둘 다 버리고, 그 뒤 세 번째는 새 줄이다.
+    const b = createLogBuffer()
+    b.append(line('10:00.000', 'x'))
+    b.append(line('10:00.000', 'x'))
+    b.markResume()
+    expect(b.append(line('10:00.000', 'x'))).toBeNull()
+    expect(b.append(line('10:00.000', 'x'))).toBeNull()
+    expect(b.append(line('10:00.000', 'x'))!.seq).toBe(2)
+  })
+
   it('stops deduping once a later timestamp arrives', () => {
     const b = createLogBuffer()
     b.append(line('10:00.000', 'x'))
