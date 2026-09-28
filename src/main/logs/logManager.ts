@@ -178,7 +178,6 @@ export function createLogManager(deps: LogManagerDeps): LogManager {
   function handleConnect(serial: string): void {
     // 이미 이 serial의 상태가 있으면 옛 tail을 멈추고 seq 0부터 새로 시작한다.
     const previous = devices.get(serial)
-    if (previous) previous.tail.stop()
 
     const buffer = createLogBuffer(capacity)
     const tracker = createPidTracker()
@@ -189,8 +188,16 @@ export function createLogManager(deps: LogManagerDeps): LogManager {
       state: 'running'
     }
 
+    // 이 tail이 아직 유효한(교체되지 않은) 상태인지 확인한다. 옛 tail의 늦은 콜백
+    // (stop()이 동기로 내는 onState('stopped'), 이미 끊긴 스트림의 남은 onLine 등)이
+    // 새 상태를 건드리지 않도록 막는다.
+    function isCurrent(): boolean {
+      return devices.get(serial) === device
+    }
+
     const handlers: LogTailHandlers = {
       onLine(line, at) {
+        if (!isCurrent()) return
         // Start proc 줄 자신의 pkg에는 영향을 주지 않는다. observe를 먼저 부르고
         // packageOf는 그 이후 값으로 읽는다(그 줄은 ActivityManager의 pid로 온다).
         const isNewPkg = tracker.observe(line)
@@ -201,9 +208,11 @@ export function createLogManager(deps: LogManagerDeps): LogManager {
         }
       },
       onResume() {
+        if (!isCurrent()) return
         buffer.markResume()
       },
       onState(next) {
+        if (!isCurrent()) return
         device.state = next
         if (currentPort?.serial === serial) {
           post(currentPort, { type: 'status', state: next })
@@ -212,20 +221,28 @@ export function createLogManager(deps: LogManagerDeps): LogManager {
     }
 
     device.tail = deps.createTail(serial, handlers)
+    // 맵을 새 상태로 먼저 바꾼다. 그래야 바로 아래서 부르는 옛 tail.stop()이 동기로 내는
+    // 이벤트가 위 isCurrent() 가드에 막혀 새 상태를 건드리지 않는다.
     devices.set(serial, device)
-    void device.tail.start()
+    previous?.tail.stop()
 
-    // 이 serial로 이미 열린 포트가 있으면 새 버퍼(seq 0부터)에 맞춰 sentSeq를 되돌린다.
-    // 그러지 않으면 옛 seq 기준으로 남은 sentSeq 때문에 새 줄이 영영 안 나간다.
+    device.tail.start().catch(() => {
+      // adb 실행 자체가 던지면(예: exec 실패) tail은 시작도 못 하고 끝난다. 이걸 놓치면
+      // 포트는 영원히 'running'인 채로 멈춰 있으므로 stopped로 알린다.
+      handlers.onState('stopped')
+    })
+
+    // 이 serial로 이미 열린 포트가 있으면 새로 연다: 옛 포트를 닫고 새 sessionId로
+    // 빈 snapshot부터 다시 시작한다. sentSeq만 되돌리면 옛 세션의 seq 공간과 새 버퍼가
+    // 뒤섞여 렌더러가 이미 받은 옛 seq들과 충돌한다.
     if (currentPort?.serial === serial) {
-      currentPort.sentSeq = -1
-      currentPort.paused = false
+      open(serial)
     }
 
     // seedPids는 기다리지 않는다. 늦게 와도 그 뒤 줄부터 pkg가 붙는다.
     deps.seedPids(serial).then(
       (stdout) => {
-        if (devices.get(serial) !== device) return // 그 사이 재연결·연결해제로 상태가 바뀌었다
+        if (!isCurrent()) return // 그 사이 재연결·연결해제로 상태가 바뀌었다
         tracker.seed(stdout)
         if (currentPort?.serial === serial) {
           post(currentPort, { type: 'packages', packages: tracker.packages() })
@@ -240,8 +257,11 @@ export function createLogManager(deps: LogManagerDeps): LogManager {
   function handleDisconnect(serial: string): void {
     const device = devices.get(serial)
     if (!device) return
-    device.tail.stop()
+    // 맵에서 먼저 지운다. tail.stop()은 동기로 onState('stopped')를 낼 수 있는데,
+    // 그 콜백은 이 device가 더 이상 맵에 없으므로(handleConnect의 isCurrent()와 같은 가드) 조용히
+    // 물러나고, 아래 명시적 post 하나만 나간다 — 'stopped'가 두 번 가지 않는다.
     devices.delete(serial)
+    device.tail.stop()
 
     if (currentPort?.serial === serial) {
       const entry = currentPort

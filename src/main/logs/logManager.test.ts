@@ -71,7 +71,15 @@ function harness(
 
   const deps: LogManagerDeps = {
     createTail: (_serial, handlers) => {
-      const tail: FakeTail = { start: vi.fn(async () => {}), stop: vi.fn(), handlers }
+      // 실제 LogTail의 stop()은 동기로 onState('stopped')를 낸다. 가짜도 그렇게 해서
+      // 매니저가 그 콜백을 올바르게 가드하는지 테스트로 드러낸다.
+      const tail: FakeTail = {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(() => {
+          handlers.onState('stopped')
+        }),
+        handlers
+      }
       tails[_serial] = tail
       return tail
     },
@@ -301,7 +309,7 @@ describe('createLogManager', () => {
     expect(port2.sent.filter((m) => m.type === 'batch')).toHaveLength(1)
   })
 
-  it('sends stopped and closes the port when its device disconnects', () => {
+  it('sends stopped exactly once and closes the port when its device disconnects', () => {
     const { manager, ports } = harness()
     manager.handleConnect('e1')
     manager.open('e1')
@@ -309,6 +317,10 @@ describe('createLogManager', () => {
 
     manager.handleDisconnect('e1')
 
+    // 가짜 tail의 stop()도 onState('stopped')를 내지만, handleDisconnect가 먼저 devices에서
+    // 지우므로 그 콜백은 가드에 막히고 명시적 post 하나만 나간다.
+    const stoppedMsgs = port.sent.filter((m) => m.type === 'status' && m.state === 'stopped')
+    expect(stoppedMsgs).toHaveLength(1)
     expect(port.sent[port.sent.length - 1]).toEqual({ type: 'status', state: 'stopped' })
     expect(port.close).toHaveBeenCalled()
   })
@@ -467,21 +479,99 @@ describe('createLogManager', () => {
     expect(batch.entries[0]?.seq).toBe(0)
   })
 
-  it('resets an already-open port for the same serial on reconnect', () => {
+  it('opens a fresh log port when a device connects while its (disconnected) port was already open', () => {
+    const { manager, tails, ports } = harness()
+    manager.open('e1') // 아직 연결 전 — 빈 snapshot/packages/status:'stopped', 타이머 없음
+    const disconnectedPort = lastPort(ports)
+    expect(disconnectedPort.sent).toEqual([
+      { type: 'snapshot', entries: [], done: true },
+      { type: 'packages', packages: [] },
+      { type: 'status', state: 'stopped' }
+    ])
+
+    manager.handleConnect('e1')
+    expect(disconnectedPort.close).toHaveBeenCalled()
+
+    const connectedPort = lastPort(ports)
+    expect(connectedPort).not.toBe(disconnectedPort)
+    expect(connectedPort.sent.find((m) => m.type === 'status')).toEqual({ type: 'status', state: 'running' })
+
+    tails.e1!.handlers.onLine(line({ message: 'x' }), 1)
+    vi.advanceTimersByTime(100)
+    const batch = connectedPort.sent.find((m) => m.type === 'batch')
+    if (batch?.type !== 'batch') throw new Error('expected batch')
+    expect(batch.entries.map((e) => e.message)).toEqual(['x'])
+  })
+
+  it('reopens the log port when handleConnect fires again while it is open (duplicate connect)', () => {
     const { manager, tails, ports } = harness()
     manager.handleConnect('e1')
     tails.e1!.handlers.onLine(line({ message: 'a' }), 1)
     tails.e1!.handlers.onLine(line({ message: 'b' }), 2)
     manager.open('e1')
-    const port = lastPort(ports)
+    const oldPort = lastPort(ports)
 
-    manager.handleConnect('e1') // 포트를 연 채로 재연결
+    manager.handleConnect('e1') // 포트가 열린 채로 중복 connect
+
+    expect(oldPort.close).toHaveBeenCalled()
+    const newPort = lastPort(ports)
+    expect(newPort).not.toBe(oldPort)
+
+    const snapshot = newPort.sent.find((m) => m.type === 'snapshot')
+    if (snapshot?.type !== 'snapshot') throw new Error('expected snapshot')
+    expect(snapshot.entries).toHaveLength(0) // 새 버퍼는 비어 있다 — 옛 줄은 안 이어진다
+    expect(snapshot.done).toBe(true)
+
     tails.e1!.handlers.onLine(line({ message: 'fresh' }), 3)
     vi.advanceTimersByTime(100)
-
-    const batch = port.sent.find((m) => m.type === 'batch')
+    const batch = newPort.sent.find((m) => m.type === 'batch')
     if (batch?.type !== 'batch') throw new Error('expected batch')
     expect(batch.entries.map((e) => e.message)).toEqual(['fresh'])
+  })
+
+  it('ignores late events from a tail that handleConnect already superseded', () => {
+    const { manager, tails, ports } = harness()
+    manager.handleConnect('e1')
+    const oldHandlers = tails.e1!.handlers
+    manager.handleConnect('e1') // 교체. 이 안에서 옛 tail.stop()도 불리지만 가드에 막힌다
+    manager.open('e1')
+    const port = lastPort(ports)
+    port.sent.length = 0
+
+    oldHandlers.onLine(line({ message: 'stale' }), 1) // 옛 tail에서 늦게 온 줄
+    oldHandlers.onState('reconnecting')
+    oldHandlers.onResume()
+
+    vi.advanceTimersByTime(100)
+    expect(port.sent.filter((m) => m.type === 'status')).toHaveLength(0)
+    expect(port.sent.filter((m) => m.type === 'batch')).toHaveLength(0)
+  })
+
+  it('forwards a tail start rejection as stopped status without an unhandled rejection', async () => {
+    const ports: FakePort[] = []
+    const deps: LogManagerDeps = {
+      createTail: () => ({ start: () => Promise.reject(new Error('adb 실행 실패')), stop: vi.fn() }),
+      seedPids: () => new Promise(() => {}), // 응답 없음 — 이 테스트와 무관
+      pidof: () => Promise.resolve([]),
+      createChannel: () => {
+        const local = new FakePort()
+        ports.push(local)
+        return { local, remote: {} }
+      },
+      postPort: () => {},
+      newSessionId: () => 's0'
+    }
+    const manager = createLogManager(deps)
+
+    manager.open('e1') // 연결 전 — 빈 상태 포트
+    manager.handleConnect('e1') // 이 안에서 open을 다시 불러 새 포트를 연다. start()는 곧 reject된다.
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const port = lastPort(ports)
+    const statuses = port.sent.filter((m) => m.type === 'status')
+    expect(statuses[statuses.length - 1]).toEqual({ type: 'status', state: 'stopped' })
   })
 
   it('sends an empty done snapshot and stopped status for a serial with no device state', () => {
