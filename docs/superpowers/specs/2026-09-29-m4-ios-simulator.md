@@ -10,7 +10,7 @@ superseded_by:
 related_adr: [ADR-0014, ADR-0015, ADR-0016, ADR-0005, ADR-0003, ADR-0008, ADR-0010, ADR-0011, ADR-0012, ADR-0013]
 related_spec: [m1-device-core-mcp-server, m2-live-streaming, m3-node-control-logs-events, agent-guide]
 related_architecture: main-layers
-related_plan:
+related_plan: [m4-1-ios-foundation]
 related_code: [device.ts#Device, device.ts#DeviceInfo, device.ts#UiNode, device.ts#AvdEntry, errors.ts#ToolErrorKind, registry.ts#createDeviceRegistry, avdController.ts#AvdController, index.ts#createDeviceStack, bootstrap.ts#assembleWithoutSdk, nodeRefs.ts, logManager.ts#LogManagerDeps, streamManager.ts#StreamManagerDeps, stream.ts#StreamDown, stream.ts#ControlIntent, streamDecoder.ts, layering.test.ts, agentGuide.ts]
 tags: [spec, ios, simulator, axe]
 ---
@@ -100,7 +100,9 @@ export interface UiNode {
 
 export interface VirtualDeviceEntry {
   platform: Platform
-  /** AVD 이름 또는 시뮬레이터 이름. */
+  /** 부팅 대상을 가리키는 값. AVD는 이름, 시뮬레이터는 UDID다. 시뮬레이터 이름은 런타임마다 겹친다. */
+  id: string
+  /** 사람이 읽는 이름. AVD 이름 또는 시뮬레이터 이름. */
   name: string
   running: boolean
   serial: string | null
@@ -123,6 +125,12 @@ export interface Device {
   UDID와 `emulator-5554` 형식은 겹치지 않는다.
 - `AvdEntry`는 `VirtualDeviceEntry`로 바꾼다. `AvdController`는 `VirtualDeviceCatalog`의 한
   구현이 된다. 시뮬레이터 쪽 구현이 하나 더 붙는다.
+- MCP `device_list`는 `virtualDevices: VirtualDeviceEntry[]`를 돌려준다. `device_boot`의 인자는
+  `avd`에서 `id`로 바뀐다. 값은 `device_list`의 `id`다.
+- IPC도 같이 바뀐다. 스냅샷 `avds` → `virtualDevices`, 이벤트 `avds_changed` →
+  `virtual_devices_changed`, `bootAvd(name)` → `bootVirtualDevice(id)`.
+- renderer 기기 패널은 두 플랫폼 항목을 한 목록에 그리고 플랫폼 라벨을 붙인다. `platform`은
+  라벨로만 쓰고 분기에 쓰지 않는다.
 
 ### 에러 (M4-1)
 
@@ -146,6 +154,10 @@ export interface Device {
 | `readLogs` / `clearLogs` | 아래 "로그" 절 |
 | `displayFrame` | point 단위 화면 크기. `describe-ui` 루트 `AXFrame`에서 읽는다 |
 | `tap` / `swipe` / `inputText` / `pressKey` / `dumpUi` | 아래 "입력과 노드" 절. M4-1에서는 `unsupported` |
+
+`app_reset_and_launch`는 마지막에 `dumpUi`로 화면이 멎기를 기다린다. M4-1의 iOS에서는 `dumpUi`가
+`unsupported`라, 이 에러일 때만 대기를 건너뛰고 `settleSkipped: 'unsupported'`를 붙여 성공으로 돌려준다.
+M4-2에서 `dumpUi`가 붙으면 자연히 대기한다.
 
 MCP 툴 인자 이름 `pkg`는 그대로 두고, 설명을 "패키지명 또는 bundle id"로 넓힌다. `app_install`의
 설명과 `app_grant_permission`의 예시에 두 플랫폼을 함께 적는다. `src/shared/agentGuide.ts`에 iOS
@@ -186,7 +198,11 @@ axeClient ───→ IosDevice     ┘
 - 바꾼 뒤에는 플랫폼마다 따로 조립한다. Android와 iOS 중 하나라도 준비되면 MCP 서버를 띄운다.
 - iOS 스택 조건: `process.platform === 'darwin'`이고 `xcrun simctl help`가 성공한다.
 - `axe`가 없어도 M4-1 기능은 모두 돈다. 입력·`dumpUi`·스트림만 `ios_tool_not_found`를 낸다.
-- 두 플랫폼 모두 준비되지 않았을 때의 화면(`SdkMissing`)은 iOS 안내를 함께 보여 준다.
+- 스냅샷의 `sdk: SdkStatus`는 플랫폼별 `platforms: { android: PlatformStatus; ios: PlatformStatus }`
+  로 바뀐다. 둘 다 준비되지 않았을 때만 안내 화면(`SdkMissing`)을 띄우고 두 플랫폼의 안내를 함께
+  보여 준다. 하나만 준비됐으면 기기 패널 위에 빠진 쪽 안내를 한 줄로 띄운다.
+- M4-1에서 iOS 기기로 스트림을 열면 조립 지점이 `unsupported`로 거절한다. renderer는 기존 강등
+  경로대로 스크린샷을 보여 준다. 실제 스트림은 M4-3이다.
 
 ### 로그
 
@@ -218,6 +234,10 @@ iOS에는 W와 V에 해당하는 레벨이 없다. 쓰지 않는다.
 - tail은 `simctl spawn <udid> log stream --style ndjson`이다. 기본은 info 이상이다.
 - `seedPids`와 `pidof`는 `simctl spawn <udid> launchctl list`를 쓴다.
   `UIKitApplication:<bundle id>[...]` 줄에서 bundle id와 pid를 함께 얻는다.
+- `pidTracker`는 Android `ActivityManager`의 `Start proc` 줄로 새 프로세스를 배운다. iOS에는 이 줄이
+  없다. 그래서 iOS는 연결 시 seed와 `log_read`의 `pidof`(지금 떠 있는 앱)로만 pid를 안다.
+  연결 뒤 실행했다가 이미 죽은 앱의 로그는 `package`로 찾지 못한다. 알려진 한계로 두고 M4-1 완료
+  검증에서 실제로 문제가 되는지 본다.
 - iOS 로그는 양이 많다([ADR-0013](../../adr/0013-log-transport-dedicated-port.md)). 링 버퍼 용량은
   그대로 두고, M4-1 완료 검증 때 초당 줄 수를 재어 넘치면 그때 조정한다.
 
@@ -322,8 +342,8 @@ export type StreamDown =
   `__fixtures__/ios/`에 둔다. 손으로 지어낸 fixture는 쓰지 않는다.
 - **계약.** 같은 `Device` 시나리오를 `AndroidDevice`(가짜 adb)와 `IosDevice`(가짜 simctl·axe)에
   돌린다. 두 구현의 의미가 같은지 본다.
-- **층.** `layering.test.ts`: mcp 층은 `ios/`·`iosDevice`를 import하지 못한다. renderer는
-  `platform`을 읽지 않는다.
+- **층.** `layering.test.ts`: mcp 층은 `ios/`·`iosDevice`를 import하지 못한다. renderer와 mcp 층이
+  `platform`으로 분기하지 않는 것은 코드 리뷰로 지킨다.
 - **renderer.** `jpegRenderer`는 jsdom에서 `createImageBitmap`을 목으로 바꿔 최신 프레임만 남기는지
   본다.
 - **통합.** `*.ios.integration.test.ts`는 부팅된 시뮬레이터와 `axe`가 있을 때만 돈다. 대상 앱은
@@ -359,6 +379,8 @@ export type StreamDown =
 4. `stream-video --format mjpeg`의 stdout 형식(multipart 경계인지 JPEG 연결인지), 실제 fps, 지연.
 5. `batch --stdin`이 EOF 전에 단계를 하나씩 실행하는가.
 6. Xcode 26 시뮬레이터에서 위가 모두 도는가.
+7. `simctl io <udid> screenshot -`이 PNG를 stdout으로 내는가. 안 되면 임시 파일을 쓴다.
+8. `log show`/`log stream --style ndjson`의 `timestamp` 형식과 한 줄의 필드.
 
 결과는 이 절 아래에 적고, 어긋난 설계는 본문을 고친다.
 

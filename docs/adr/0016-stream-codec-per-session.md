@@ -1,7 +1,7 @@
 ---
 id: ADR-0016
 title: 스트림 코덱은 세션마다 정한다
-status: proposed
+status: accepted
 date: 2026-09-29
 deciders: virtual-device-helper 팀
 scope: [main, renderer, shared, streaming, ios]

@@ -13,6 +13,7 @@
 <!-- index:start -->
 | 계획 | 상태 | 내용 |
 |------|------|------|
+| [m4-1-ios-foundation](2026-09-29-m4-1-ios-foundation.md) | draft | simctl·IosDevice·시뮬레이터 목록과 추적·iOS 로그·플랫폼별 조립 |
 <!-- index:end -->
 
 ## 아카이브

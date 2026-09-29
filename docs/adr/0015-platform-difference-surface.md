@@ -1,7 +1,7 @@
 ---
 id: ADR-0015
 title: 플랫폼 차이는 platform 필드와 unsupported 에러로 드러낸다
-status: proposed
+status: accepted
 date: 2026-09-29
 deciders: virtual-device-helper 팀
 scope: [main, mcp, renderer, shared, android, ios]
@@ -68,5 +68,5 @@ tags: [adr, device, platform]
 
 **위험·방어**
 
-- 누군가 위층에서 `platform`으로 분기하기 시작할 수 있다. `layering.test.ts`에 renderer가
-  `platform`을 읽지 않는다는 규칙을 더한다. mcp 층은 코드 리뷰로 막는다.
+- 누군가 위층에서 `platform`으로 분기하기 시작할 수 있다. renderer는 기기 패널의 라벨로만
+  `platform`을 읽는다. 분기는 코드 리뷰로 막는다. import 방향은 `layering.test.ts`가 막는다.

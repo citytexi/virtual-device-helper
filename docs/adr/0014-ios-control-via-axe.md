@@ -1,7 +1,7 @@
 ---
 id: ADR-0014
 title: iOS 입력·노드·스트림은 AXe로 한다
-status: proposed
+status: accepted
 date: 2026-09-29
 deciders: virtual-device-helper 팀
 scope: [main, ios, streaming]
