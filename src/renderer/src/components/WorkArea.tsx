@@ -33,9 +33,18 @@ export function WorkArea({ snapshot, logDeps }: WorkAreaProps): JSX.Element {
   // 점프 요청은 여기서 들고 로그 탭에 넘긴다. 활성 기기는 건드리지 않는다.
   const [jump, setJump] = useState<LogJump | null>(null)
 
+  const target = targetSerial(snapshot)
+  // 요청 뒤 적용 전에 로그 탭의 기기가 바뀌면(활성 기기 변경·끊김) 요청을 버린다. 그대로 두면
+  // 새 기기에 적용되거나, caughtUp이 끝내 안 와서 한참 뒤에 스크롤을 빼앗는다.
+  // 렌더 중에 state를 고치는 React의 "이전 렌더 정보 저장" 패턴이다.
+  if (jump !== null && jump.serial !== target) setJump(null)
+
   function jumpToLogs(entry: ToolCallEntry): void {
+    // TimelineDetail은 serial이 로그 탭 기기와 같을 때만 버튼을 켜지만, 한 번 더 막는다.
+    if (entry.serial === undefined || entry.serial === null || entry.serial !== target) return
     setJump({
       id: entry.id,
+      serial: entry.serial,
       at: entry.at - JUMP_LEAD_MS,
       highlight: { fromAt: entry.at, toAt: entry.at + entry.durationMs }
     })
@@ -92,7 +101,7 @@ export function WorkArea({ snapshot, logDeps }: WorkAreaProps): JSX.Element {
         aria-labelledby="tab-activity"
         hidden={selected !== 'activity'}
       >
-        <ActivityTab entries={snapshot.timeline} targetSerial={targetSerial(snapshot)} onJumpToLogs={jumpToLogs} />
+        <ActivityTab entries={snapshot.timeline} targetSerial={target} onJumpToLogs={jumpToLogs} />
       </div>
 
       <div
@@ -103,7 +112,7 @@ export function WorkArea({ snapshot, logDeps }: WorkAreaProps): JSX.Element {
         hidden={selected !== 'logs'}
       >
         <LogTab
-          serial={targetSerial(snapshot)}
+          serial={target}
           visible={selected === 'logs'}
           deps={logDeps}
           jump={jump}
@@ -112,7 +121,7 @@ export function WorkArea({ snapshot, logDeps }: WorkAreaProps): JSX.Element {
       </div>
 
       <div role="tabpanel" className="tabpanel" id="panel-agent" aria-labelledby="tab-agent" hidden={selected !== 'agent'}>
-        <AgentTab server={snapshot.server} targetSerial={targetSerial(snapshot)} />
+        <AgentTab server={snapshot.server} targetSerial={target} />
       </div>
     </section>
   )

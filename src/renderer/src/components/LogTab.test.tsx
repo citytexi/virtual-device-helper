@@ -280,7 +280,7 @@ describe('LogTab', () => {
   it('applies a jump only when visible and caughtUp', () => {
     const rows = Array.from({ length: 100 }, (_, i) => line(i))
     const onJumpDone = vi.fn()
-    const jump = { id: 'c1', at: 30, highlight: { fromAt: 30, toAt: 32 } }
+    const jump = { id: 'c1', serial: 'emulator-5554', at: 30, highlight: { fromAt: 30, toAt: 32 } }
     const hidden = makeStream(rows, { caughtUp: false })
     const { rerender } = render(<LogTab serial="emulator-5554" visible={false} stream={hidden} />)
     const list = sizeList(200)
@@ -330,7 +330,7 @@ describe('LogTab', () => {
         serial="emulator-5554"
         visible
         stream={stream}
-        jump={{ id: 'c1', at: 30, highlight: { fromAt: 30, toAt: 30 } }}
+        jump={{ id: 'c1', serial: 'emulator-5554', at: 30, highlight: { fromAt: 30, toAt: 30 } }}
         onJumpDone={onJumpDone}
       />
     )
@@ -350,7 +350,7 @@ describe('LogTab', () => {
         serial="emulator-5554"
         visible
         stream={makeStream(rows)}
-        jump={{ id: 'c1', at: 50, highlight: { fromAt: 52, toAt: 60 } }}
+        jump={{ id: 'c1', serial: 'emulator-5554', at: 50, highlight: { fromAt: 52, toAt: 60 } }}
         onJumpDone={onJumpDone}
       />
     )
@@ -369,7 +369,7 @@ describe('LogTab', () => {
         serial="emulator-5554"
         visible
         stream={makeStream(rows, { version: 2 })}
-        jump={{ id: 'c1', at: 30, highlight: { fromAt: 30, toAt: 30 } }}
+        jump={{ id: 'c1', serial: 'emulator-5554', at: 30, highlight: { fromAt: 30, toAt: 30 } }}
         onJumpDone={onJumpDone}
       />
     )
@@ -384,13 +384,66 @@ describe('LogTab', () => {
         serial="emulator-5554"
         visible
         stream={makeStream(rows, { version: 3 })}
-        jump={{ id: 'c1', at: 30, highlight: { fromAt: 30, toAt: 30 } }}
+        jump={{ id: 'c1', serial: 'emulator-5554', at: 30, highlight: { fromAt: 30, toAt: 30 } }}
         onJumpDone={onJumpDone}
       />
     )
 
     expect(list.scrollTop).toBe(0)
     expect(onJumpDone).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not apply a jump meant for another device, and clears it', () => {
+    const rows = Array.from({ length: 100 }, (_, i) => line(i))
+    const onJumpDone = vi.fn()
+    const { rerender } = render(<LogTab serial="emulator-5554" visible stream={makeStream(rows)} />)
+    const list = sizeList(200)
+    rerender(
+      <LogTab
+        serial="emulator-5554"
+        visible
+        stream={makeStream(rows, { version: 2 })}
+        jump={{ id: 'c1', serial: 'emulator-5556', at: 30, highlight: { fromAt: 30, toAt: 30 } }}
+        onJumpDone={onJumpDone}
+      />
+    )
+
+    expect(list.scrollTop).not.toBe(30 * LOG_ROW_HEIGHT)
+    expect(screen.queryByRole('button', { name: '맨 아래로' })).toBeNull()
+    expect(renderedRows().some((row) => row.hasAttribute('data-highlight'))).toBe(false)
+    expect(onJumpDone).toHaveBeenCalledWith('c1', 'skipped')
+  })
+
+  it('jumps again for the same call after the request was cleared', () => {
+    const rows = Array.from({ length: 100 }, (_, i) => line(i))
+    const onJumpDone = vi.fn()
+    const jump = { id: 'c1', serial: 'emulator-5554', at: 30, highlight: { fromAt: 30, toAt: 30 } }
+    const { rerender } = render(<LogTab serial="emulator-5554" visible stream={makeStream(rows)} />)
+    const list = sizeList(200)
+    rerender(
+      <LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 2 })} jump={jump} onJumpDone={onJumpDone} />
+    )
+    expect(list.scrollTop).toBe(30 * LOG_ROW_HEIGHT)
+
+    // onJumpDone을 받은 부모가 요청을 치운다.
+    rerender(
+      <LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 2 })} jump={null} onJumpDone={onJumpDone} />
+    )
+    list.scrollTop = 0
+    fireEvent.scroll(list)
+
+    // 같은 호출을 다시 누른다.
+    rerender(
+      <LogTab
+        serial="emulator-5554"
+        visible
+        stream={makeStream(rows, { version: 3 })}
+        jump={{ ...jump }}
+        onJumpDone={onJumpDone}
+      />
+    )
+    expect(list.scrollTop).toBe(30 * LOG_ROW_HEIGHT)
+    expect(onJumpDone).toHaveBeenCalledTimes(2)
   })
 
   it('applies filters to the whole buffer and offers top tags as chips', async () => {

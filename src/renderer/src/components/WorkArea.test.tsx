@@ -172,8 +172,42 @@ describe('WorkArea', () => {
 
     expect(screen.getByRole('tab', { name: '로그' }).getAttribute('aria-selected')).toBe('true')
     const props = vi.mocked(LogTab).mock.lastCall?.[0]
-    expect(props?.jump).toEqual({ id: 'c1', at: 8000, highlight: { fromAt: 10_000, toAt: 10_300 } })
+    expect(props?.jump).toEqual({ id: 'c1', serial: 'emulator-5554', at: 8000, highlight: { fromAt: 10_000, toAt: 10_300 } })
     expect(props?.serial).toBe('emulator-5554')
+  })
+
+  it('drops a pending jump when the target device changes before it is applied', async () => {
+    const withCall: AppSnapshot = {
+      ...snapshot,
+      devices: ['emulator-5554', 'emulator-5556'],
+      timeline: [
+        {
+          kind: 'tool_call',
+          id: 'c1',
+          at: 10_000,
+          serial: 'emulator-5554',
+          tool: 'ui_tap',
+          argsSummary: '{}',
+          durationMs: 300,
+          ok: true,
+          detail: { args: '{}' }
+        }
+      ]
+    }
+    const { rerender } = render(<WorkArea snapshot={withCall} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /ui_tap/ }))
+    await userEvent.click(screen.getByRole('button', { name: '이 시점 로그 보기' }))
+    expect(vi.mocked(LogTab).mock.lastCall?.[0].jump?.id).toBe('c1')
+
+    // resumed가 오기 전에 활성 기기가 바뀐다.
+    rerender(<WorkArea snapshot={{ ...withCall, activeSerial: 'emulator-5556' }} />)
+    expect(vi.mocked(LogTab).mock.lastCall?.[0].serial).toBe('emulator-5556')
+    expect(vi.mocked(LogTab).mock.lastCall?.[0].jump).toBeNull()
+
+    // 원래 기기로 돌아와도 옛 요청이 되살아나지 않는다.
+    rerender(<WorkArea snapshot={withCall} />)
+    expect(vi.mocked(LogTab).mock.lastCall?.[0].jump).toBeNull()
   })
 
   it('keeps only the selected tab in the tab order', () => {

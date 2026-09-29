@@ -27,6 +27,8 @@ export const JUMP_LEAD_MS = 2000
 /** 활동 탭에서 "이 시점 로그 보기"로 온 점프 요청. `at` 이후 첫 줄로 가고 `highlight` 구간을 강조한다. */
 export interface LogJump {
   id: string
+  /** 호출의 대상 기기. 로그 탭의 `serial`과 다르면 적용하지 않는다 — 다른 기기 로그에 옛 시각을 대면 안 된다. */
+  serial: string
   at: number
   highlight: { fromAt: number; toAt: number }
 }
@@ -45,8 +47,11 @@ export interface LogTabProps {
   highlight?: { fromAt: number; toAt: number }
   /** 점프 요청. 보이고 따라잡은(caughtUp) 뒤 첫 렌더에서 한 번만 적용한다. 같은 id는 다시 적용하지 않는다. */
   jump?: LogJump | null
-  /** 점프를 적용했을 때 부른다. 대상 시각이 버퍼에서 밀려났으면 'evicted'다. */
-  onJumpDone?: (id: string, result: 'ok' | 'evicted') => void
+  /**
+   * 점프 요청을 끝냈을 때 부른다. 대상 시각이 버퍼에서 밀려났으면 'evicted', 요청의 기기가
+   * 지금 로그 탭의 기기와 달라 적용하지 않고 버렸으면 'skipped'다.
+   */
+  onJumpDone?: (id: string, result: 'ok' | 'evicted' | 'skipped') => void
 }
 
 /** 증분 필터의 상태. 렌더 중에 고쳐 쓰므로 ref에 둔다. */
@@ -263,7 +268,15 @@ export function LogTab({ serial, visible, stream, deps, highlight, jump, onJumpD
       appliedJumpRef.current = null
       return
     }
-    if (appliedJumpRef.current === jump.id || !visible || !s.caughtUp) return
+    if (appliedJumpRef.current === jump.id) return
+    // 요청 뒤 적용 전에 활성 기기가 바뀌거나 끊겼다. 새 기기 로그에 옛 호출 시각·강조를 대지 않고
+    // 요청을 치운다(부모가 null로 바꾸면 appliedJumpRef도 풀린다).
+    if (jump.serial !== serial) {
+      appliedJumpRef.current = jump.id
+      onJumpDone?.(jump.id, 'skipped')
+      return
+    }
+    if (!visible || !s.caughtUp) return
     const el = listRef.current
     if (!el) return
     appliedJumpRef.current = jump.id
@@ -285,7 +298,7 @@ export function LogTab({ serial, visible, stream, deps, highlight, jump, onJumpD
       setFollowing(false)
     }
     onJumpDone?.(jump.id, 'ok')
-  }, [jump, visible, s.caughtUp, s.rows, s.start, count, cache, onJumpDone])
+  }, [jump, serial, visible, s.caughtUp, s.rows, s.start, count, cache, onJumpDone])
 
   // 창 크기가 바뀌면 보이는 범위를 다시 잡고, 따라가는 중이면 맨 아래를 다시 맞춘다.
   // jsdom에는 ResizeObserver가 없다.
