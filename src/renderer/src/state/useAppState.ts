@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react'
-import type { AppSnapshot, MainEvent } from '../../../shared/types/ipc'
+import { TIMELINE_LIMIT } from '../../../shared/limits'
+import type { AppSnapshot, MainEvent, TimelineEntry } from '../../../shared/types/ipc'
+
+/**
+ * 항목 하나를 끝에 붙인다. 같은 id가 이미 있으면 그대로 둔다 — 스냅샷보다 먼저 온 이벤트가
+ * 스냅샷에도 실려 있을 수 있다. main의 링과 같은 상한으로 오래된 것부터 버린다.
+ * 기록된 순서를 지키고 at으로 다시 정렬하지 않는다.
+ */
+function appendEntry(timeline: TimelineEntry[], entry: TimelineEntry): TimelineEntry[] {
+  if (timeline.some((existing) => existing.id === entry.id)) return timeline
+  const next = [...timeline, entry]
+  return next.length > TIMELINE_LIMIT ? next.slice(next.length - TIMELINE_LIMIT) : next
+}
 
 function reduce(snapshot: AppSnapshot, event: MainEvent): AppSnapshot {
   switch (event.type) {
@@ -13,10 +25,10 @@ function reduce(snapshot: AppSnapshot, event: MainEvent): AppSnapshot {
       return { ...snapshot, activeSerial: event.serial }
     case 'avds_changed':
       return { ...snapshot, avds: event.avds }
-    case 'tool_call':
-      return snapshot.toolCalls.some((call) => call.id === event.record.id)
-        ? snapshot
-        : { ...snapshot, toolCalls: [...snapshot.toolCalls, event.record] }
+    case 'timeline': {
+      const timeline = appendEntry(snapshot.timeline, event.entry)
+      return timeline === snapshot.timeline ? snapshot : { ...snapshot, timeline }
+    }
     case 'server_changed':
       return { ...snapshot, server: event.server }
     case 'tracking_failed':
@@ -41,8 +53,8 @@ export function useAppState(): {
     // getSnapshot()이 아직 안 끝났는데 이벤트가 먼저 도착할 수 있다. 그때 그냥
     // 버리면 그 이벤트는 영영 반영되지 않아 renderer가 main과 계속 어긋난 채
     // 남는다. 그래서 스냅샷이 오기 전까지는 이벤트를 순서대로 버퍼에 쌓아 두고,
-    // 스냅샷이 도착하면 그 위에 버퍼를 순서대로 재생한다. tool_call 리듀서가
-    // id로 중복을 걸러내므로 스냅샷에 이미 실린 레코드가 버퍼에도 있어도
+    // 스냅샷이 도착하면 그 위에 버퍼를 순서대로 재생한다. timeline 리듀서가
+    // id로 중복을 걸러내므로 스냅샷에 이미 실린 항목이 버퍼에도 있어도
     // 두 번 쌓이지 않는다.
     const buffer: MainEvent[] = []
     // setSnapshot의 업데이터 함수 안에서 buffer.push 같은 부수효과를 내지

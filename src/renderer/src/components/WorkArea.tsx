@@ -75,7 +75,7 @@ export function WorkArea({ snapshot, logDeps }: WorkAreaProps): JSX.Element {
         aria-labelledby="tab-activity"
         hidden={selected !== 'activity'}
       >
-        <ActivityTab records={snapshot.toolCalls} />
+        <ActivityTab entries={snapshot.timeline} />
       </div>
 
       <div

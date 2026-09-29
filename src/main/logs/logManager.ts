@@ -35,6 +35,11 @@ export interface LogManagerDeps {
   batchMs?: number
   snapshotChunk?: number
   capacity?: number
+  /**
+   * tail 상태 변화. 매니저가 스스로 멈춘 tail(연결 해제·재연결·stopAll)은 알리지 않는다.
+   * 앱 상태가 이것으로 타임라인에 log_stopped를 쌓는다.
+   */
+  onTailState?: (serial: string, state: TailState) => void
 }
 
 export interface LogManager {
@@ -221,6 +226,7 @@ export function createLogManager(deps: LogManagerDeps): LogManager {
       onState(next) {
         if (!isCurrent()) return
         device.state = next
+        deps.onTailState?.(serial, next)
         if (currentPort?.serial === serial) {
           post(currentPort, { type: 'status', state: next })
         }
@@ -347,10 +353,13 @@ export function createLogManager(deps: LogManagerDeps): LogManager {
   }
 
   function stopAll(): void {
-    for (const device of devices.values()) {
+    // 맵을 먼저 비운다. tail.stop()이 동기로 내는 onState('stopped')가 isCurrent() 가드에 막혀
+    // 앱 종료를 log_stopped로 알리지 않게 한다.
+    const all = [...devices.values()]
+    devices.clear()
+    for (const device of all) {
       device.tail.stop()
     }
-    devices.clear()
     close()
   }
 

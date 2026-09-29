@@ -1,22 +1,38 @@
+import { randomUUID } from 'node:crypto'
 import type { AvdController } from '../device/avdController'
 import type { DeviceRegistry, RegistryEvent } from '../device/registry'
 import type { McpServerHandle } from '../mcp/httpServer'
 import type { AvdEntry } from '../../shared/types/device'
-import type { AppSnapshot, MainEvent, SdkStatus, ToolCallRecord, TrackingFailure } from '../../shared/types/ipc'
-
-const DEFAULT_TOOL_CALL_LIMIT = 500
+import { TIMELINE_LIMIT } from '../../shared/limits'
+import type {
+  AppSnapshot,
+  DeviceTimelineEvent,
+  MainEvent,
+  SdkStatus,
+  TimelineEntry,
+  ToolCallRecord,
+  TrackingFailure
+} from '../../shared/types/ipc'
 
 export interface AppStateDeps {
   sdk: SdkStatus
   registry: DeviceRegistry
   avd: AvdController
   server: McpServerHandle | null
-  toolCallLimit?: number
+  /** 타임라인 상한. 기본값은 TIMELINE_LIMIT. */
+  timelineLimit?: number
+  /** 기기 이벤트 항목의 시각. 기본값은 Date.now. */
+  now?: () => number
+  /** 기기 이벤트 항목의 id. 기본값은 randomUUID. */
+  newId?: () => string
 }
 
 export interface AppState {
   snapshot(): Promise<AppSnapshot>
+  /** 툴 호출을 `tool_call` 타임라인 항목으로 감싸 쌓는다. `at`은 `record.startedAt`이다. */
   recordToolCall(record: ToolCallRecord): void
+  /** 기기·스트림·로그 상태 변화를 `device` 타임라인 항목으로 쌓는다. */
+  recordDeviceEvent(serial: string | null, event: DeviceTimelineEvent): void
   /** 서버는 상태가 만들어진 뒤에 열린다. 툴 컨텍스트가 서버보다 먼저 필요하기 때문이다. */
   setServer(handle: McpServerHandle | null): void
   onEvent(listener: (event: MainEvent) => void): () => void
@@ -36,9 +52,43 @@ function toMainEvent(event: RegistryEvent): MainEvent {
   return { type: 'tracking_failed', failure }
 }
 
+/** registry 이벤트 중 타임라인에 남길 것. tracking_failed는 스냅샷의 trackingFailure가 따로 말한다. */
+function deviceEventOf(event: RegistryEvent): { serial: string | null; event: DeviceTimelineEvent } | null {
+  switch (event.type) {
+    case 'device_connected':
+      return { serial: event.serial, event: 'connected' }
+    case 'device_disconnected':
+      return { serial: event.serial, event: 'disconnected' }
+    case 'active_changed':
+      return { serial: event.serial, event: 'active_changed' }
+    default:
+      return null
+  }
+}
+
+/** 선택 필드는 값이 있을 때만 싣는다. undefined 키가 IPC·비교에 섞이지 않게 한다. */
+function toolCallEntry(record: ToolCallRecord): TimelineEntry {
+  return {
+    kind: 'tool_call',
+    id: record.id,
+    at: record.startedAt,
+    ...(record.serial !== undefined ? { serial: record.serial } : {}),
+    tool: record.tool,
+    argsSummary: record.argsSummary,
+    durationMs: record.durationMs,
+    ok: record.ok,
+    ...(record.errorKind !== undefined ? { errorKind: record.errorKind } : {}),
+    ...(record.gesture !== undefined ? { gesture: record.gesture } : {}),
+    detail: record.detail
+  }
+}
+
 export function createAppState(deps: AppStateDeps): AppState {
-  const limit = deps.toolCallLimit ?? DEFAULT_TOOL_CALL_LIMIT
-  const toolCalls: ToolCallRecord[] = []
+  const limit = deps.timelineLimit ?? TIMELINE_LIMIT
+  const now = deps.now ?? Date.now
+  const newId = deps.newId ?? (() => randomUUID())
+  // 기록한 순서대로 쌓는다. 툴 호출은 끝날 때 기록되므로 at이 앞 항목보다 이를 수 있지만 다시 정렬하지 않는다.
+  const timeline: TimelineEntry[] = []
   const listeners = new Set<(event: MainEvent) => void>()
   let server: McpServerHandle | null = deps.server
   let trackingFailure: TrackingFailure | null = null
@@ -70,10 +120,23 @@ export function createAppState(deps: AppStateDeps): AppState {
     }
   }
 
+  function record(entry: TimelineEntry): void {
+    timeline.push(entry)
+    // 오래된 것부터 버린다. renderer의 reduce도 같은 상한으로 자른다.
+    if (timeline.length > limit) timeline.splice(0, timeline.length - limit)
+    emit({ type: 'timeline', entry })
+  }
+
+  function recordDeviceEvent(serial: string | null, event: DeviceTimelineEvent): void {
+    record({ kind: 'device', id: newId(), at: now(), serial, event })
+  }
+
   deps.registry.on((event: RegistryEvent) => {
     const mainEvent = toMainEvent(event)
     if (mainEvent.type === 'tracking_failed') trackingFailure = mainEvent.failure
     emit(mainEvent)
+    const device = deviceEventOf(event)
+    if (device) recordDeviceEvent(device.serial, device.event)
     // 기기가 붙거나 떨어지면 AVD의 running 표시가 달라진다.
     if (event.type === 'device_connected' || event.type === 'device_disconnected') void emitAvds()
   })
@@ -90,17 +153,16 @@ export function createAppState(deps: AppStateDeps): AppState {
         avds: deps.sdk.ok ? await listAvdsOrEmpty() : [],
         devices: deps.registry.serials(),
         activeSerial: deps.registry.getActive(),
-        toolCalls: [...toolCalls],
+        timeline: [...timeline],
         trackingFailure
       }
     },
 
-    recordToolCall(record) {
-      toolCalls.push(record)
-      // 오래된 것부터 버린다. 전체 이력은 M3의 몫이다.
-      if (toolCalls.length > limit) toolCalls.splice(0, toolCalls.length - limit)
-      emit({ type: 'tool_call', record })
+    recordToolCall(toolCall) {
+      record(toolCallEntry(toolCall))
     },
+
+    recordDeviceEvent,
 
     setServer(handle) {
       server = handle

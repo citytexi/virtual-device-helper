@@ -3,6 +3,7 @@ import type { AvdController } from '../device/avdController'
 import type { DeviceRegistry, RegistryEvent } from '../device/registry'
 import type { McpServerHandle } from '../mcp/httpServer'
 import { deviceError } from '../../shared/types/errors'
+import type { MainEvent } from '../../shared/types/ipc'
 import { createAppState } from './appState'
 
 function parts() {
@@ -72,17 +73,16 @@ describe('createAppState snapshot', () => {
     expect(snapshot.server).toEqual({ url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' })
   })
 
-  it('keeps recorded tool calls newest last and caps how many it holds', async () => {
+  it('keeps at most 1000 timeline entries', async () => {
     const p = parts()
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
       registry: p.registry,
       avd: p.avd,
-      server: p.server,
-      toolCallLimit: 3
+      server: p.server
     })
 
-    for (let i = 0; i < 5; i += 1) {
+    for (let i = 0; i < 1005; i += 1) {
       state.recordToolCall({
         id: String(i),
         tool: 'ui_tap',
@@ -96,7 +96,34 @@ describe('createAppState snapshot', () => {
 
     const snapshot = await state.snapshot()
 
-    expect(snapshot.toolCalls.map((record) => record.id)).toEqual(['2', '3', '4'])
+    expect(snapshot.timeline).toHaveLength(1000)
+    expect(snapshot.timeline[0]?.id).toBe('5')
+    expect(snapshot.timeline.at(-1)?.id).toBe('1004')
+  })
+
+  it('keeps entries in record order even when a later tool call started earlier', async () => {
+    const p = parts()
+    const state = createAppState({
+      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      registry: p.registry,
+      avd: p.avd,
+      server: p.server
+    })
+
+    p.fire({ type: 'device_connected', serial: 'emulator-5554' })
+    state.recordToolCall({
+      id: 'late',
+      tool: 'ui_tap',
+      argsSummary: '{}',
+      startedAt: 0,
+      durationMs: 1,
+      ok: true,
+      detail: { args: '{}' }
+    })
+
+    const snapshot = await state.snapshot()
+
+    expect(snapshot.timeline.map((entry) => entry.kind)).toEqual(['device', 'tool_call'])
   })
 })
 
@@ -118,7 +145,7 @@ describe('createAppState events', () => {
     expect(seen).toContainEqual({ type: 'active_changed', serial: 'emulator-5556' })
   })
 
-  it('emits a tool_call event when a call is recorded', () => {
+  it('emits a timeline event for a tool call and puts it in the snapshot', async () => {
     const p = parts()
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
@@ -130,18 +157,109 @@ describe('createAppState events', () => {
     const seen: unknown[] = []
     state.onEvent((event) => seen.push(event))
 
-    const record = {
+    state.recordToolCall({
       id: 'a',
-      tool: 'screenshot',
-      argsSummary: '{}',
-      startedAt: 1,
+      tool: 'ui_tap',
+      argsSummary: '{"x":1}',
+      startedAt: 10,
       durationMs: 2,
       ok: true,
-      detail: { args: '{}' }
-    }
-    state.recordToolCall(record)
+      serial: 'emulator-5554',
+      gesture: { kind: 'tap', serial: 'emulator-5554', x: 0.5, y: 0.5 },
+      detail: { args: '{"x":1}', resultSummary: '탭' }
+    })
 
-    expect(seen).toEqual([{ type: 'tool_call', record }])
+    const entry = {
+      kind: 'tool_call',
+      id: 'a',
+      at: 10,
+      serial: 'emulator-5554',
+      tool: 'ui_tap',
+      argsSummary: '{"x":1}',
+      durationMs: 2,
+      ok: true,
+      gesture: { kind: 'tap', serial: 'emulator-5554', x: 0.5, y: 0.5 },
+      detail: { args: '{"x":1}', resultSummary: '탭' }
+    }
+    expect(seen).toEqual([{ type: 'timeline', entry }])
+    await expect(state.snapshot().then((snapshot) => snapshot.timeline)).resolves.toEqual([entry])
+  })
+
+  it('carries the error kind of a failed tool call', async () => {
+    const p = parts()
+    const state = createAppState({
+      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      registry: p.registry,
+      avd: p.avd,
+      server: p.server
+    })
+
+    state.recordToolCall({
+      id: 'a',
+      tool: 'ui_tap',
+      argsSummary: '{}',
+      startedAt: 10,
+      durationMs: 2,
+      ok: false,
+      errorKind: 'no_device',
+      detail: { args: '{}' }
+    })
+
+    const [entry] = (await state.snapshot()).timeline
+    expect(entry).toMatchObject({ kind: 'tool_call', ok: false, errorKind: 'no_device' })
+    expect(entry).not.toHaveProperty('serial')
+  })
+
+  it('records registry connect, disconnect and active change as device entries', async () => {
+    const p = parts()
+    const state = createAppState({
+      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      registry: p.registry,
+      avd: p.avd,
+      server: p.server
+    })
+
+    const seen: MainEvent[] = []
+    state.onEvent((event) => seen.push(event))
+
+    p.fire({ type: 'device_connected', serial: 'emulator-5554' })
+    p.fire({ type: 'active_changed', serial: 'emulator-5554' })
+    p.fire({ type: 'active_changed', serial: null })
+    p.fire({ type: 'device_disconnected', serial: 'emulator-5554' })
+    p.fire({ type: 'tracking_failed', failure: { error: null, exitCode: 1 } })
+
+    const timeline = (await state.snapshot()).timeline
+    expect(timeline.map((entry) => (entry.kind === 'device' ? [entry.event, entry.serial] : null))).toEqual([
+      ['connected', 'emulator-5554'],
+      ['active_changed', 'emulator-5554'],
+      ['active_changed', null],
+      ['disconnected', 'emulator-5554']
+    ])
+    for (const entry of timeline) {
+      expect(typeof entry.id).toBe('string')
+      expect(typeof entry.at).toBe('number')
+    }
+    expect(new Set(timeline.map((entry) => entry.id)).size).toBe(timeline.length)
+    expect(seen.filter((event) => event.type === 'timeline').map((event) => event.entry)).toEqual(timeline)
+  })
+
+  it('records device events given by the managers', async () => {
+    const p = parts()
+    const state = createAppState({
+      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      registry: p.registry,
+      avd: p.avd,
+      server: p.server
+    })
+
+    state.recordDeviceEvent('emulator-5554', 'stream_started')
+    state.recordDeviceEvent('emulator-5554', 'log_stopped')
+
+    const timeline = (await state.snapshot()).timeline
+    expect(timeline).toMatchObject([
+      { kind: 'device', serial: 'emulator-5554', event: 'stream_started' },
+      { kind: 'device', serial: 'emulator-5554', event: 'log_stopped' }
+    ])
   })
 
   it('emits server_changed and updates the snapshot when the endpoint opens', async () => {
@@ -292,7 +410,7 @@ describe('createAppState avd refresh failures', () => {
       await new Promise((resolve) => setTimeout(resolve, 10))
 
       expect(unhandled).not.toHaveBeenCalled()
-      expect(seen.map((event) => event.type)).toEqual(['device_disconnected'])
+      expect(seen.map((event) => event.type)).toEqual(['device_disconnected', 'timeline'])
     } finally {
       process.off('unhandledRejection', unhandled)
       errors.mockRestore()
@@ -322,7 +440,7 @@ describe('createAppState snapshot when the avd list fails', () => {
         avds: [],
         devices: ['emulator-5554'],
         activeSerial: 'emulator-5554',
-        toolCalls: [],
+        timeline: [],
         trackingFailure: null
       })
       expect(errors).toHaveBeenCalled()

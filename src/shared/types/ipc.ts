@@ -37,6 +37,33 @@ export interface ToolCallRecord {
   detail: ToolCallDetail
 }
 
+/** 타임라인에 쌓이는 기기·스트림·로그 상태 변화. */
+export type DeviceTimelineEvent =
+  | 'connected'
+  | 'disconnected'
+  | 'active_changed'
+  | 'stream_started'
+  | 'stream_stopped'
+  | 'stream_reconnecting'
+  | 'log_stopped'
+
+/**
+ * 활동 탭이 보는 한 줄. 툴 호출과 기기 이벤트가 기록된 순서대로 한 줄에 선다.
+ * `tool_call`의 `at`은 `ToolCallRecord.startedAt`이라 앞 항목보다 이를 수 있다 — `at`으로 다시 정렬하지 않는다.
+ */
+export type TimelineEntry =
+  | {
+      kind: 'tool_call'; id: string; at: number; serial?: string
+      tool: string; argsSummary: string; durationMs: number; ok: boolean
+      errorKind?: ToolErrorKind; gesture?: Gesture; detail: ToolCallDetail
+    }
+  | {
+      kind: 'device'; id: string; at: number; serial: string | null
+      event: 'connected' | 'disconnected' | 'active_changed'
+           | 'stream_started' | 'stream_stopped' | 'stream_reconnecting'
+           | 'log_stopped'
+    }
+
 /** 채널 이름은 여기 한곳에만 둔다. preload와 main이 같은 상수를 본다. */
 export const IPC_CHANNELS = {
   getSnapshot: 'app:get-snapshot',
@@ -86,7 +113,7 @@ export interface AppSnapshot {
   avds: AvdEntry[]
   devices: string[]
   activeSerial: string | null
-  toolCalls: ToolCallRecord[]
+  timeline: TimelineEntry[]
   trackingFailure: TrackingFailure | null
 }
 
@@ -95,7 +122,7 @@ export type MainEvent =
   | { type: 'device_disconnected'; serial: string }
   | { type: 'active_changed'; serial: string | null }
   | { type: 'avds_changed'; avds: AvdEntry[] }
-  | { type: 'tool_call'; record: ToolCallRecord }
+  | { type: 'timeline'; entry: TimelineEntry }
   | { type: 'server_changed'; server: ServerStatus | null }
   | { type: 'tracking_failed'; failure: TrackingFailure }
 

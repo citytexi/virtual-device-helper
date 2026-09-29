@@ -111,7 +111,7 @@ describe('bootstrapApp without an SDK', () => {
       avds: [],
       devices: [],
       activeSerial: null,
-      toolCalls: [],
+      timeline: [],
       trackingFailure: null
     })
   })
@@ -237,6 +237,58 @@ describe('bootstrapApp with an SDK: logs', () => {
   })
 })
 
+describe('bootstrapApp with an SDK: timeline hooks', () => {
+  function deviceEvents(snapshot: AppSnapshot): Array<[string | null, string]> {
+    return snapshot.timeline.flatMap((entry) => (entry.kind === 'device' ? [[entry.serial, entry.event]] : []))
+  }
+
+  it('records stream state changes as stream_* entries', async () => {
+    const h = harness()
+    await bootstrapApp(h.deps)
+    const hooks = vi.mocked(h.deps.createStreamManager).mock.calls[0]![2]
+
+    hooks.onState('emulator-5554', 'started')
+    hooks.onState('emulator-5554', 'reconnecting')
+    hooks.onState('emulator-5554', 'stopped')
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(deviceEvents(snapshot)).toEqual([
+      ['emulator-5554', 'connected'],
+      ['emulator-5554', 'stream_started'],
+      ['emulator-5554', 'stream_reconnecting'],
+      ['emulator-5554', 'stream_stopped']
+    ])
+  })
+
+  it('records log_stopped when a tail stops while the device is still connected', async () => {
+    const h = harness()
+    await bootstrapApp(h.deps)
+    const hooks = vi.mocked(h.deps.createLogManager).mock.calls[0]![2]
+
+    hooks.onTailState('emulator-5554', 'reconnecting')
+    hooks.onTailState('emulator-5554', 'running')
+    hooks.onTailState('emulator-5554', 'stopped')
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(deviceEvents(snapshot)).toEqual([
+      ['emulator-5554', 'connected'],
+      ['emulator-5554', 'log_stopped']
+    ])
+  })
+
+  it('does not record log_stopped for a device that is already gone', async () => {
+    const h = harness()
+    await bootstrapApp(h.deps)
+    const hooks = vi.mocked(h.deps.createLogManager).mock.calls[0]![2]
+    ;(h.stack.registry.serials as ReturnType<typeof vi.fn>).mockReturnValue([])
+
+    hooks.onTailState('emulator-5554', 'stopped')
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(deviceEvents(snapshot)).toEqual([['emulator-5554', 'connected']])
+  })
+})
+
 describe('bootstrapApp with an SDK', () => {
   it('builds the stack, starts tracking and exposes the server endpoint', async () => {
     const h = harness()
@@ -271,7 +323,7 @@ describe('bootstrapApp with an SDK', () => {
     })
     const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
 
-    expect(snapshot.toolCalls.map((record) => record.id)).toEqual(['a'])
+    expect(snapshot.timeline.filter((entry) => entry.kind === 'tool_call').map((entry) => entry.id)).toEqual(['a'])
     expect(context.registry).toBe(h.stack.registry)
     expect(context.avd).toBe(h.stack.avd)
   })

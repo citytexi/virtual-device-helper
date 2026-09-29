@@ -51,11 +51,11 @@ export function GestureOverlay({ serial, video, subscribe = subscribeToMain }: G
   useEffect(() => {
     const timers = new Set<ReturnType<typeof setTimeout>>()
     const unsubscribe = subscribe((event) => {
-      if (event.type !== 'tool_call') return
-      const gesture = event.record.gesture
+      if (event.type !== 'timeline' || event.entry.kind !== 'tool_call') return
+      const gesture = event.entry.gesture
       if (!gesture || gesture.serial !== serial) return
 
-      const mark: Mark = { id: event.record.id, gesture }
+      const mark: Mark = { id: event.entry.id, gesture }
       setMarks((current) => [...current, mark])
       const timer = setTimeout(() => {
         timers.delete(timer)
