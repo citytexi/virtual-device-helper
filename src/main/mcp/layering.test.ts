@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
  */
 const MCP_DIR = resolve(__dirname)
 const MAIN_DIR = resolve(__dirname, '..')
-const FORBIDDEN = [join(MAIN_DIR, 'device', 'androidDevice'), join(MAIN_DIR, 'adb')]
+const FORBIDDEN = [join(MAIN_DIR, 'device', 'androidDevice'), join(MAIN_DIR, 'adb'), join(MAIN_DIR, 'logs')]
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -46,6 +46,7 @@ describe('mcp layer dependency direction (ADR-0005)', () => {
     const file = join(MCP_DIR, 'tools', 'observe.ts')
     expect(isForbidden(file, '../../device/androidDevice')).toBe(true)
     expect(isForbidden(file, '../../adb/adbClient')).toBe(true)
+    expect(isForbidden(file, '../../logs/logManager')).toBe(true)
     expect(isForbidden(file, '../../device/registry')).toBe(false)
     expect(isForbidden(file, '../../../shared/limits')).toBe(false)
   })

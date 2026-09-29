@@ -6,9 +6,15 @@ import type { DeviceRegistry } from '../../device/registry'
 import type { Device, LogLine } from '../../../shared/types/device'
 import { parseLogcat } from '../../device/parsers/logcat'
 import { createToolHarness } from '../testHarness'
-import { LOG_READ_DEFAULT_LIMIT, LOG_READ_MAX_LIMIT, LOG_READ_RESPONSE_BUDGET_BYTES } from './observe'
+import type { ToolContext } from '../toolContext'
+import {
+  LOG_READ_DEFAULT_LIMIT,
+  LOG_READ_MAX_LIMIT,
+  LOG_READ_RESPONSE_BUDGET_BYTES,
+  PACKAGE_NOT_RUN_HINT
+} from './observe'
 
-function harnessFor(device: Partial<Device>) {
+function harnessFor(device: Partial<Device>, context: Partial<Pick<ToolContext, 'pidHistory'>> = {}) {
   const full = { serial: 'emulator-5554', ...device } as Device
   const registry = {
     start: vi.fn(),
@@ -28,7 +34,7 @@ function harnessFor(device: Partial<Device>) {
     shutdown: async () => {}
   } as AvdController
 
-  return createToolHarness({ registry, avd })
+  return createToolHarness({ registry, avd, ...context })
 }
 
 const line: LogLine = {
@@ -222,6 +228,58 @@ describe('log_read', () => {
 
     await harness.close()
   })
+
+  it('filters by package through pidHistory', async () => {
+    const readLogs = vi.fn(async () => ({ lines: [], truncated: false, droppedCount: 0 }))
+    const harness = await harnessFor({ readLogs }, { pidHistory: async () => [9000, 9100] })
+
+    await harness.call('log_read', { package: 'com.example.app' })
+
+    expect(readLogs).toHaveBeenCalledWith(expect.objectContaining({ pids: [9000, 9100] }))
+
+    await harness.close()
+  })
+
+  it('returns package_not_found with the launch hint when no pid is known', async () => {
+    const readLogs = vi.fn(async () => ({ lines: [], truncated: false, droppedCount: 0 }))
+    const harness = await harnessFor({ readLogs }, { pidHistory: async () => [] })
+
+    const error = await harness.callExpectingError('log_read', { package: 'com.none' })
+
+    expect(error).toEqual(expect.objectContaining({ kind: 'package_not_found', hint: PACKAGE_NOT_RUN_HINT }))
+    expect(readLogs).not.toHaveBeenCalled()
+
+    await harness.close()
+  })
+
+  it('rejects a package that is not an Android package name before asking pidHistory', async () => {
+    // 기기 셸이 다시 파싱하는 문자(; 공백 등)가 pidof까지 흘러가면 안 된다.
+    const readLogs = vi.fn(async () => ({ lines: [], truncated: false, droppedCount: 0 }))
+    const pidHistory = vi.fn(async () => [9000])
+    const harness = await harnessFor({ readLogs }, { pidHistory })
+
+    const result = await harness.raw('log_read', { package: 'x; reboot' })
+
+    expect(result.isError).toBe(true)
+    const first = result.content[0] as { type: string; text?: string }
+    expect(first.text).toMatch(/package/i)
+    expect(pidHistory).not.toHaveBeenCalled()
+    expect(readLogs).not.toHaveBeenCalled()
+
+    await harness.close()
+  })
+
+  it('asks pidHistory for the resolved device serial', async () => {
+    const readLogs = vi.fn(async () => ({ lines: [], truncated: false, droppedCount: 0 }))
+    const pidHistory = vi.fn(async () => [9000])
+    const harness = await harnessFor({ serial: 'emulator-5554', readLogs }, { pidHistory })
+
+    await harness.call('log_read', { package: 'com.example.app' })
+
+    expect(pidHistory).toHaveBeenCalledWith('emulator-5554', 'com.example.app')
+
+    await harness.close()
+  })
 })
 
 describe('log_read response size regression', () => {
@@ -330,6 +388,44 @@ describe('log_read response budget in UTF-8 bytes', () => {
     expect(payload.lines.length).toBeLessThan(LOG_READ_MAX_LIMIT)
     expect(payload.droppedCount).toBe(LOG_READ_MAX_LIMIT - payload.lines.length)
     expect(payload.lines[payload.lines.length - 1]).toContain(`Tag${LOG_READ_MAX_LIMIT - 1}(`)
+
+    await harness.close()
+  })
+})
+
+describe('detail: serial·summarise', () => {
+  it('summarises screenshot as W×H PNG and records the resolved serial', async () => {
+    const harness = await harnessFor({
+      screenshot: async () => ({ base64: 'QUJD', width: 360, height: 800 })
+    })
+
+    await harness.call('screenshot')
+
+    expect(harness.records[0]?.detail.resultSummary).toBe('360×800 PNG')
+    expect(harness.records[0]?.serial).toBe('emulator-5554')
+
+    await harness.close()
+  })
+
+  it('summarises log_read as 로그 N줄 and records the resolved serial', async () => {
+    const harness = await harnessFor({
+      readLogs: async () => ({ lines: [line, line], truncated: false, droppedCount: 0 })
+    })
+
+    await harness.call('log_read')
+
+    expect(harness.records[0]?.detail.resultSummary).toBe('로그 2줄')
+    expect(harness.records[0]?.serial).toBe('emulator-5554')
+
+    await harness.close()
+  })
+
+  it('records the resolved serial for log_clear', async () => {
+    const harness = await harnessFor({ clearLogs: vi.fn(async () => {}) })
+
+    await harness.call('log_clear')
+
+    expect(harness.records[0]?.serial).toBe('emulator-5554')
 
     await harness.close()
   })

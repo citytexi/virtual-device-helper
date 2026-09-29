@@ -13,7 +13,9 @@ function mockApi(snapshot: AppSnapshot): void {
     bootAvd: vi.fn(),
     shutdownDevice: vi.fn(),
     startStream: vi.fn(async () => ({ ok: true, value: undefined })),
-    stopStream: vi.fn(async () => ({ ok: true, value: undefined }))
+    stopStream: vi.fn(async () => ({ ok: true, value: undefined })),
+    openLogs: vi.fn(async () => ({ ok: true, value: undefined })),
+    closeLogs: vi.fn(async () => ({ ok: true, value: undefined }))
   } as unknown as RendererApi
 }
 
@@ -28,7 +30,9 @@ function mockApiRejecting(reason: string): void {
     bootAvd: vi.fn(),
     shutdownDevice: vi.fn(),
     startStream: vi.fn(async () => ({ ok: true, value: undefined })),
-    stopStream: vi.fn(async () => ({ ok: true, value: undefined }))
+    stopStream: vi.fn(async () => ({ ok: true, value: undefined })),
+    openLogs: vi.fn(async () => ({ ok: true, value: undefined })),
+    closeLogs: vi.fn(async () => ({ ok: true, value: undefined }))
   } as unknown as RendererApi
 }
 
@@ -38,7 +42,7 @@ const ready: AppSnapshot = {
   avds: [{ name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' }],
   devices: ['emulator-5554'],
   activeSerial: 'emulator-5554',
-  toolCalls: [],
+  timeline: [],
   trackingFailure: null
 }
 

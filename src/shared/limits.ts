@@ -9,3 +9,9 @@
  */
 export const DEFAULT_LOG_LIMIT = 100
 export const MAX_LOG_LIMIT = 200
+
+/**
+ * 타임라인(툴 호출·기기 이벤트)에 남기는 항목 수 상한. main의 링과 renderer의 `reduce`가
+ * 같은 값으로 오래된 항목부터 버린다.
+ */
+export const TIMELINE_LIMIT = 1000

@@ -11,6 +11,8 @@ export interface BridgeActions {
   captureScreenshot(serial: string): Promise<ScreenshotResult>
   startStream(serial: string): Promise<void>
   stopStream(): Promise<void>
+  openLogs(serial: string): void
+  closeLogs(): void
 }
 
 export type SendToRenderer = (channel: string, payload: MainEvent) => void
@@ -68,6 +70,8 @@ export function registerIpcBridge(
   ipcMain.handle(IPC_CHANNELS.captureScreenshot, withText('serial', (serial) => actions.captureScreenshot(serial)))
   ipcMain.handle(IPC_CHANNELS.startStream, withText('serial', (serial) => actions.startStream(serial)))
   ipcMain.handle(IPC_CHANNELS.stopStream, () => outcome(() => actions.stopStream()))
+  ipcMain.handle(IPC_CHANNELS.openLogs, withText('serial', (serial) => actions.openLogs(serial)))
+  ipcMain.handle(IPC_CHANNELS.closeLogs, () => outcome(() => actions.closeLogs()))
 
   state.onEvent((event) => send(IPC_CHANNELS.event, event))
 }

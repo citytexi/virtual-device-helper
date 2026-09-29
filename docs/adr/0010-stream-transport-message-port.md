@@ -8,7 +8,7 @@ scope: [main, preload, renderer, streaming]
 hosts: []                       # windows | macos — 호스트 OS마다 결정이 갈릴 때만 채운다
 supersedes:                     # 이 ADR이 대체하는 ADR-NNNN (없으면 비움)
 superseded_by:                  # 이 ADR을 대체한 ADR-NNNN (없으면 비움)
-related_adr: [ADR-0002]
+related_adr: [ADR-0002, ADR-0013]
 related_spec: m2-live-streaming
 related_architecture:
 related_plan:

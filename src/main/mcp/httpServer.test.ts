@@ -19,7 +19,7 @@ function fakeContext() {
     on: () => () => {}
   } as unknown as DeviceRegistry
   const avd = { list: async () => [], boot: async () => '', shutdown: async () => {} } as AvdController
-  return { registry, avd, onToolCall: vi.fn() }
+  return { registry, avd, pidHistory: async () => [], onToolCall: vi.fn() }
 }
 
 let handle: McpServerHandle | null = null

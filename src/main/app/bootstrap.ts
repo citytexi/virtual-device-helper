@@ -1,16 +1,29 @@
 import type { IpcMain } from 'electron'
 import type { AvdController } from '../device/avdController'
 import { createDeviceRegistry, type DeviceRegistry } from '../device/registry'
+import type { LogManager } from '../logs/logManager'
+import type { TailState } from '../../shared/types/logs'
 import type { McpServerHandle, StartMcpHttpServerOpts } from '../mcp/httpServer'
 import type { LocateSdkResult, SdkPaths } from '../sdk/locateSdk'
-import type { StreamManager } from '../stream/streamManager'
+import type { StreamLifecycle, StreamManager } from '../stream/streamManager'
 import { deviceError } from '../../shared/types/errors'
+import type { DeviceTimelineEvent } from '../../shared/types/ipc'
 import { createAppState, type AppState } from './appState'
 import { registerIpcBridge, type BridgeActions, type SendToRenderer } from './ipcBridge'
 
 export interface DeviceStack {
   registry: DeviceRegistry
   avd: AvdController
+}
+
+/** 스트림 매니저가 상태 변화를 앱 상태로 알리는 통로. 팩토리가 매니저 deps로 그대로 넘긴다. */
+export interface StreamManagerHooks {
+  onState(serial: string, state: StreamLifecycle): void
+}
+
+/** 로그 매니저가 tail 상태 변화를 앱 상태로 알리는 통로. 팩토리가 매니저 deps로 그대로 넘긴다. */
+export interface LogManagerHooks {
+  onTailState(serial: string, state: TailState): void
 }
 
 export interface BootstrapDeps {
@@ -20,7 +33,9 @@ export interface BootstrapDeps {
   /** adb·에뮬레이터에 실제로 닿는 부품들. 테스트에서 가짜로 바꾼다. */
   createDeviceStack: (paths: SdkPaths) => DeviceStack
   /** 화면 스트림 세션을 관리한다. 실제 adb·소켓·Electron 포트에 닿으므로 테스트에서 가짜로 바꾼다. */
-  createStreamManager: (registry: DeviceRegistry, paths: SdkPaths) => StreamManager
+  createStreamManager: (registry: DeviceRegistry, paths: SdkPaths, hooks: StreamManagerHooks) => StreamManager
+  /** 기기별 logcat tail·버퍼·로그 포트를 관리한다. 실제 adb·Electron 포트에 닿으므로 테스트에서 가짜로 바꾼다. */
+  createLogManager: (registry: DeviceRegistry, paths: SdkPaths, hooks: LogManagerHooks) => LogManager
   startServer: (opts: StartMcpHttpServerOpts) => Promise<McpServerHandle>
 }
 
@@ -46,6 +61,12 @@ export function rendererSender(getWindow: () => RendererWindow | null): SendToRe
     if (window && !window.isDestroyed()) window.webContents.send(channel, payload)
   }
 }
+
+const STREAM_EVENTS = {
+  started: 'stream_started',
+  reconnecting: 'stream_reconnecting',
+  stopped: 'stream_stopped'
+} as const satisfies Record<StreamLifecycle, DeviceTimelineEvent>
 
 function sdkMissingError() {
   return deviceError(
@@ -87,7 +108,13 @@ function assembleWithoutSdk(searched: string[]): { state: AppState; actions: Bri
     shutdownDevice: reject,
     captureScreenshot: reject,
     startStream: reject,
-    stopStream: async () => {}
+    stopStream: async () => {},
+    openLogs: () => {
+      throw sdkMissingError()
+    },
+    closeLogs: () => {
+      throw sdkMissingError()
+    }
   }
   return { state, actions }
 }
@@ -114,11 +141,25 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
     server: null
   })
 
-  const stream = deps.createStreamManager(registry, located.paths)
+  const stream = deps.createStreamManager(registry, located.paths, {
+    onState: (serial, streamState) => state.recordDeviceEvent(serial, STREAM_EVENTS[streamState])
+  })
+  const logs = deps.createLogManager(registry, located.paths, {
+    onTailState: (serial, tailState) => {
+      // 끊김으로 멈춘 tail은 disconnected 항목이 이미 말한다. 기기가 아직 붙어 있는데 멈춘 것만 남긴다.
+      if (tailState === 'stopped' && registry.serials().includes(serial)) state.recordDeviceEvent(serial, 'log_stopped')
+    }
+  })
   // 기기가 사라지면 그 기기의 스트림은 재시도하지 않고 닫는다. 재시도 루프의 isConnected
-  // 확인만으로는 대기 시간만큼 늦게 닫힌다.
+  // 확인만으로는 대기 시간만큼 늦게 닫힌다. 로그 tail·버퍼의 수명도 기기 연결을 그대로 따른다
+  // (logs.handleConnect·handleDisconnect) — 이 구독을 registry.start()보다 먼저 걸어야
+  // 처음부터 붙어 있던 기기도 tail을 받는다.
   registry.on((event) => {
-    if (event.type === 'device_disconnected') void stream.handleDisconnect(event.serial)
+    if (event.type === 'device_connected') logs.handleConnect(event.serial)
+    if (event.type === 'device_disconnected') {
+      void stream.handleDisconnect(event.serial)
+      logs.handleDisconnect(event.serial)
+    }
   })
 
   // 상태가 registry를 구독한 뒤에 추적을 시작한다. 그래야 처음 붙어 있던 기기의
@@ -128,7 +169,12 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
   let server: McpServerHandle | null = null
   try {
     server = await deps.startServer({
-      context: { registry, avd, onToolCall: (record) => state.recordToolCall(record) }
+      context: {
+        registry,
+        avd,
+        pidHistory: (serial, pkg) => logs.pidHistory(serial, pkg),
+        onToolCall: (record) => state.recordToolCall(record)
+      }
     })
     state.setServer(server)
   } catch (thrown) {
@@ -155,7 +201,13 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
         registry.resolve(serial)
         await stream.open(serial)
       },
-      stopStream: () => stream.stop()
+      stopStream: () => stream.stop(),
+      openLogs: (serial) => {
+        // 모르는 serial이면 여기서 no_device로 끝낸다. logs.open은 serial을 검증하지 않는다.
+        registry.resolve(serial)
+        logs.open(serial)
+      },
+      closeLogs: () => logs.close()
     },
     deps.send
   )
@@ -164,14 +216,18 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
     state,
     server,
     async stop() {
-      // 스트림 정리가 던져도 기기 추적과 MCP 서버는 멈춰야 한다. 에러는 호출자에게 그대로 넘긴다.
+      // 스트림 정리가 던져도 로그 tail·기기 추적·MCP 서버는 멈춰야 한다. 에러는 호출자에게 그대로 넘긴다.
       try {
         await stream.stop()
       } finally {
         try {
-          registry.stop()
+          logs.stopAll()
         } finally {
-          await server?.close()
+          try {
+            registry.stop()
+          } finally {
+            await server?.close()
+          }
         }
       }
     }

@@ -38,10 +38,25 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
     registryListeners.push(listener)
     return () => {}
   })
+  // registry.start()가 불리는 바로 그 순간, 그때까지 등록된 리스너에게만 동기로
+  // device_connected를 쏜다. 실제 registry도 추적을 시작하자마자 이미 붙어 있던 기기를
+  // 이렇게 알린다. 구독이 start() 뒤에 걸리면 이 리스너 목록에 없으니 이벤트를 놓친다 —
+  // fireRegistry를 나중에 수동으로 불러서는 이 순서를 검증할 수 없다.
+  ;(stack.registry.start as ReturnType<typeof vi.fn>).mockImplementation(() => {
+    registryListeners.forEach((listener) => listener({ type: 'device_connected', serial: 'emulator-5554' }))
+  })
   const stream = {
     open: vi.fn(async () => {}),
     stop: vi.fn(async () => {}),
     handleDisconnect: vi.fn(async () => {})
+  }
+  const logs = {
+    handleConnect: vi.fn(),
+    handleDisconnect: vi.fn(),
+    open: vi.fn(),
+    close: vi.fn(),
+    pidHistory: vi.fn(async () => [] as number[]),
+    stopAll: vi.fn()
   }
   const server: McpServerHandle = {
     url: 'http://127.0.0.1:9321/mcp',
@@ -58,6 +73,7 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
     send: vi.fn(),
     createDeviceStack: vi.fn(() => ({ registry: stack.registry, avd: stack.avd })),
     createStreamManager: vi.fn(() => stream),
+    createLogManager: vi.fn(() => logs),
     startServer: vi.fn(async () => server),
     ...overrides
   }
@@ -75,6 +91,7 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
     stack,
     server,
     stream,
+    logs,
     fireRegistry: (event: unknown) => registryListeners.forEach((listener) => listener(event))
   }
 }
@@ -94,7 +111,7 @@ describe('bootstrapApp without an SDK', () => {
       avds: [],
       devices: [],
       activeSerial: null,
-      toolCalls: [],
+      timeline: [],
       trackingFailure: null
     })
   })
@@ -106,6 +123,7 @@ describe('bootstrapApp without an SDK', () => {
 
     expect(h.deps.startServer).not.toHaveBeenCalled()
     expect(h.deps.createDeviceStack).not.toHaveBeenCalled()
+    expect(h.deps.createLogManager).not.toHaveBeenCalled()
   })
 
   it('answers every action with sdk_not_found', async () => {
@@ -117,7 +135,9 @@ describe('bootstrapApp without an SDK', () => {
       IPC_CHANNELS.selectDevice,
       IPC_CHANNELS.bootAvd,
       IPC_CHANNELS.shutdownDevice,
-      IPC_CHANNELS.captureScreenshot
+      IPC_CHANNELS.captureScreenshot,
+      IPC_CHANNELS.openLogs,
+      IPC_CHANNELS.closeLogs
     ]) {
       const result = await h.invoke<Outcome<unknown>>(channel, 'emulator-5554')
       expect(result.ok).toBe(false)
@@ -126,6 +146,146 @@ describe('bootstrapApp without an SDK', () => {
         expect(result.error.hint).toEqual(expect.any(String))
       }
     }
+  })
+})
+
+describe('bootstrapApp with an SDK: logs', () => {
+  it('subscribes the log manager before registry.start so initial devices get a tail', async () => {
+    const h = harness()
+
+    // registry.start()의 가짜 구현이 그 순간까지 등록된 리스너에게 device_connected를
+    // 동기로 쏜다(harness 참고). 로그 구독이 start() 앞에 걸려 있어야만 이 호출을 받는다.
+    await bootstrapApp(h.deps)
+
+    expect(h.logs.handleConnect).toHaveBeenCalledWith('emulator-5554')
+  })
+
+  it('closes the log tail when its device disconnects', async () => {
+    const h = harness()
+    await bootstrapApp(h.deps)
+
+    h.fireRegistry({ type: 'device_disconnected', serial: 'emulator-5554' })
+
+    expect(h.logs.handleDisconnect).toHaveBeenCalledWith('emulator-5554')
+  })
+
+  it('hands logManager.pidHistory to the MCP tool context', async () => {
+    const h = harness()
+    h.logs.pidHistory.mockResolvedValueOnce([111])
+
+    await bootstrapApp(h.deps)
+    const context = vi.mocked(h.deps.startServer).mock.calls[0]![0].context
+    const result = await context.pidHistory('emulator-5554', 'com.example')
+
+    expect(result).toEqual([111])
+    expect(h.logs.pidHistory).toHaveBeenCalledWith('emulator-5554', 'com.example')
+  })
+
+  it('stops all tails on app stop even if the stream stop throws', async () => {
+    const h = harness()
+    h.stream.stop.mockRejectedValueOnce(new Error('boom'))
+    const app = await bootstrapApp(h.deps)
+
+    await expect(app.stop()).rejects.toThrow('boom')
+
+    expect(h.logs.stopAll).toHaveBeenCalled()
+  })
+
+  it('opens logs for a known serial', async () => {
+    const h = harness()
+    await bootstrapApp(h.deps)
+
+    await h.invoke<Outcome<void>>(IPC_CHANNELS.openLogs, 'emulator-5554')
+
+    expect(h.logs.open).toHaveBeenCalledWith('emulator-5554')
+  })
+
+  it('refuses to open logs for a serial the registry does not know', async () => {
+    const h = harness()
+    ;(h.stack.registry.resolve as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw deviceError('no_device', 'gone', 'x')
+    })
+    await bootstrapApp(h.deps)
+
+    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.openLogs, 'emulator-9999')
+
+    expect(result.ok).toBe(false)
+    expect(h.logs.open).not.toHaveBeenCalled()
+  })
+
+  it('closes logs', async () => {
+    const h = harness()
+    await bootstrapApp(h.deps)
+
+    await h.invoke<Outcome<void>>(IPC_CHANNELS.closeLogs)
+
+    expect(h.logs.close).toHaveBeenCalled()
+  })
+
+  it('refuses log actions without an SDK and never builds a log manager', async () => {
+    const h = harness({ located: missing })
+    await bootstrapApp(h.deps)
+
+    const openResult = await h.invoke<Outcome<void>>(IPC_CHANNELS.openLogs, 'emulator-5554')
+    const closeResult = await h.invoke<Outcome<void>>(IPC_CHANNELS.closeLogs)
+
+    expect(openResult.ok).toBe(false)
+    if (!openResult.ok) expect(openResult.error.kind).toBe('sdk_not_found')
+    expect(closeResult.ok).toBe(false)
+    if (!closeResult.ok) expect(closeResult.error.kind).toBe('sdk_not_found')
+    expect(h.deps.createLogManager).not.toHaveBeenCalled()
+  })
+})
+
+describe('bootstrapApp with an SDK: timeline hooks', () => {
+  function deviceEvents(snapshot: AppSnapshot): Array<[string | null, string]> {
+    return snapshot.timeline.flatMap((entry) => (entry.kind === 'device' ? [[entry.serial, entry.event]] : []))
+  }
+
+  it('records stream state changes as stream_* entries', async () => {
+    const h = harness()
+    await bootstrapApp(h.deps)
+    const hooks = vi.mocked(h.deps.createStreamManager).mock.calls[0]![2]
+
+    hooks.onState('emulator-5554', 'started')
+    hooks.onState('emulator-5554', 'reconnecting')
+    hooks.onState('emulator-5554', 'stopped')
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(deviceEvents(snapshot)).toEqual([
+      ['emulator-5554', 'connected'],
+      ['emulator-5554', 'stream_started'],
+      ['emulator-5554', 'stream_reconnecting'],
+      ['emulator-5554', 'stream_stopped']
+    ])
+  })
+
+  it('records log_stopped when a tail stops while the device is still connected', async () => {
+    const h = harness()
+    await bootstrapApp(h.deps)
+    const hooks = vi.mocked(h.deps.createLogManager).mock.calls[0]![2]
+
+    hooks.onTailState('emulator-5554', 'reconnecting')
+    hooks.onTailState('emulator-5554', 'running')
+    hooks.onTailState('emulator-5554', 'stopped')
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(deviceEvents(snapshot)).toEqual([
+      ['emulator-5554', 'connected'],
+      ['emulator-5554', 'log_stopped']
+    ])
+  })
+
+  it('does not record log_stopped for a device that is already gone', async () => {
+    const h = harness()
+    await bootstrapApp(h.deps)
+    const hooks = vi.mocked(h.deps.createLogManager).mock.calls[0]![2]
+    ;(h.stack.registry.serials as ReturnType<typeof vi.fn>).mockReturnValue([])
+
+    hooks.onTailState('emulator-5554', 'stopped')
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(deviceEvents(snapshot)).toEqual([['emulator-5554', 'connected']])
   })
 })
 
@@ -152,10 +312,18 @@ describe('bootstrapApp with an SDK', () => {
 
     await bootstrapApp(h.deps)
     const context = vi.mocked(h.deps.startServer).mock.calls[0]![0].context
-    context.onToolCall({ id: 'a', tool: 'ui_tap', argsSummary: '{}', startedAt: 1, durationMs: 1, ok: true })
+    context.onToolCall({
+      id: 'a',
+      tool: 'ui_tap',
+      argsSummary: '{}',
+      startedAt: 1,
+      durationMs: 1,
+      ok: true,
+      detail: { args: '{}' }
+    })
     const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
 
-    expect(snapshot.toolCalls.map((record) => record.id)).toEqual(['a'])
+    expect(snapshot.timeline.filter((entry) => entry.kind === 'tool_call').map((entry) => entry.id)).toEqual(['a'])
     expect(context.registry).toBe(h.stack.registry)
     expect(context.avd).toBe(h.stack.avd)
   })

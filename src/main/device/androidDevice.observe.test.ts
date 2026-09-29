@@ -158,6 +158,26 @@ describe('AndroidDevice.readLogs', () => {
     expect(result.lines.map((line) => line.tag)).toEqual(['Tag2'])
   })
 
+  it('keeps only lines from the given pids before limiting', async () => {
+    // 5줄 중 pid 9000이 2줄이다. pids로 거른 뒤 limit을 적용해야 하므로, pid로
+    // 안 거르면 limit 1로는 최신 줄(Tag4, pid 1)이 남아 이 테스트가 실패한다.
+    const mixed = [
+      `09-22 11:06:20.000  9000 2 I Tag0: message 0`,
+      `09-22 11:06:21.000  9000 2 I Tag1: message 1`,
+      `09-22 11:06:22.000  1 2 I Tag2: message 2`,
+      `09-22 11:06:23.000  1 2 I Tag3: message 3`,
+      `09-22 11:06:24.000  1 2 I Tag4: message 4`
+    ].join('\n')
+    const { adb } = fakeAdb({ logcat: mixed })
+    const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })
+
+    const result = await device.readLogs({ pids: [9000], limit: 1 })
+
+    expect(result.lines.map((line) => line.tag)).toEqual(['Tag1'])
+    expect(result.truncated).toBe(true)
+    expect(result.droppedCount).toBe(1)
+  })
+
   it('passes -v threadtime and -d so the parser format is fixed', async () => {
     const { adb, calls } = fakeAdb({ logcat: logs })
     const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })
@@ -172,32 +192,37 @@ describe('AndroidDevice.readLogs', () => {
 
 describe('AndroidDevice.dumpUi', () => {
   it('returns summarised nodes, never the raw XML', async () => {
-    const xml = `<?xml version="1.0"?><hierarchy rotation="0"><node index="0" text="로그인" resource-id="com.example:id/login" class="android.widget.Button" content-desc="" clickable="true" bounds="[80,860][1000,1000]" /></hierarchy>`
-    const { adb, calls } = fakeAdb({ 'exec-out cat': xml })
+    const xml = `<?xml version="1.0"?><hierarchy rotation="0"><node index="0" text="로그인" resource-id="com.example:id/login" class="android.widget.Button" content-desc="" clickable="true" enabled="true" focused="false" scrollable="false" bounds="[80,860][1000,1000]" /></hierarchy>`
+    const { adb, calls } = fakeAdb({ 'exec-out cat': xml, 'wm size': 'Physical size: 1080x2400\n' })
     const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })
 
-    const nodes = await device.dumpUi()
+    const dump = await device.dumpUi()
 
-    // 화면 사각형은 덤프의 루트 노드가 들고 있다. wm size는 회전을 반영하지 않아
-    // 가로 화면에서 거의 모든 노드를 버리게 만들고, 왕복 한 번 값도 못 한다.
-    expect(calls.some((args) => args.join(' ').includes('wm size'))).toBe(false)
-    expect(nodes).toEqual([
-      {
-        index: 0,
-        text: '로그인',
-        contentDesc: null,
-        resourceId: 'login',
-        className: 'Button',
-        x: 540,
-        y: 930,
-        clickable: true
-      }
-    ])
+    // 자연 방향 크기는 인스턴스당 한 번만 캐시해서 묻는다.
+    expect(calls.filter((args) => args.join(' ').includes('wm size'))).toHaveLength(1)
+    expect(dump).toEqual({
+      nodes: [
+        {
+          index: 0,
+          parentIndex: null,
+          text: '로그인',
+          contentDesc: null,
+          resourceId: 'login',
+          className: 'Button',
+          bounds: { x: 0.0741, y: 0.3583, w: 0.8519, h: 0.0583 },
+          clickable: true,
+          enabled: true,
+          focused: false,
+          scrollable: false
+        }
+      ],
+      frame: { width: 1080, height: 2400 }
+    })
   })
 
   it('clears the previous dump file before asking for a new one', async () => {
-    const xml = `<?xml version="1.0"?><hierarchy rotation="0"><node index="0" text="로그인" resource-id="com.example:id/login" class="android.widget.Button" content-desc="" clickable="true" bounds="[80,860][1000,1000]" /></hierarchy>`
-    const { adb, calls } = fakeAdb({ 'exec-out cat': xml })
+    const xml = `<?xml version="1.0"?><hierarchy rotation="0"><node index="0" text="로그인" resource-id="com.example:id/login" class="android.widget.Button" content-desc="" clickable="true" enabled="true" focused="false" scrollable="false" bounds="[80,860][1000,1000]" /></hierarchy>`
+    const { adb, calls } = fakeAdb({ 'exec-out cat': xml, 'wm size': 'Physical size: 1080x2400\n' })
     const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })
 
     await device.dumpUi()
@@ -212,15 +237,17 @@ describe('AndroidDevice.dumpUi', () => {
     // uiautomator dump는 애니메이션 중이면 "ERROR: could not get idle state."를 내고
     // 파일을 건드리지 않는다. 앞선 덤프가 남아 있으면 지난 화면의 좌표가 지금 화면인
     // 것처럼 돌아간다 — UI를 조작하는 에이전트에게 가장 나쁜 실패 모양이다.
-    const stale = `<?xml version="1.0"?><hierarchy rotation="0"><node index="0" text="지난 화면" resource-id="com.example:id/old" class="android.widget.Button" content-desc="" clickable="true" bounds="[80,860][1000,1000]" /></hierarchy>`
+    const stale = `<?xml version="1.0"?><hierarchy rotation="0"><node index="0" text="지난 화면" resource-id="com.example:id/old" class="android.widget.Button" content-desc="" clickable="true" enabled="true" focused="false" scrollable="false" bounds="[80,860][1000,1000]" /></hierarchy>`
     const { adb } = fakeAdb({
       uiautomator: 'ERROR: could not get idle state.\n',
       'exec-out cat': stale
     })
     const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })
 
+    // message까지 확인해서, wm size 실패(다른 command_failed)로 잘못 통과하는 것을 막는다.
     await expect(device.dumpUi()).rejects.toMatchObject({
-      toolError: { kind: 'command_failed' }
+      toolError: { kind: 'command_failed' },
+      message: 'UI 덤프를 뜨지 못했다'
     })
   })
 
@@ -229,7 +256,8 @@ describe('AndroidDevice.dumpUi', () => {
     const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })
 
     await expect(device.dumpUi()).rejects.toMatchObject({
-      toolError: { kind: 'command_failed' }
+      toolError: { kind: 'command_failed' },
+      message: 'UI 덤프를 뜨지 못했다'
     })
   })
 })

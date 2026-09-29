@@ -31,7 +31,14 @@ export interface StreamManagerDeps {
   isConnected(serial: string): boolean
   sleep?: (ms: number) => Promise<void>
   newSessionId?: () => string
+  /**
+   * 스트림 상태 변화. 화면이 나오기 시작하면 started, 재시도에 들어가면 reconnecting,
+   * 나오던 세션이 닫히거나 끝내 실패하면 stopped다. 앱 상태가 이것으로 타임라인에 stream_* 항목을 쌓는다.
+   */
+  onState?: (serial: string, state: StreamLifecycle) => void
 }
+
+export type StreamLifecycle = 'started' | 'reconnecting' | 'stopped'
 
 export interface StreamManager {
   /** 이전 세션을 닫고 serial로 새 세션을 연다. 실패는 던지지 않고 포트의 status로 알린다. */
@@ -47,6 +54,8 @@ interface Entry {
   port: PortLike
   /** 시작 중인 세션도 여기 붙는다. 그래야 closeEntry가 시작을 중단시킬 수 있다. */
   session: ScrcpySession | null
+  /** onState로 마지막에 알린 상태. 한 번도 알리지 않았으면 null이다. */
+  reported: StreamLifecycle | null
 }
 
 const DEVICE_KEY_SET: ReadonlySet<string> = new Set(DEVICE_KEYS)
@@ -126,7 +135,22 @@ export function createStreamManager(deps: StreamManagerDeps): StreamManager {
     }
   }
 
+  function report(entry: Entry, state: StreamLifecycle): void {
+    if (entry.reported === state && state === 'stopped') return
+    entry.reported = state
+    deps.onState?.(entry.serial, state)
+  }
+
+  /** 실패를 포트로 알리고, 이 entry가 아직 현재면 stopped로 알린다. */
+  function fail(entry: Entry, error: ToolError): void {
+    post(entry, { type: 'status', status: { state: 'failed', error } })
+    if (current === entry) report(entry, 'stopped')
+  }
+
   async function closeEntry(entry: Entry): Promise<void> {
+    // 화면이 나오고 있었거나 재시도 중이던 세션만 멈췄다고 알린다. 시작도 못 한 세션이나
+    // 이미 실패로 stopped를 알린 세션은 다시 알리지 않는다.
+    if (entry.reported === 'started' || entry.reported === 'reconnecting') report(entry, 'stopped')
     try {
       entry.port.close()
     } catch {
@@ -171,6 +195,7 @@ export function createStreamManager(deps: StreamManagerDeps): StreamManager {
       return
     }
     post(entry, { type: 'status', status: { state: 'streaming' } })
+    report(entry, 'started')
   }
 
   async function recover(entry: Entry, reason: ToolError): Promise<void> {
@@ -187,6 +212,7 @@ export function createStreamManager(deps: StreamManagerDeps): StreamManager {
         return
       }
       post(entry, { type: 'status', status: { state: 'reconnecting', attempt } })
+      report(entry, 'reconnecting')
       await sleep(RECONNECT_DELAYS_MS[attempt - 1] as number)
       if (current !== entry) return
       try {
@@ -196,7 +222,7 @@ export function createStreamManager(deps: StreamManagerDeps): StreamManager {
         lastError = toToolError(thrown)
       }
     }
-    post(entry, { type: 'status', status: { state: 'failed', error: lastError } })
+    fail(entry, lastError)
   }
 
   return {
@@ -205,7 +231,7 @@ export function createStreamManager(deps: StreamManagerDeps): StreamManager {
       // 더 이상 current가 아니므로 post·startSession이 스스로 물러난다.
       const previous = current
       const channel = deps.createChannel()
-      const entry: Entry = { serial, sessionId: newSessionId(), port: channel.local, session: null }
+      const entry: Entry = { serial, sessionId: newSessionId(), port: channel.local, session: null, reported: null }
       current = entry
       if (previous) await closeEntry(previous)
       if (current !== entry) {
@@ -232,7 +258,7 @@ export function createStreamManager(deps: StreamManagerDeps): StreamManager {
       try {
         await startSession(entry)
       } catch (thrown) {
-        post(entry, { type: 'status', status: { state: 'failed', error: toToolError(thrown) } })
+        fail(entry, toToolError(thrown))
       }
     },
 

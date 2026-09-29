@@ -25,6 +25,17 @@ describe('serverInstructions', () => {
     expect(text).not.toContain('Bearer')
     expect(text).not.toContain('127.0.0.1')
   })
+
+  it('tells agents to act by ref and to refetch on stale_ref', () => {
+    const text = serverInstructions()
+    expect(text).toContain('ref')
+    expect(text).toContain('stale_ref')
+    expect(text).not.toMatch(/돌려받은 x, y/)
+  })
+
+  it('says coordinates are 0..1 and only for screens without nodes', () => {
+    expect(serverInstructions()).toContain('0..1')
+  })
 })
 
 describe('promptTemplates', () => {

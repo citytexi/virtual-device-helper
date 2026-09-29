@@ -182,15 +182,17 @@ describe('DeviceScreen', () => {
     act(() =>
       eventListeners.forEach((listener) =>
         listener({
-          type: 'tool_call',
-          record: {
+          type: 'timeline',
+          entry: {
+            kind: 'tool_call',
             id: '1',
             tool: 'ui_tap',
             argsSummary: '{}',
-            startedAt: 0,
+            at: 0,
             durationMs: 1,
             ok: true,
-            gesture: { kind: 'tap', serial: 'emulator-5554', screen: { width: 1080, height: 2400 }, x: 540, y: 930 }
+            detail: { args: '{}' },
+            gesture: { kind: 'tap', serial: 'emulator-5554', x: 0.5, y: 0.3875 }
           }
         })
       )

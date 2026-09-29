@@ -1,19 +1,24 @@
 import type { AvdEntry, ScreenshotResult } from './device'
 import type { ToolError, ToolErrorKind } from './errors'
 
-/** wm size가 돌려주는 자연 방향 화면 크기(기기 픽셀) */
-export interface ScreenSize {
-  width: number
-  height: number
+/**
+ * 활동 탭 상세 패널이 쓰는 값. `args`는 가린 인자의 JSON(2KB 넘으면 자름), `error`는
+ * 실패했을 때의 `ToolError`(`details`도 같은 상한), `resultSummary`는 성공했을 때의
+ * 결과 한 줄 요약이다.
+ */
+export interface ToolCallDetail {
+  args: string
+  error?: ToolError
+  resultSummary?: string
 }
 
 /**
- * 에이전트의 화면 동작. 좌표는 툴이 받은 기기 픽셀 그대로다. 회전 상태는 main이 모르므로
- * 정규화는 renderer가 비디오 크기와 screen을 비교해서 한다.
+ * 에이전트의 화면 동작. 좌표는 디스플레이 전체 크기 기준 0..1 정규화 값이다.
+ * renderer는 비디오 크기를 곱하기만 하면 된다 — 회전은 이미 정규화 단계에서 반영됐다.
  */
 export type Gesture =
-  | { kind: 'tap'; serial: string; screen: ScreenSize; x: number; y: number }
-  | { kind: 'swipe'; serial: string; screen: ScreenSize; x1: number; y1: number; x2: number; y2: number }
+  | { kind: 'tap'; serial: string; x: number; y: number }
+  | { kind: 'swipe'; serial: string; x1: number; y1: number; x2: number; y2: number }
 
 export interface ToolCallRecord {
   id: string
@@ -26,7 +31,38 @@ export interface ToolCallRecord {
   errorKind?: ToolErrorKind
   /** 화면 위 동작이 있는 툴(ui_tap·ui_swipe)이 성공했을 때만 붙는다. 실시간 화면 오버레이가 쓴다. */
   gesture?: Gesture
+  /** 핸들러가 실제로 대상으로 삼은 기기. 콜백이 없거나 던지면 뺀다. */
+  serial?: string
+  /** 활동 탭 상세 패널용 가린 인자·에러·결과 요약. */
+  detail: ToolCallDetail
 }
+
+/** 타임라인에 쌓이는 기기·스트림·로그 상태 변화. */
+export type DeviceTimelineEvent =
+  | 'connected'
+  | 'disconnected'
+  | 'active_changed'
+  | 'stream_started'
+  | 'stream_stopped'
+  | 'stream_reconnecting'
+  | 'log_stopped'
+
+/**
+ * 활동 탭이 보는 한 줄. 툴 호출과 기기 이벤트가 기록된 순서대로 한 줄에 선다.
+ * `tool_call`의 `at`은 `ToolCallRecord.startedAt`이라 앞 항목보다 이를 수 있다 — `at`으로 다시 정렬하지 않는다.
+ */
+export type TimelineEntry =
+  | {
+      kind: 'tool_call'; id: string; at: number; serial?: string
+      tool: string; argsSummary: string; durationMs: number; ok: boolean
+      errorKind?: ToolErrorKind; gesture?: Gesture; detail: ToolCallDetail
+    }
+  | {
+      kind: 'device'; id: string; at: number; serial: string | null
+      event: 'connected' | 'disconnected' | 'active_changed'
+           | 'stream_started' | 'stream_stopped' | 'stream_reconnecting'
+           | 'log_stopped'
+    }
 
 /** 채널 이름은 여기 한곳에만 둔다. preload와 main이 같은 상수를 본다. */
 export const IPC_CHANNELS = {
@@ -37,8 +73,12 @@ export const IPC_CHANNELS = {
   captureScreenshot: 'app:capture-screenshot',
   startStream: 'app:start-stream',
   stopStream: 'app:stop-stream',
+  openLogs: 'app:open-logs',
+  closeLogs: 'app:close-logs',
   /** main → renderer. 스트림 포트 하나를 싣는다. preload가 main world로 다시 건넨다. */
   streamPort: 'app:stream-port',
+  /** main → renderer. 로그 포트 하나를 싣는다. preload가 main world로 다시 건넨다. */
+  logPort: 'app:log-port',
   event: 'app:event'
 } as const
 
@@ -73,7 +113,7 @@ export interface AppSnapshot {
   avds: AvdEntry[]
   devices: string[]
   activeSerial: string | null
-  toolCalls: ToolCallRecord[]
+  timeline: TimelineEntry[]
   trackingFailure: TrackingFailure | null
 }
 
@@ -82,7 +122,7 @@ export type MainEvent =
   | { type: 'device_disconnected'; serial: string }
   | { type: 'active_changed'; serial: string | null }
   | { type: 'avds_changed'; avds: AvdEntry[] }
-  | { type: 'tool_call'; record: ToolCallRecord }
+  | { type: 'timeline'; entry: TimelineEntry }
   | { type: 'server_changed'; server: ServerStatus | null }
   | { type: 'tracking_failed'; failure: TrackingFailure }
 
@@ -96,5 +136,8 @@ export interface RendererApi {
   /** 이 기기로 스트림을 연다. 이전 스트림은 main이 닫는다. 포트는 IPC_CHANNELS.streamPort로 따로 온다. */
   startStream(serial: string): Promise<Outcome<void>>
   stopStream(): Promise<Outcome<void>>
+  /** 이 기기의 로그를 연다. 이전 로그 포트는 main이 닫는다. 포트는 IPC_CHANNELS.logPort로 따로 온다. */
+  openLogs(serial: string): Promise<Outcome<void>>
+  closeLogs(): Promise<Outcome<void>>
   onEvent(callback: (event: MainEvent) => void): () => void
 }

@@ -15,9 +15,120 @@ export interface ToolResult {
 
 const ARGS_SUMMARY_LIMIT = 120
 
-function summariseArgs(args: unknown): string {
-  const text = JSON.stringify(args ?? {})
+/** `ToolCallDetail.args`와 `error.details`에 같이 쓰는 상한(스펙 "근거 표기 규칙"의 2KB). */
+export const DETAIL_LIMIT_BYTES = 2048
+
+/** JSON으로 못 옮기는 값(순환 참조 등)을 만났을 때 쓰는 표식. */
+const SERIALIZE_FAILURE = '<직렬화 실패>'
+
+/** `redact` 콜백이 던졌을 때 인자를 통째로 이 표식으로 바꾼다. */
+const REDACT_FAILURE = '<가림 실패>'
+
+/** `…(잘림)` 표식. `observe.ts`의 로그 잘림 표식과 자리만 다르고 이유는 같다. */
+const TRUNCATION_MARK = '…(잘림)'
+
+/**
+ * `ui_text`처럼 원문을 남기면 안 되는 인자를 가릴 때 쓴다. 코드포인트 수(N)만 남기고
+ * 나머지는 버린다 — `.length`(UTF-16 코드유닛)를 쓰면 서로게이트 쌍이 낀 문자열에서
+ * 실제 글자 수와 다르게 샌다.
+ */
+export function redactText(text: string): string {
+  return `<${Array.from(text).length}자 가림>`
+}
+
+/**
+ * UTF-8 바이트 기준으로 `limitBytes`(표식 포함)를 넘지 않게 자른다. 코드포인트 경계에서
+ * 끊어서 서로게이트 쌍이 반쪽만 남는 것을 막는다(`observe.ts`의 `truncateMessage`와 같은 이유,
+ * 다만 여기는 코드포인트 수가 아니라 바이트 수가 상한이다).
+ */
+function truncateToBytes(text: string, limitBytes: number): string {
+  if (Buffer.byteLength(text, 'utf8') <= limitBytes) return text
+
+  const budget = Math.max(0, limitBytes - Buffer.byteLength(TRUNCATION_MARK, 'utf8'))
+  let kept = ''
+  let bytes = 0
+  for (const codePoint of text) {
+    const codePointBytes = Buffer.byteLength(codePoint, 'utf8')
+    if (bytes + codePointBytes > budget) break
+    kept += codePoint
+    bytes += codePointBytes
+  }
+  return `${kept}${TRUNCATION_MARK}`
+}
+
+/** 직렬화가 안 되면(순환 참조 등) `SERIALIZE_FAILURE` 표식으로 대체한다. */
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value ?? {})
+  } catch {
+    return SERIALIZE_FAILURE
+  }
+}
+
+function summariseArgs(text: string): string {
   return text.length <= ARGS_SUMMARY_LIMIT ? text : `${text.slice(0, ARGS_SUMMARY_LIMIT - 1)}…`
+}
+
+/** `detail.args`용 문자열을 만든다. 이미 직렬화 실패 표식이면 그대로 두고, 아니면 2KB로 자른다. */
+function buildDetailArgs(text: string): string {
+  return text === SERIALIZE_FAILURE ? text : truncateToBytes(text, DETAIL_LIMIT_BYTES)
+}
+
+/**
+ * `redact`를 먼저 적용하고 그 결과를 한 번만 직렬화해서 `argsSummary`와 `detail.args`를
+ * 함께 만든다. `redact`가 던지면 인자를 통째로 표식으로 바꿔서 원본이 어느 필드에도
+ * 남지 않는다.
+ */
+function buildArgsFields(
+  args: unknown,
+  redact?: (args: unknown) => unknown
+): { argsSummary: string; detailArgs: string } {
+  let redactedArgs: unknown = args
+  if (redact) {
+    try {
+      redactedArgs = redact(args)
+    } catch {
+      return { argsSummary: REDACT_FAILURE, detailArgs: REDACT_FAILURE }
+    }
+  }
+  const text = safeStringify(redactedArgs)
+  return { argsSummary: summariseArgs(text), detailArgs: buildDetailArgs(text) }
+}
+
+/**
+ * `error.details`가 2KB를 넘으면 원래 모양(`Record<string, unknown>`)을 유지한 채
+ * `{ truncated: '<앞부분 JSON>…(잘림)' }`으로 바꾼다. `message`·`hint`는 그대로 둔다.
+ */
+function limitErrorDetails(error: ToolError): ToolError {
+  if (!error.details) return error
+
+  let text: string
+  try {
+    text = JSON.stringify(error.details)
+  } catch {
+    return { ...error, details: { truncated: SERIALIZE_FAILURE } }
+  }
+  if (Buffer.byteLength(text, 'utf8') <= DETAIL_LIMIT_BYTES) return error
+
+  return { ...error, details: { truncated: truncateToBytes(text, DETAIL_LIMIT_BYTES) } }
+}
+
+/**
+ * 활동 탭·스냅샷에 남길 에러를 만든다. 에이전트에게 돌려주는 MCP 에러 결과와는 별개다.
+ * `redactError`를 먼저 적용하고(던지면 `details`를 버리고 message를 `"<가림 실패>"`로),
+ * 그 뒤 message를 2KB로, details를 `limitErrorDetails`로 자른다.
+ */
+function buildRecordedError(error: ToolError, redactError?: (error: ToolError) => ToolError): ToolError {
+  let redacted: ToolError = error
+  if (redactError) {
+    try {
+      redacted = redactError(error)
+    } catch {
+      redacted = { kind: error.kind, message: REDACT_FAILURE, hint: error.hint }
+    }
+  }
+  const limited = limitErrorDetails(redacted)
+  return { ...limited, message: truncateToBytes(limited.message, DETAIL_LIMIT_BYTES) }
 }
 
 function isContentPayload(value: unknown): value is { content: ToolContent[] } {
@@ -53,51 +164,27 @@ export interface RunToolOpts {
    * 부가 정보가 툴 결과를 바꾸면 안 된다.
    */
   gesture?: () => Promise<Gesture | undefined>
-}
-
-/**
- * gesture 조회(화면 크기 등)를 이 시간까지만 기다린다. `screenSizeOf`가 캐시 미스일 때 부르는
- * `Device.info()`는 adb exec 타임아웃(30초)까지 걸릴 수 있는데, 이미 성공한 tap·swipe 결과를
- * gesture 하나 때문에 그만큼 붙잡아 두면 안 된다. 오버레이 표시 하나 놓치는 것보다 훨씬 싸다.
- */
-export const GESTURE_TIMEOUT_MS = 1000
-
-/**
- * gesture 콜백을 GESTURE_TIMEOUT_MS 안에서만 기다린다. 시간 안에 못 끝나거나 던지면
- * undefined로 낙착한다 — 원래 promise는 취소하지 않고 그대로 흘려보낸다. `screenSizeOf`
- * 내부 캐시는 그 promise가 끝나야 채워지므로, 지금 호출은 gesture 없이 기록되더라도
- * 다음 호출은 캐시 덕분에 바로 끝난다. 타이머는 둘 중 먼저 끝나는 쪽에서 정리해
- * 유령 타이머를 남기지 않는다.
- */
-function withGestureTimeout(build?: () => Promise<Gesture | undefined>): Promise<Gesture | undefined> {
-  if (!build) return Promise.resolve(undefined)
-
-  return new Promise((resolve) => {
-    let settled = false
-
-    const timer = setTimeout(() => {
-      if (settled) return
-      settled = true
-      resolve(undefined)
-    }, GESTURE_TIMEOUT_MS)
-
-    // build()가 (async 함수가 아니어서) 동기적으로 던질 수도 있으니 Promise.resolve로 감싸
-    // 항상 프라미스 체인 안에서 실패를 받는다.
-    Promise.resolve()
-      .then(build)
-      .then((gesture) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        resolve(gesture)
-      })
-      .catch(() => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        resolve(undefined)
-      })
-  })
+  /**
+   * 핸들러가 실제로 대상으로 삼은 기기의 serial. 성공·실패 모두에서 부른다. 던지거나
+   * undefined를 돌려주면 기록에서 `serial` 필드를 뺀다 — 툴 결과에는 영향 없다.
+   */
+  serial?: () => string | undefined
+  /**
+   * 성공한 호출의 payload를 한 줄로 요약한다. 던지면 `detail.resultSummary`를 비운다.
+   */
+  summarise?: (payload: unknown) => string
+  /**
+   * `argsSummary`와 `detail.args`를 만들기 전에 인자에서 원문을 지운다(예: `ui_text`의
+   * `text`). 던지면 인자를 통째로 `"<가림 실패>"`로 바꾼다 — 원본이 어느 필드에도
+   * 남지 않는다.
+   */
+  redact?: (args: unknown) => unknown
+  /**
+   * 실패 기록(`detail.error`)에 싣기 전에 에러에서 원문을 지운다. 에이전트에게 돌려주는
+   * MCP 에러 결과에는 적용하지 않는다. 던지면 `details`를 버리고 message를
+   * `"<가림 실패>"`로 바꾼다.
+   */
+  redactError?: (error: ToolError) => ToolError
 }
 
 export async function runTool(
@@ -109,6 +196,10 @@ export async function runTool(
 ): Promise<CallToolResult> {
   const startedAt = Date.now()
   const id = randomUUID()
+
+  // args는 handler 실행 여부와 무관하다. redact·직렬화를 한 번만 하고 성공/실패 양쪽
+  // 기록에서 같은 값을 쓴다.
+  const { argsSummary, detailArgs } = buildArgsFields(args, opts.redact)
 
   // 기록(sink.onToolCall)은 툴 결과와 완전히 분리한다. sink가 예외를 던져도(예: 창을 닫은
   // 뒤 webContents가 destroyed 상태인 경우) 이미 끝난 handler의 성공/실패 판정을 바꾸면
@@ -122,23 +213,60 @@ export async function runTool(
     }
   }
 
+  // serial 콜백은 성공·실패 모두에서 부른다. 던지거나 undefined면 필드를 뺀다 —
+  // 툴 결과에는 영향 없다.
+  function resolveSerial(): string | undefined {
+    if (!opts.serial) return undefined
+    try {
+      return opts.serial()
+    } catch {
+      return undefined
+    }
+  }
+
   try {
     const payload = await handler()
     // 활동 탭에 보일 소요 시간은 handler가 끝난 시점까지만 잰다. gesture 조회는 그 뒤에
-    // 이어지는 부가 작업이라 GESTURE_TIMEOUT_MS까지 더 기다릴 수 있는데, 그 대기를
-    // durationMs에 얹으면 이미 끝난 호출이 실제보다 오래 걸린 것처럼 보인다.
+    // 이어지는 부가 작업이라 그 대기를 durationMs에 얹으면 이미 끝난 호출이 실제보다
+    // 오래 걸린 것처럼 보인다.
     const durationMs = Date.now() - startedAt
 
-    const gesture = await withGestureTimeout(opts.gesture)
+    // gesture 콜백은 성공 뒤에만, 실패해도 툴 결과에 영향 없이 직접 기다린다.
+    let gesture: Gesture | undefined
+    if (opts.gesture) {
+      try {
+        gesture = await opts.gesture()
+      } catch {
+        gesture = undefined
+      }
+    }
+
+    // summarise도 성공 뒤에만 부른다. 던지면 resultSummary 없이 기록한다 — 툴 결과에는
+    // 영향 없다.
+    let resultSummary: string | undefined
+    if (opts.summarise) {
+      try {
+        resultSummary = opts.summarise(payload)
+      } catch {
+        resultSummary = undefined
+      }
+    }
+
+    const serial = resolveSerial()
 
     recordSafely({
       id,
       tool,
-      argsSummary: summariseArgs(args),
+      argsSummary,
       startedAt,
       durationMs,
       ok: true,
-      ...(gesture ? { gesture } : {})
+      ...(gesture ? { gesture } : {}),
+      ...(serial !== undefined ? { serial } : {}),
+      detail: {
+        args: detailArgs,
+        ...(resultSummary !== undefined ? { resultSummary } : {})
+      }
     })
 
     const result: ToolResult = isContentPayload(payload) ? { content: payload.content } : jsonResult(payload)
@@ -152,14 +280,21 @@ export async function runTool(
           hint: '같은 호출을 다시 시도하고, 반복되면 앱의 활동 탭에서 맥락을 확인해라'
         }
 
+    const serial = resolveSerial()
+
     recordSafely({
       id,
       tool,
-      argsSummary: summariseArgs(args),
+      argsSummary,
       startedAt,
       durationMs: Date.now() - startedAt,
       ok: false,
-      errorKind: toolError.kind
+      errorKind: toolError.kind,
+      ...(serial !== undefined ? { serial } : {}),
+      detail: {
+        args: detailArgs,
+        error: buildRecordedError(toolError, opts.redactError)
+      }
     })
 
     const result: ToolResult = {

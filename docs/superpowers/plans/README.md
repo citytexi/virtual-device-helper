@@ -32,6 +32,10 @@
 | [m2-1-stream-core](archive/2026-09-23-m2-1-stream-core.md) | done — M2-1 구현 완료. scrcpy 프로토콜·세션·streamManager, startStream IPC와 포트 전달. PR #11로 develop에 머지 |
 | [m2-2-renderer-stream](archive/2026-09-23-m2-2-renderer-stream.md) | done — M2-2 구현 완료. WebCodecs 디코딩, 캔버스 입력·툴바, 스크린샷 강등. PR #12로 develop에 머지 |
 | [m2-3-gesture-overlay](archive/2026-09-23-m2-3-gesture-overlay.md) | done — M2-3 구현 완료. 에이전트 동작 오버레이와 M2 완료 조건 검증. PR #13으로 develop에 머지 |
+| [m3-1-node-control](archive/2026-09-28-m3-1-node-control.md) | done — M3-1 구현 완료. 노드 트리·정규화 bounds, ref 재검증, UI 툴의 ref·0..1 좌표 입력, 제스처 정규화. PR #18로 develop에 머지. 앱 확인 일부 미검증(스펙 "M3-1 검증 결과") |
+| [m3-2a-log-core](archive/2026-09-28-m3-2a-log-core.md) | done — M3-2a 구현 완료. logcat tail·버퍼·pid 추적·시계 보정, 로그 포트, log_read의 package. PR #19로 develop에 머지. 앱 확인 일부 미검증(스펙 "M3-2a 검증 결과") |
+| [m3-2b-log-panel](archive/2026-09-28-m3-2b-log-panel.md) | done — M3-2b 구현 완료. useLogStream, 필터·가상 스크롤, 로그 탭 UI. PR #19로 develop에 머지. 앱 확인 일부 미검증(스펙 "M3-2b 검증 결과") |
+| [m3-3-event-timeline](archive/2026-09-28-m3-3-event-timeline.md) | done — M3-3 구현 완료. 툴 호출 상세·가림, 기기·스트림·로그 이벤트 타임라인, 활동 탭, 로그 점프. PR #20으로 develop에 머지. 앱 확인 완료 |
 <!-- archive:end -->
 
 ## 작성 가이드

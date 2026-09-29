@@ -1,22 +1,22 @@
 // @vitest-environment jsdom
 import { act, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Gesture, MainEvent, ToolCallRecord } from '../../../shared/types/ipc'
+import type { Gesture, MainEvent, TimelineEntry } from '../../../shared/types/ipc'
 import { GESTURE_VISIBLE_MS, GestureOverlay, gestureToVideo } from './GestureOverlay'
 
-const portrait = { width: 1080, height: 2400 }
-
 function toolCall(id: string, gesture?: Gesture): MainEvent {
-  const record: ToolCallRecord = {
+  const entry: TimelineEntry = {
+    kind: 'tool_call',
     id,
+    at: 0,
     tool: gesture?.kind === 'swipe' ? 'ui_swipe' : 'ui_tap',
     argsSummary: '{}',
-    startedAt: 0,
     durationMs: 1,
     ok: true,
+    detail: { args: '{}' },
     ...(gesture ? { gesture } : {})
   }
-  return { type: 'tool_call', record }
+  return { type: 'timeline', entry }
 }
 
 function bus() {
@@ -35,63 +35,72 @@ afterEach(() => {
 })
 
 describe('gestureToVideo', () => {
-  it('scales a portrait tap into portrait video', () => {
-    expect(gestureToVideo({ kind: 'tap', serial: 's', screen: portrait, x: 540, y: 930 }, { width: 540, height: 1200 })).toEqual({
+  it('scales normalized coordinates by the video size', () => {
+    expect(gestureToVideo({ kind: 'tap', serial: 's', x: 0.5, y: 0.25 }, { width: 1024, height: 2048 })).toEqual({
       kind: 'tap',
-      x: 270,
-      y: 465
+      x: 512,
+      y: 512
     })
   })
 
-  it('swaps the screen axes when the video is rotated', () => {
-    // 가로 모드의 탭 좌표는 회전된 공간(2400 x 1080)에 있다.
-    expect(gestureToVideo({ kind: 'tap', serial: 's', screen: portrait, x: 1000, y: 500 }, { width: 1200, height: 540 })).toEqual({
-      kind: 'tap',
-      x: 500,
-      y: 250
-    })
-  })
-
-  it('scales both ends of a swipe', () => {
+  it('draws a landscape video without any rotation guess', () => {
     expect(
-      gestureToVideo({ kind: 'swipe', serial: 's', screen: portrait, x1: 100, y1: 1800, x2: 100, y2: 400 }, { width: 540, height: 1200 })
-    ).toEqual({ kind: 'swipe', x1: 50, y1: 900, x2: 50, y2: 200 })
+      gestureToVideo({ kind: 'swipe', serial: 's', x1: 0, y1: 0.5, x2: 1, y2: 0.5 }, { width: 2048, height: 1024 })
+    ).toEqual({ kind: 'swipe', x1: 0, y1: 512, x2: 2048, y2: 512 })
   })
 })
 
 describe('GestureOverlay', () => {
   const video = { width: 540, height: 1200 }
 
+  it('draws the gesture of a timeline tool_call entry', () => {
+    const b = bus()
+    const { container } = render(<GestureOverlay serial="emulator-5554" video={video} subscribe={b.subscribe} />)
+
+    b.emit(toolCall('1', { kind: 'tap', serial: 'emulator-5554', x: 0.5, y: 0.25 }))
+
+    const circle = container.querySelector('circle.gesture-tap')
+    expect(circle?.getAttribute('cx')).toBe('270')
+    expect(circle?.getAttribute('cy')).toBe('300')
+  })
+
   it('draws a tap of its own device', () => {
     const b = bus()
     const { container } = render(<GestureOverlay serial="emulator-5554" video={video} subscribe={b.subscribe} />)
 
-    b.emit(toolCall('1', { kind: 'tap', serial: 'emulator-5554', screen: portrait, x: 540, y: 930 }))
+    b.emit(toolCall('1', { kind: 'tap', serial: 'emulator-5554', x: 0.5, y: 0.5 }))
 
     const circle = container.querySelector('circle.gesture-tap')
     expect(circle?.getAttribute('cx')).toBe('270')
-    expect(circle?.getAttribute('cy')).toBe('465')
+    expect(circle?.getAttribute('cy')).toBe('600')
   })
 
   it('draws a swipe as a line with an end mark', () => {
     const b = bus()
     const { container } = render(<GestureOverlay serial="emulator-5554" video={video} subscribe={b.subscribe} />)
 
-    b.emit(toolCall('1', { kind: 'swipe', serial: 'emulator-5554', screen: portrait, x1: 100, y1: 1800, x2: 100, y2: 400 }))
+    b.emit(toolCall('1', { kind: 'swipe', serial: 'emulator-5554', x1: 0.2, y1: 0.75, x2: 0.2, y2: 0.25 }))
 
     const line = container.querySelector('g.gesture-swipe line')
     expect(line?.getAttribute('y1')).toBe('900')
-    expect(line?.getAttribute('y2')).toBe('200')
+    expect(line?.getAttribute('y2')).toBe('300')
 
     const circle = container.querySelector('g.gesture-swipe circle')
-    expect(circle?.getAttribute('cx')).toBe('50')
-    expect(circle?.getAttribute('cy')).toBe('200')
+    expect(circle?.getAttribute('cx')).toBe('108')
+    expect(circle?.getAttribute('cy')).toBe('300')
   })
 
   it.each([
-    ['another device', toolCall('1', { kind: 'tap', serial: 'emulator-5556', screen: portrait, x: 1, y: 1 })],
+    ['another device', toolCall('1', { kind: 'tap', serial: 'emulator-5556', x: 0.1, y: 0.1 })],
     ['a call without a gesture', toolCall('1')],
-    ['a non tool_call event', { type: 'active_changed', serial: 'emulator-5554' } as MainEvent]
+    ['a non timeline event', { type: 'active_changed', serial: 'emulator-5554' } as MainEvent],
+    [
+      'a device timeline entry',
+      {
+        type: 'timeline',
+        entry: { kind: 'device', id: 'd', at: 0, serial: 'emulator-5554', event: 'stream_started' }
+      } as MainEvent
+    ]
   ])('draws nothing for %s', (_name, event) => {
     const b = bus()
     const { container } = render(<GestureOverlay serial="emulator-5554" video={video} subscribe={b.subscribe} />)
@@ -105,7 +114,7 @@ describe('GestureOverlay', () => {
     vi.useFakeTimers()
     const b = bus()
     const { container } = render(<GestureOverlay serial="emulator-5554" video={video} subscribe={b.subscribe} />)
-    const tap = (id: string) => toolCall(id, { kind: 'tap', serial: 'emulator-5554', screen: portrait, x: 1, y: 1 })
+    const tap = (id: string) => toolCall(id, { kind: 'tap', serial: 'emulator-5554', x: 0.1, y: 0.1 })
 
     b.emit(tap('1'))
     act(() => vi.advanceTimersByTime(GESTURE_VISIBLE_MS / 2))
@@ -133,7 +142,7 @@ describe('GestureOverlay', () => {
       <GestureOverlay serial="emulator-5554" video={video} subscribe={b.subscribe} />
     )
 
-    b.emit(toolCall('1', { kind: 'tap', serial: 'emulator-5554', screen: portrait, x: 1, y: 1 }))
+    b.emit(toolCall('1', { kind: 'tap', serial: 'emulator-5554', x: 0.1, y: 0.1 }))
     expect(container.querySelectorAll('circle.gesture-tap')).toHaveLength(1)
 
     rerender(<GestureOverlay serial="emulator-5556" video={video} subscribe={b.subscribe} />)
@@ -142,10 +151,10 @@ describe('GestureOverlay', () => {
     expect(vi.getTimerCount()).toBe(0)
 
     // A용 이벤트는 더 이상 그려지지 않고, B용 이벤트만 그려진다.
-    b.emit(toolCall('2', { kind: 'tap', serial: 'emulator-5554', screen: portrait, x: 1, y: 1 }))
+    b.emit(toolCall('2', { kind: 'tap', serial: 'emulator-5554', x: 0.1, y: 0.1 }))
     expect(container.querySelectorAll('circle.gesture-tap')).toHaveLength(0)
 
-    b.emit(toolCall('3', { kind: 'tap', serial: 'emulator-5556', screen: portrait, x: 1, y: 1 }))
+    b.emit(toolCall('3', { kind: 'tap', serial: 'emulator-5556', x: 0.1, y: 0.1 }))
     expect(container.querySelectorAll('circle.gesture-tap')).toHaveLength(1)
   })
 
@@ -153,7 +162,7 @@ describe('GestureOverlay', () => {
     vi.useFakeTimers()
     const b = bus()
     const { unmount } = render(<GestureOverlay serial="emulator-5554" video={video} subscribe={b.subscribe} />)
-    b.emit(toolCall('1', { kind: 'tap', serial: 'emulator-5554', screen: portrait, x: 1, y: 1 }))
+    b.emit(toolCall('1', { kind: 'tap', serial: 'emulator-5554', x: 0.1, y: 0.1 }))
 
     unmount()
 

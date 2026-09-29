@@ -21,15 +21,16 @@ export interface ToolHarness {
  * 전송은 인메모리라 포트도 인증도 끼어들지 않는다.
  */
 export async function createToolHarness(
-  context: Omit<ToolContext, 'onToolCall'>
+  context: Omit<ToolContext, 'onToolCall' | 'pidHistory'> & Partial<Pick<ToolContext, 'pidHistory'>>
 ): Promise<ToolHarness> {
+  const { pidHistory = async () => [], ...rest } = context
   const records: ToolCallRecord[] = []
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version: '0.0.0' },
     { instructions: serverInstructions() }
   )
 
-  registerTools(server, { ...context, onToolCall: (record) => records.push(record) })
+  registerTools(server, { ...rest, pidHistory, onToolCall: (record) => records.push(record) })
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
   const client = new Client({ name: 'test', version: '0.0.0' })

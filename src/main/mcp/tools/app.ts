@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { Device } from '../../../shared/types/device'
 import { runTool } from '../runTool'
 import type { ToolContext } from '../toolContext'
 
@@ -58,14 +59,23 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
         serial
       }
     },
-    async (args) =>
-      runTool(context, 'app_install', args, async () => {
-        const device = context.registry.resolve(args.serial)
-        const installed = await context.registry.run(device.serial, () =>
-          device.install(args.apkPath, { reinstall: args.reinstall })
-        )
-        return { pkg: installed }
-      })
+    async (args) => {
+      let target: Device | null = null
+      return runTool(
+        context,
+        'app_install',
+        args,
+        async () => {
+          const device = context.registry.resolve(args.serial)
+          target = device
+          const installed = await context.registry.run(device.serial, () =>
+            device.install(args.apkPath, { reinstall: args.reinstall })
+          )
+          return { pkg: installed }
+        },
+        { serial: () => target?.serial }
+      )
+    }
   )
 
   server.registerTool(
@@ -75,12 +85,21 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
         '패키지를 기기에서 완전히 지운다. 재설치 전에 깨끗한 상태로 되돌릴 때 쓴다.',
       inputSchema: { pkg, serial }
     },
-    async (args) =>
-      runTool(context, 'app_uninstall', args, async () => {
-        const device = context.registry.resolve(args.serial)
-        await context.registry.run(device.serial, () => device.uninstall(args.pkg))
-        return { pkg: args.pkg, uninstalled: true }
-      })
+    async (args) => {
+      let target: Device | null = null
+      return runTool(
+        context,
+        'app_uninstall',
+        args,
+        async () => {
+          const device = context.registry.resolve(args.serial)
+          target = device
+          await context.registry.run(device.serial, () => device.uninstall(args.pkg))
+          return { pkg: args.pkg, uninstalled: true }
+        },
+        { serial: () => target?.serial }
+      )
+    }
   )
 
   server.registerTool(
@@ -94,12 +113,21 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
         serial
       }
     },
-    async (args) =>
-      runTool(context, 'app_launch', args, async () => {
-        const device = context.registry.resolve(args.serial)
-        await context.registry.run(device.serial, () => device.launch(args.pkg, args.activity))
-        return { pkg: args.pkg, launched: true }
-      })
+    async (args) => {
+      let target: Device | null = null
+      return runTool(
+        context,
+        'app_launch',
+        args,
+        async () => {
+          const device = context.registry.resolve(args.serial)
+          target = device
+          await context.registry.run(device.serial, () => device.launch(args.pkg, args.activity))
+          return { pkg: args.pkg, launched: true }
+        },
+        { serial: () => target?.serial }
+      )
+    }
   )
 
   server.registerTool(
@@ -109,12 +137,21 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
         '앱을 강제 종료한다. 프로세스를 정리하고 처음부터 다시 실행하고 싶을 때 쓴다.',
       inputSchema: { pkg, serial }
     },
-    async (args) =>
-      runTool(context, 'app_stop', args, async () => {
-        const device = context.registry.resolve(args.serial)
-        await context.registry.run(device.serial, () => device.stop(args.pkg))
-        return { pkg: args.pkg, stopped: true }
-      })
+    async (args) => {
+      let target: Device | null = null
+      return runTool(
+        context,
+        'app_stop',
+        args,
+        async () => {
+          const device = context.registry.resolve(args.serial)
+          target = device
+          await context.registry.run(device.serial, () => device.stop(args.pkg))
+          return { pkg: args.pkg, stopped: true }
+        },
+        { serial: () => target?.serial }
+      )
+    }
   )
 
   server.registerTool(
@@ -123,12 +160,21 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
       description: '앱의 저장 데이터를 지운다. 첫 실행 상태로 되돌릴 때 쓴다.',
       inputSchema: { pkg, serial }
     },
-    async (args) =>
-      runTool(context, 'app_clear_data', args, async () => {
-        const device = context.registry.resolve(args.serial)
-        await context.registry.run(device.serial, () => device.clearData(args.pkg))
-        return { pkg: args.pkg, cleared: true }
-      })
+    async (args) => {
+      let target: Device | null = null
+      return runTool(
+        context,
+        'app_clear_data',
+        args,
+        async () => {
+          const device = context.registry.resolve(args.serial)
+          target = device
+          await context.registry.run(device.serial, () => device.clearData(args.pkg))
+          return { pkg: args.pkg, cleared: true }
+        },
+        { serial: () => target?.serial }
+      )
+    }
   )
 
   server.registerTool(
@@ -142,14 +188,23 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
         serial
       }
     },
-    async (args) =>
-      runTool(context, 'app_grant_permission', args, async () => {
-        const device = context.registry.resolve(args.serial)
-        await context.registry.run(device.serial, () =>
-          device.grantPermission(args.pkg, args.permission)
-        )
-        return { pkg: args.pkg, permission: args.permission, granted: true }
-      })
+    async (args) => {
+      let target: Device | null = null
+      return runTool(
+        context,
+        'app_grant_permission',
+        args,
+        async () => {
+          const device = context.registry.resolve(args.serial)
+          target = device
+          await context.registry.run(device.serial, () =>
+            device.grantPermission(args.pkg, args.permission)
+          )
+          return { pkg: args.pkg, permission: args.permission, granted: true }
+        },
+        { serial: () => target?.serial }
+      )
+    }
   )
 
   server.registerTool(
@@ -162,24 +217,33 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
         serial
       }
     },
-    async (args) =>
-      runTool(context, 'app_reset_and_launch', args, async () => {
-        const device = context.registry.resolve(args.serial)
+    async (args) => {
+      let target: Device | null = null
+      return runTool(
+        context,
+        'app_reset_and_launch',
+        args,
+        async () => {
+          const device = context.registry.resolve(args.serial)
+          target = device
 
-        return context.registry.run(device.serial, async () => {
-          await device.stop(args.pkg)
-          await device.clearData(args.pkg)
-          await device.launch(args.pkg)
+          return context.registry.run(device.serial, async () => {
+            await device.stop(args.pkg)
+            await device.clearData(args.pkg)
+            await device.launch(args.pkg)
 
-          const settle = await waitForSettle(
-            () => device.dumpUi(),
-            SETTLE_DEFAULT_TIMEOUT_MS,
-            (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-            () => Date.now()
-          )
+            const settle = await waitForSettle(
+              () => device.dumpUi().then((dump) => dump.nodes),
+              SETTLE_DEFAULT_TIMEOUT_MS,
+              (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+              () => Date.now()
+            )
 
-          return { pkg: args.pkg, ...settle }
-        })
-      })
+            return { pkg: args.pkg, ...settle }
+          })
+        },
+        { serial: () => target?.serial }
+      )
+    }
   )
 }

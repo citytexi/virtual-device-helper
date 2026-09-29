@@ -2,10 +2,11 @@
 
 Android·iOS 가상 기기를 MCP로 제어하고, 화면·로그·이벤트를 한 화면에서 보는 Electron 데스크탑 앱.
 
-현재 상태: v0.2.0 — macOS(Apple Silicon) 호스트, Android 에뮬레이터, MCP 서버, 실시간 기기 화면과 직접 조작,
-에이전트 동작 표시, 툴 호출 기록, 에이전트 안내 탭.
-검증 결과와 남은 결함은 [M1 스펙](docs/superpowers/specs/archive/2026-09-22-m1-device-core-mcp-server.md)의
-"검증 결과"와 [M2 스펙](docs/superpowers/specs/archive/2026-09-23-m2-live-streaming.md)의 "검증 결과"에 있다.
+현재 상태: v0.3.0 — macOS(Apple Silicon) 호스트, Android 에뮬레이터, MCP 서버, 실시간 기기 화면과 직접 조작,
+에이전트 동작 표시, ref 기반 노드 제어, 실시간 로그 탭, 툴 호출·기기 이벤트 타임라인, 에이전트 안내 탭.
+검증 결과와 남은 결함은 [M1 스펙](docs/superpowers/specs/archive/2026-09-22-m1-device-core-mcp-server.md),
+[M2 스펙](docs/superpowers/specs/archive/2026-09-23-m2-live-streaming.md),
+[M3 스펙](docs/superpowers/specs/archive/2026-09-28-m3-node-control-logs-events.md)의 "검증 결과"에 있다.
 
 ## 필요한 것
 
@@ -95,17 +96,17 @@ Claude Code가 아닌 MCP 클라이언트는 상단 바의 "설정 JSON 복사"�
 | app | `app_clear_data` | 앱 데이터를 지워 첫 실행 상태로 되돌린다 |
 | app | `app_grant_permission` | 런타임 권한을 미리 준다 |
 | app | `app_reset_and_launch` | 종료, 데이터 삭제, 재실행 후 첫 화면이 안정될 때까지 기다린다 |
-| ui | `ui_find` | 화면 요소와 누를 좌표. 조작 전에 먼저 부른다 |
-| ui | `ui_tap` | 좌표를 누른다. `ui_find`의 x, y를 그대로 쓴다 |
-| ui | `ui_swipe` | 스와이프. 스크롤에 쓴다 |
-| ui | `ui_text` | 포커스된 입력 칸에 ASCII 텍스트를 넣는다 |
+| ui | `ui_find` | 화면 요소와 ref. 조작 전에 먼저 부른다 |
+| ui | `ui_tap` | ref 또는 0..1 좌표를 누른다 |
+| ui | `ui_swipe` | ref + `direction`(보고 싶은 쪽) 또는 0..1 좌표 두 점으로 스와이프한다. 스크롤에 쓴다 |
+| ui | `ui_text` | ref의 입력칸에, 또는 포커스된 칸에 텍스트를 넣는다 |
 | ui | `ui_key` | back, home, enter, tab 키 |
 | observe | `screenshot` | 지금 화면. 기본으로 축소해서 준다 |
 | observe | `log_read` | logcat을 읽는다. 잘리면 `truncated`가 true다 — filter로 좁혀 다시 부른다 |
 | observe | `log_clear` | logcat 버퍼를 비운다. 시나리오 직전에 부른다 |
 
-전형적인 흐름은 빌드 → `app_install` → `log_clear` → `app_launch` → `ui_find` → `ui_tap`·`ui_text` →
-`screenshot` → `log_read`다.
+전형적인 흐름은 빌드 → `app_install` → `log_clear` → `app_launch` → `ui_find`로 ref를 얻고 →
+그 ref로 `ui_tap`·`ui_text` → `screenshot` → `log_read`다.
 
 ### 자주 나는 실패
 
@@ -119,6 +120,7 @@ Claude Code가 아닌 MCP 클라이언트는 상단 바의 "설정 JSON 복사"�
 | `package_not_found` | 기기에 그 패키지가 없다 | 패키지명을 확인하고 `app_install`을 먼저 한다 |
 | `apk_path_invalid` | APK 경로가 틀렸다 | 빌드를 먼저 하고 호스트의 절대 경로를 준다 |
 | `device_unresponsive` | 기기가 응답하지 않는다 | `device_shutdown` 후 `device_boot`로 다시 켠다 |
+| `stale_ref` | 화면이 바뀌었다 | `ui_find`를 다시 부른다 |
 | `command_failed` | 그 밖의 명령 실패 | `hint`와 `details`의 stderr를 읽는다 |
 
 ## 개발
