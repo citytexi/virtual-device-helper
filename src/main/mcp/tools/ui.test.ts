@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AvdController } from '../../device/avdController'
 import type { DeviceRegistry } from '../../device/registry'
 import type { Device, DisplayFrame, UiDump, UiNode } from '../../../shared/types/device'
-import { deviceError } from '../../../shared/types/errors'
+import { deviceError, type DeviceError } from '../../../shared/types/errors'
 import { createToolHarness } from '../testHarness'
 
 const frame: DisplayFrame = { width: 1080, height: 2400 }
@@ -505,6 +505,64 @@ describe('detail: serial·redact·summarise', () => {
 
     await harness.close()
   })
+
+  // 실패 기록 경로 셋. androidDevice.ts `escapeInputText`의 거부, adbClient.ts의 명령 실패,
+  // 타임아웃이 각각 원문(또는 adb용으로 이스케이프한 형태)을 message·details에 싣는다.
+  const secret = 'my secret#1'
+  const escapedSecret = 'my%ssecret\\#1'
+  const failurePaths: Array<[string, () => DeviceError]> = [
+    [
+      'escapeInputText rejection',
+      () =>
+        deviceError('command_failed', 'adb input text로는 %를 포함한 문자열을 보낼 수 없다', '나눠서 보내라', {
+          text: secret
+        })
+    ],
+    [
+      'adb command failure',
+      () =>
+        deviceError('command_failed', `adb 명령이 실패했다: shell input text ${escapedSecret}`, '첨부된 stderr를 확인해라', {
+          stderr: `error near ${secret}`,
+          args: ['shell', 'input', 'text', escapedSecret]
+        })
+    ],
+    [
+      'adb timeout',
+      () =>
+        deviceError(
+          'device_unresponsive',
+          `adb 명령이 10000ms 안에 끝나지 않았다: -s emulator-5554 shell input text ${escapedSecret}`,
+          '기기 상태를 확인해라',
+          { args: ['-s', 'emulator-5554', 'shell', 'input', 'text', escapedSecret], timeoutMs: 10000 }
+        )
+    ]
+  ]
+
+  for (const [name, makeError] of failurePaths) {
+    it(`never records typed text in the clear when ui_text fails (${name})`, async () => {
+      const original = makeError()
+      const harness = await harnessFor({
+        inputText: async () => {
+          throw original
+        }
+      })
+
+      const error = (await harness.callExpectingError('ui_text', { text: secret })) as unknown as {
+        kind: string
+        message: string
+      }
+
+      const recorded = JSON.stringify(harness.records)
+      expect(recorded).not.toContain(secret)
+      expect(recorded).not.toContain(escapedSecret)
+      expect(recorded).not.toContain('secret')
+      expect(harness.records[0]?.errorKind).toBe(error.kind)
+      // 에이전트가 받는 MCP 에러 결과는 그대로다.
+      expect(error.message).toBe(original.toolError.message)
+
+      await harness.close()
+    })
+  }
 
   it('records the serial of ui_tap', async () => {
     const harness = await harnessFor({ tap: vi.fn(async () => {}) })

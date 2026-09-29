@@ -113,6 +113,24 @@ function limitErrorDetails(error: ToolError): ToolError {
   return { ...error, details: { truncated: truncateToBytes(text, DETAIL_LIMIT_BYTES) } }
 }
 
+/**
+ * 활동 탭·스냅샷에 남길 에러를 만든다. 에이전트에게 돌려주는 MCP 에러 결과와는 별개다.
+ * `redactError`를 먼저 적용하고(던지면 `details`를 버리고 message를 `"<가림 실패>"`로),
+ * 그 뒤 message를 2KB로, details를 `limitErrorDetails`로 자른다.
+ */
+function buildRecordedError(error: ToolError, redactError?: (error: ToolError) => ToolError): ToolError {
+  let redacted: ToolError = error
+  if (redactError) {
+    try {
+      redacted = redactError(error)
+    } catch {
+      redacted = { kind: error.kind, message: REDACT_FAILURE, hint: error.hint }
+    }
+  }
+  const limited = limitErrorDetails(redacted)
+  return { ...limited, message: truncateToBytes(limited.message, DETAIL_LIMIT_BYTES) }
+}
+
 function isContentPayload(value: unknown): value is { content: ToolContent[] } {
   return typeof value === 'object' && value !== null && Array.isArray((value as { content?: unknown }).content)
 }
@@ -161,6 +179,12 @@ export interface RunToolOpts {
    * 남지 않는다.
    */
   redact?: (args: unknown) => unknown
+  /**
+   * 실패 기록(`detail.error`)에 싣기 전에 에러에서 원문을 지운다. 에이전트에게 돌려주는
+   * MCP 에러 결과에는 적용하지 않는다. 던지면 `details`를 버리고 message를
+   * `"<가림 실패>"`로 바꾼다.
+   */
+  redactError?: (error: ToolError) => ToolError
 }
 
 export async function runTool(
@@ -269,7 +293,7 @@ export async function runTool(
       ...(serial !== undefined ? { serial } : {}),
       detail: {
         args: detailArgs,
-        error: limitErrorDetails(toolError)
+        error: buildRecordedError(toolError, opts.redactError)
       }
     })
 

@@ -222,6 +222,19 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
             const withText = a as { text: string }
             return { ...withText, text: redactText(withText.text) }
           },
+          // 실패 기록에서도 원문을 지운다. 원문은 여러 모양으로 에러에 섞여 들어온다 —
+          // androidDevice.ts `escapeInputText`의 거부는 details.text에 원문을, adbClient.ts의
+          // 명령 실패·타임아웃은 message와 details.args(·stderr)에 adb용으로 이스케이프한
+          // 형태(공백→%s, 셸 메타문자 앞 백슬래시)를 싣는다. 이 층은 adb를 import하지 못하고
+          // (layering.test.ts), 이스케이프 규칙을 여기 복제하면 그쪽이 바뀔 때 조용히 샌다.
+          // 그래서 원문·변형을 찾아 바꾸지 않고 details를 버리고 message를 통째로 갈아 끼운다.
+          // kind와 hint는 원문을 싣지 않으므로 남겨서 실패 이유의 갈래는 활동 탭에서 보인다.
+          // 에이전트에게 돌아가는 MCP 에러 결과는 runTool이 따로 만들므로 그대로다.
+          redactError: (error) => ({
+            kind: error.kind,
+            message: `입력 실패. 입력한 텍스트(${redactText(args.text)})를 가리려고 원래 메시지를 기록하지 않는다`,
+            hint: error.hint
+          }),
           gesture: async () => {
             if (!target || !tapPoint) return undefined
             return { kind: 'tap', serial: target.serial, x: tapPoint.x, y: tapPoint.y }

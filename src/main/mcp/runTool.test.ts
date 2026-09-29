@@ -286,6 +286,61 @@ describe('runTool detail', () => {
     expect(Buffer.byteLength(error.details!.truncated as string)).toBeLessThanOrEqual(2048)
   })
 
+  it('truncates an oversized error message in the record but not in the tool result', async () => {
+    const sink = collector()
+    const longMessage = '가'.repeat(5000)
+
+    const result = await runTool(sink, 'app_launch', {}, async () => {
+      throw deviceError('command_failed', longMessage, '다시 시도해라')
+    })
+
+    const message = sink.records[0]!.detail.error!.message
+    expect(message.endsWith('…(잘림)')).toBe(true)
+    expect(Buffer.byteLength(message)).toBeLessThanOrEqual(2048)
+    expect(JSON.parse((result.content[0] as { text: string }).text).message).toBe(longMessage)
+  })
+
+  it('applies redactError only to the recorded error, not to the tool result', async () => {
+    const sink = collector()
+    const original = { kind: 'command_failed', message: 'failed: hunter2', hint: 'h', details: { text: 'hunter2' } }
+
+    const result = await runTool(
+      sink,
+      'ui_text',
+      {},
+      async () => {
+        throw deviceError('command_failed', original.message, original.hint, original.details)
+      },
+      { redactError: (e) => ({ kind: e.kind, message: '가림', hint: e.hint }) }
+    )
+
+    expect(sink.records[0]?.detail.error).toEqual({ kind: 'command_failed', message: '가림', hint: 'h' })
+    expect(JSON.parse((result.content[0] as { text: string }).text)).toEqual(original)
+  })
+
+  it('drops details and marks the message when redactError throws', async () => {
+    const sink = collector()
+
+    const result = await runTool(
+      sink,
+      'ui_text',
+      {},
+      async () => {
+        throw deviceError('command_failed', 'failed: hunter2', 'h', { text: 'hunter2' })
+      },
+      {
+        redactError: () => {
+          throw new Error('boom')
+        }
+      }
+    )
+
+    expect(sink.records[0]?.detail.error).toEqual({ kind: 'command_failed', message: '<가림 실패>', hint: 'h' })
+    expect(sink.records[0]?.errorKind).toBe('command_failed')
+    expect(result.isError).toBe(true)
+    expect(JSON.parse((result.content[0] as { text: string }).text).message).toBe('failed: hunter2')
+  })
+
   it('records without detail.args when the args cannot be serialized', async () => {
     const sink = collector()
     const args: Record<string, unknown> = {}
