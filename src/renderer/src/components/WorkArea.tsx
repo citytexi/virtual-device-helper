@@ -75,7 +75,7 @@ export function WorkArea({ snapshot, logDeps }: WorkAreaProps): JSX.Element {
         aria-labelledby="tab-activity"
         hidden={selected !== 'activity'}
       >
-        <ActivityTab entries={snapshot.timeline} />
+        <ActivityTab entries={snapshot.timeline} targetSerial={targetSerial(snapshot)} />
       </div>
 
       <div
