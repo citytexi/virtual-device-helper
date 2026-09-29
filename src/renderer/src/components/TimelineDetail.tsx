@@ -10,7 +10,8 @@ export interface TimelineDetailProps {
   onJumpToLogs?: (entry: ToolCallEntry) => void
 }
 
-const JUMP_DISABLED_REASON = '활성 기기의 호출만 로그로 이동할 수 있다'
+const JUMP_DISABLED_OTHER_DEVICE = '활성 기기의 호출만 로그로 이동할 수 있다'
+const JUMP_DISABLED_NO_SERIAL = '대상 기기가 정해지기 전에 끝난 호출이라 로그로 이동할 수 없다'
 
 /** `detail.args`를 들여쓴 JSON으로 보인다. 2KB 상한에 잘려 파싱이 안 되면 원문을 그대로 보인다. */
 function formatArgs(raw: string): string {
@@ -27,7 +28,10 @@ function formatArgs(raw: string): string {
  * 점프 자체가 활성 기기를 바꾸지는 않는다.
  */
 export function TimelineDetail({ entry, targetSerial, onJumpToLogs }: TimelineDetailProps): JSX.Element {
-  const canJump = entry.serial !== undefined && entry.serial !== null && entry.serial === targetSerial
+  const hasSerial = entry.serial !== undefined && entry.serial !== null
+  const canJump = hasSerial && entry.serial === targetSerial
+  // 꺼진 이유는 둘이다 — 호출에 serial이 아예 없음(기기를 정하기 전에 실패), 또는 다른 기기의 호출.
+  const disabledReason = hasSerial ? JUMP_DISABLED_OTHER_DEVICE : JUMP_DISABLED_NO_SERIAL
 
   return (
     <div className="timeline-detail">
@@ -53,12 +57,12 @@ export function TimelineDetail({ entry, targetSerial, onJumpToLogs }: TimelineDe
           type="button"
           className="btn"
           disabled={!canJump}
-          title={canJump ? undefined : JUMP_DISABLED_REASON}
+          title={canJump ? undefined : disabledReason}
           onClick={() => onJumpToLogs?.(entry)}
         >
           이 시점 로그 보기
         </button>
-        {!canJump && <span className="timeline-detail-reason">{JUMP_DISABLED_REASON}</span>}
+        {!canJump && <span className="timeline-detail-reason">{disabledReason}</span>}
       </div>
     </div>
   )

@@ -95,8 +95,15 @@ describe('ActivityTab', () => {
       />
     )
 
-    expect(screen.getByText('활성 기기로 선택됨')).toBeDefined()
+    expect(screen.getByText('활성 기기 해제됨')).toBeDefined()
+    expect(screen.queryByText('활성 기기로 선택됨')).toBeNull()
     expect(screen.queryByText(/아직 호출이 없다/)).toBeNull()
+  })
+
+  it('labels active_changed with a serial as 선택됨', () => {
+    render(<ActivityTab entries={[deviceEntry({ event: 'active_changed' })]} targetSerial={null} />)
+
+    expect(screen.getByText('emulator-5554 활성 기기로 선택됨')).toBeDefined()
   })
 
   it('expands a tool call row in place and collapses it again', () => {

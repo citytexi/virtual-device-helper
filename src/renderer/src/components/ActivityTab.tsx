@@ -27,6 +27,8 @@ function formatTime(epochMs: number): string {
 }
 
 function deviceLabel(serial: string | null, event: DeviceTimelineEvent): string {
+  // active_changed의 serial이 null이면 활성 기기가 풀린 것이다. "선택됨"으로 보이면 거꾸로 읽힌다.
+  if (event === 'active_changed' && serial === null) return '활성 기기 해제됨'
   const label = DEVICE_EVENT_LABELS[event]
   return serial ? `${serial} ${label}` : label
 }

@@ -35,6 +35,8 @@ describe('TimelineDetail', () => {
 
     const button = screen.getByRole('button', { name: '이 시점 로그 보기' }) as HTMLButtonElement
     expect(button.disabled).toBe(true)
+    expect(screen.getByText('대상 기기가 정해지기 전에 끝난 호출이라 로그로 이동할 수 없다')).toBeDefined()
+    expect(screen.queryByText('활성 기기의 호출만 로그로 이동할 수 있다')).toBeNull()
   })
 
   it('calls onJumpToLogs for the active device', () => {
