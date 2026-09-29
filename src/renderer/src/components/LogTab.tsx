@@ -14,11 +14,22 @@ import {
   type LogFilter,
   type TagCounts
 } from '../logs/logFilter'
+import { findJumpIndex } from '../logs/logJump'
 import { visibleRange } from '../logs/virtualRange'
 import { LogFilters } from './LogFilters'
 
 /** 행 높이(px). 고정이라 보이는 범위를 계산만으로 구한다. app.css의 .log-row와 맞춘다. */
 export const LOG_ROW_HEIGHT = 20
+
+/** 점프 대상 시각을 호출 시각보다 이만큼(ms) 앞으로 잡는다. 호출 직전 맥락을 함께 보이려는 것이다. */
+export const JUMP_LEAD_MS = 2000
+
+/** 활동 탭에서 "이 시점 로그 보기"로 온 점프 요청. `at` 이후 첫 줄로 가고 `highlight` 구간을 강조한다. */
+export interface LogJump {
+  id: string
+  at: number
+  highlight: { fromAt: number; toAt: number }
+}
 
 /** 태그 칩으로 보여 줄 태그 수. */
 export const TOP_TAG_LIMIT = 12
@@ -32,6 +43,10 @@ export interface LogTabProps {
   deps?: LogStreamDeps
   /** 이 구간(`entry.at` 기준, 양끝 포함) 안의 행에 data-highlight를 단다. M3-3이 채운다. */
   highlight?: { fromAt: number; toAt: number }
+  /** 점프 요청. 보이고 따라잡은(caughtUp) 뒤 첫 렌더에서 한 번만 적용한다. 같은 id는 다시 적용하지 않는다. */
+  jump?: LogJump | null
+  /** 점프를 적용했을 때 부른다. 대상 시각이 버퍼에서 밀려났으면 'evicted'다. */
+  onJumpDone?: (id: string, result: 'ok' | 'evicted') => void
 }
 
 /** 증분 필터의 상태. 렌더 중에 고쳐 쓰므로 ref에 둔다. */
@@ -112,7 +127,7 @@ function formatTime(entry: LogEntry): string {
  * 가상 스크롤한다. 맨 아래에 있으면 새 줄을 따라가고, 위로 스크롤하면 멈춘 채 "맨 아래로"
  * 버튼을 띄운다. 숨겨진 패널에서는 clientHeight가 0이라, 다시 보일 때 따라가기 위치를 다시 잡는다.
  */
-export function LogTab({ serial, visible, stream, deps, highlight }: LogTabProps): JSX.Element {
+export function LogTab({ serial, visible, stream, deps, highlight, jump, onJumpDone }: LogTabProps): JSX.Element {
   // 훅은 항상 부른다. stream을 받았으면 serial을 null로 줘서 포트를 열지 않는다.
   const own = useLogStream(stream ? null : serial, visible, deps)
   const s = stream ?? own
@@ -155,6 +170,11 @@ export function LogTab({ serial, visible, stream, deps, highlight }: LogTabProps
   const appliedRef = useRef({ epoch: -1, dropped: 0 })
   const prevVisibleRef = useRef(visible)
   const [selected, setSelected] = useState<LogEntry | null>(null)
+  // 적용한 점프가 남긴 강조 구간과 밀려남 안내. 점프 prop이 치워져도 남는다.
+  const [jumpHighlight, setJumpHighlight] = useState<LogJump['highlight'] | null>(null)
+  const [jumpEvicted, setJumpEvicted] = useState(false)
+  // 마지막으로 적용한 점프 id. 같은 id로 다시 렌더돼도 스크롤을 다시 잡지 않는다.
+  const appliedJumpRef = useRef<string | null>(null)
 
   // 세션이 바뀌면(버퍼 배열이 새로 생김, 또는 다른 기기로 바뀜) 선택·따라가기·스크롤을 처음으로 돌린다.
   // 렌더 중에 이전 값과 비교해 state를 고치는 React의 "이전 렌더 정보 저장" 패턴이다.
@@ -164,6 +184,8 @@ export function LogTab({ serial, visible, stream, deps, highlight }: LogTabProps
   if (session.rows !== s.rows || sessionSerial !== session.serial) {
     setSelected(null)
     setFollowing(true)
+    setJumpHighlight(null)
+    setJumpEvicted(false)
     setScrollTop(0)
     setSession({ rows: s.rows, serial: sessionSerial })
   }
@@ -232,6 +254,38 @@ export function LogTab({ serial, visible, stream, deps, highlight }: LogTabProps
     }
     setViewport(el.clientHeight)
   }, [count, cache.epoch, cache.dropped, visible, following, showHint])
+
+  // 점프는 위 effect 다음에 둔다 — 같은 커밋에서 따라가기가 맨 아래로 맞춘 위치를 덮어써야 한다.
+  // 숨겨졌거나 resumed 전(caughtUp false)이면 아직 오지 않은 줄 때문에 위치가 틀리니 기다린다.
+  useLayoutEffect(() => {
+    if (!jump) {
+      // 요청이 치워졌으면 같은 호출을 다시 눌렀을 때 다시 점프할 수 있다.
+      appliedJumpRef.current = null
+      return
+    }
+    if (appliedJumpRef.current === jump.id || !visible || !s.caughtUp) return
+    const el = listRef.current
+    if (!el) return
+    appliedJumpRef.current = jump.id
+
+    const found = findJumpIndex(s.rows, cache.result, jump.at, s.start)
+    setJumpHighlight(jump.highlight)
+    if (found === 'evicted') {
+      setJumpEvicted(true)
+      onJumpDone?.(jump.id, 'evicted')
+      return
+    }
+    setJumpEvicted(false)
+    if (found.index >= 0) {
+      const maxTop = Math.max(0, count * LOG_ROW_HEIGHT - el.clientHeight)
+      el.scrollTop = Math.min(found.index * LOG_ROW_HEIGHT, maxTop)
+      autoTopRef.current = el.scrollTop
+      setScrollTop(el.scrollTop)
+      setViewport(el.clientHeight)
+      setFollowing(false)
+    }
+    onJumpDone?.(jump.id, 'ok')
+  }, [jump, visible, s.caughtUp, s.rows, s.start, count, cache, onJumpDone])
 
   // 창 크기가 바뀌면 보이는 범위를 다시 잡고, 따라가는 중이면 맨 아래를 다시 맞춘다.
   // jsdom에는 ResizeObserver가 없다.
@@ -329,8 +383,15 @@ export function LogTab({ serial, visible, stream, deps, highlight }: LogTabProps
   }
 
   const range = visibleRange(scrollTop, viewport, LOG_ROW_HEIGHT, count)
+  // 적용한 점프의 강조가 prop으로 받은 강조보다 우선한다.
+  const lit = jumpHighlight ?? highlight
   return (
     <div className="log-tab">
+      {jumpEvicted && (
+        <p role="status" className="notice notice-warn">
+          로그 버퍼에서 밀려난 구간이다
+        </p>
+      )}
       {s.status === 'reconnecting' && (
         <p role="status" className="notice notice-warn">
           로그 연결을 다시 잇는 중이다
@@ -372,7 +433,7 @@ export function LogTab({ serial, visible, stream, deps, highlight }: LogTabProps
                 )
               }
               const { entry } = row
-              const lit = highlight !== undefined && entry.at >= highlight.fromAt && entry.at <= highlight.toAt
+              const inWindow = lit !== undefined && entry.at >= lit.fromAt && entry.at <= lit.toAt
               return (
                 <button
                   key={entry.seq}
@@ -380,7 +441,7 @@ export function LogTab({ serial, visible, stream, deps, highlight }: LogTabProps
                   className="log-row"
                   style={{ top }}
                   data-level={entry.level}
-                  data-highlight={lit ? 'true' : undefined}
+                  data-highlight={inWindow ? 'true' : undefined}
                   aria-current={selected === entry ? 'true' : undefined}
                   onClick={() => setSelected(entry)}
                 >

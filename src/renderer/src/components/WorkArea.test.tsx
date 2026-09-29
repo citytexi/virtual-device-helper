@@ -5,8 +5,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSnapshot, RendererApi } from '../../../shared/types/ipc'
 import type { LogDown, LogPortMeta } from '../../../shared/types/logs'
 import type { LogStreamDeps } from '../hooks/useLogStream'
-import { LOG_ROW_HEIGHT } from './LogTab'
+import { LOG_ROW_HEIGHT, LogTab } from './LogTab'
 import { WorkArea } from './WorkArea'
+
+// LogTab이 받은 props를 보려고 실제 구현을 감싼 spy로 바꾼다.
+vi.mock('./LogTab', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./LogTab')>()
+  return { ...actual, LogTab: vi.fn(actual.LogTab) }
+})
 
 // 숨겨진 로그 패널도 마운트돼 useLogStream의 effect가 돈다. logDeps를 넘기지 않는 테스트는
 // window.api로 간다.
@@ -140,6 +146,34 @@ describe('WorkArea', () => {
 
     expect(list.scrollTop).toBe(50 * LOG_ROW_HEIGHT - 200)
     expect(h.port.postMessage).toHaveBeenCalledWith({ type: 'resume', afterSeq: 49 })
+  })
+
+  it('switches to the log tab and passes a jump for the clicked call', async () => {
+    const withCall: AppSnapshot = {
+      ...snapshot,
+      timeline: [
+        {
+          kind: 'tool_call',
+          id: 'c1',
+          at: 10_000,
+          serial: 'emulator-5554',
+          tool: 'ui_tap',
+          argsSummary: '{}',
+          durationMs: 300,
+          ok: true,
+          detail: { args: '{}' }
+        }
+      ]
+    }
+    render(<WorkArea snapshot={withCall} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /ui_tap/ }))
+    await userEvent.click(screen.getByRole('button', { name: '이 시점 로그 보기' }))
+
+    expect(screen.getByRole('tab', { name: '로그' }).getAttribute('aria-selected')).toBe('true')
+    const props = vi.mocked(LogTab).mock.lastCall?.[0]
+    expect(props?.jump).toEqual({ id: 'c1', at: 8000, highlight: { fromAt: 10_000, toAt: 10_300 } })
+    expect(props?.serial).toBe('emulator-5554')
   })
 
   it('keeps only the selected tab in the tab order', () => {

@@ -1,11 +1,12 @@
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent } from 'react'
 import type { AppSnapshot } from '../../../shared/types/ipc'
 import type { LogStreamDeps } from '../hooks/useLogStream'
 import { targetSerial } from '../state/useAppState'
 import { ActivityTab } from './ActivityTab'
 import { AgentTab } from './AgentTab'
-import { LogTab } from './LogTab'
+import { JUMP_LEAD_MS, LogTab, type LogJump } from './LogTab'
+import type { ToolCallEntry } from './TimelineDetail'
 
 export interface WorkAreaProps {
   snapshot: AppSnapshot
@@ -29,6 +30,22 @@ type TabId = (typeof TABS)[number]['id']
 export function WorkArea({ snapshot, logDeps }: WorkAreaProps): JSX.Element {
   const [selected, setSelected] = useState<TabId>('activity')
   const tabRefs = useRef<Partial<Record<TabId, HTMLButtonElement | null>>>({})
+  // 점프 요청은 여기서 들고 로그 탭에 넘긴다. 활성 기기는 건드리지 않는다.
+  const [jump, setJump] = useState<LogJump | null>(null)
+
+  function jumpToLogs(entry: ToolCallEntry): void {
+    setJump({
+      id: entry.id,
+      at: entry.at - JUMP_LEAD_MS,
+      highlight: { fromAt: entry.at, toAt: entry.at + entry.durationMs }
+    })
+    setSelected('logs')
+  }
+
+  // 적용이 끝난 요청은 치운다. 그래야 같은 호출을 다시 눌렀을 때 다시 점프한다.
+  const onJumpDone = useCallback((id: string): void => {
+    setJump((current) => (current?.id === id ? null : current))
+  }, [])
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
@@ -75,7 +92,7 @@ export function WorkArea({ snapshot, logDeps }: WorkAreaProps): JSX.Element {
         aria-labelledby="tab-activity"
         hidden={selected !== 'activity'}
       >
-        <ActivityTab entries={snapshot.timeline} targetSerial={targetSerial(snapshot)} />
+        <ActivityTab entries={snapshot.timeline} targetSerial={targetSerial(snapshot)} onJumpToLogs={jumpToLogs} />
       </div>
 
       <div
@@ -85,7 +102,13 @@ export function WorkArea({ snapshot, logDeps }: WorkAreaProps): JSX.Element {
         aria-labelledby="tab-logs"
         hidden={selected !== 'logs'}
       >
-        <LogTab serial={targetSerial(snapshot)} visible={selected === 'logs'} deps={logDeps} />
+        <LogTab
+          serial={targetSerial(snapshot)}
+          visible={selected === 'logs'}
+          deps={logDeps}
+          jump={jump}
+          onJumpDone={onJumpDone}
+        />
       </div>
 
       <div role="tabpanel" className="tabpanel" id="panel-agent" aria-labelledby="tab-agent" hidden={selected !== 'agent'}>
