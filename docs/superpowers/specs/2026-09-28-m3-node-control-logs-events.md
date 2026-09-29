@@ -2,7 +2,7 @@
 id: m3-node-control-logs-events # 파일명에서 날짜 접두사를 뺀 slug
 title: M3 — 노드 기반 제어와 로그·이벤트 패널
 status: draft                   # draft | in-progress | implemented | superseded
-verified: 2026-09-28          # 코드와 대조해 확인한 날짜
+verified: 2026-09-29          # 코드와 대조해 확인한 날짜
 scope: [main, renderer, preload, mcp, shared, android]
 hosts: []                       # windows | macos — 호스트 OS마다 동작이 갈릴 때만 채운다
 supersedes:                     # 이 스펙이 대체하는 기존 스펙 id (없으면 비움)
@@ -595,6 +595,25 @@ vitest와 TDD로 간다. 실기기가 필요한 테스트는 `*.integration.test
 - 자동화 테스트가 덮는 범위: renderer 단위 테스트가 버퍼 상한·pause/resume와 `gap`(`useLogStream.test.tsx`),
   따라가기·스크롤(`LogTab.test.tsx`), 필터 조합(`logFilter.test.ts`, `LogFilters.test.tsx`)을 실기기 부하 없이
   확인하고, M3-2a의 크래시 로그 경로는 `logRead.integration.test.ts` 통합 테스트가 확인한다.
+
+### M3-3 검증 결과 (2026-09-29)
+
+- 옛 ref로 `ui_tap`을 불러 일부러 실패시킨 뒤(`stale_ref`) 활동 탭에서 그 행을 펼쳐 "이 시점 로그 보기"를
+  누르면 로그 탭이 그 호출 시각 근처로 스크롤되고 강조가 보인다 — 미검증 — 앱에서 사용자 확인 필요
+- 로그 탭을 숨긴 상태에서 같은 조작을 반복해도 같은 위치로 간다 — 미검증 — 앱에서 사용자 확인 필요
+- 에뮬레이터를 끊었다 붙이면(`adb disconnect`/`adb connect` 또는 재시작) 타임라인에 연결 끊김·연결됨 행이
+  끼인다 — 미검증 — 앱에서 사용자 확인 필요
+- `ui_text`로 `hunter2`를 넣은 뒤 활동 탭 상세와 `getSnapshot` 결과 어디에도 `hunter2`가 없다 —
+  미검증 — 앱에서 사용자 확인 필요
+- 자동화 테스트가 덮는 범위: 입력 텍스트를 가리는 것은 `runTool.test.ts`(`argsSummary`·`detail.args` 모두
+  가림, `redact`가 던지면 `<가림 실패>`)와 `ui.test.ts`(`ui_text` 호출이 어디에도 원문을 남기지 않음)가
+  실기기 없이 확인한다. 타임라인에 툴 호출과 기기·스트림·로그 이벤트가 함께 쌓이는 것은 `appState.test.ts`
+  (1000개 상한, registry의 연결·해제·활성 전환 기록), `bootstrap.test.ts`(스트림·로그 훅이 기기 이벤트로
+  이어짐), `streamManager.test.ts`(started·reconnecting·stopped 보고), `logManager.test.ts`(tail 상태 보고)가
+  확인하고, 창을 연 직후 스냅샷과 겹쳐 온 이벤트의 중복 제거와 1000개로 자르기는 `useAppState.test.tsx`가
+  확인한다. 활동 탭의 기기 이벤트 행·상세 펼침·필터는 `ActivityTab.test.tsx`·`TimelineDetail.test.tsx`·
+  `timelineFilter.test.ts`가 확인하고, 호출 시점 로그 점프는 로그 탭이 숨겨진 채 점프를 받았다가 `caughtUp`이
+  된 뒤에야 적용되는 경로를 포함해 `LogTab.test.tsx`·`WorkArea.test.tsx`가 확인한다.
 
 ## 계획 분할
 

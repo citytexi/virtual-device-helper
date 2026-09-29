@@ -2,14 +2,14 @@
 id: main-layers
 title: main 프로세스 층 구조
 status: living                  # living | superseded | deprecated
-verified: 2026-09-28
+verified: 2026-09-29
 scope: [main, mcp, android, streaming]
 hosts: []                       # windows | macos — 호스트 OS마다 구조가 갈릴 때만 채운다
 related_adr: [ADR-0005, ADR-0001, ADR-0010, ADR-0013]
 related_spec: [m1-device-core-mcp-server, m2-live-streaming, m3-node-control-logs-events]
 related_architecture:
 related_plan:
-related_code: [adbClient.ts#createAdbClient, androidDevice.ts#createAndroidDevice, registry.ts#createDeviceRegistry, registerTools.ts#registerTools, httpServer.ts#startMcpHttpServer, ipcBridge.ts#registerIpcBridge, appState.ts#createAppState, streamManager.ts#createStreamManager, bootstrap.ts#bootstrapApp, layering.test.ts]
+related_code: [adbClient.ts#createAdbClient, androidDevice.ts#createAndroidDevice, registry.ts#createDeviceRegistry, registerTools.ts#registerTools, httpServer.ts#startMcpHttpServer, ipcBridge.ts#registerIpcBridge, appState.ts#createAppState, streamManager.ts#createStreamManager, logManager.ts#createLogManager, bootstrap.ts#bootstrapApp, layering.test.ts]
 tags: [architecture, main, layers]
 ---
 
@@ -38,6 +38,15 @@ main 프로세스는 아래에서 위로 쌓인다. 타깃 디바이스를 가�
 **위층은 바로 아래층만 부른다.** MCP 툴 층은 `adbClient`나 `androidDevice`를 직접 import하지 않는다.
 `src/main/mcp/layering.test.ts`가 이 규칙을 import 검사로 지킨다. M4에서 iOS 구현이 들어와도 MCP 툴 층이
 바뀌지 않게 하려는 장치다.
+
+앱 상태 층은 스냅샷과 나란히 `TimelineEntry` 링을 들고 있다. 툴 호출과 기기·스트림·로그 이벤트를 기록한
+순서대로 한 링에 쌓는다(시각으로 다시 정렬하지 않는다). 상한은 `src/shared/limits.ts`의 `TIMELINE_LIMIT`이고,
+main의 링과 renderer `reduce`가 같은 값으로 오래된 항목부터 버린다. `appState.ts#createAppState`가 내보내는
+`recordToolCall`은 MCP 툴 층이 낸 `ToolCallRecord`를 `tool_call` 항목으로 감싸고, `recordDeviceEvent`는 기기
+관리 층의 연결·해제·활성 전환과 옆으로 붙는 파이프라인의 상태 변화를 `device` 항목으로 쌓는다. 파이프라인
+쪽은 `streamManager`의 `onState`와 `logManager`의 `onTailState` 훅으로 이어지는데, 두 훅 모두
+`bootstrap.ts#bootstrapApp`이 각 매니저 팩토리에 넘겨 앱 상태 층의 `recordDeviceEvent`로 연결한다. 링에
+항목이 쌓일 때마다 앱 상태 층은 `timeline` MainEvent 하나로 renderer에 알린다.
 
 ## 옆으로 붙는 파이프라인
 
