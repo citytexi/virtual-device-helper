@@ -1,0 +1,367 @@
+---
+id: m4-ios-simulator
+title: M4 — iOS 시뮬레이터 지원
+status: draft
+verified: 2026-09-29
+scope: [main, renderer, preload, mcp, shared, ios, streaming]
+hosts: [macos]
+supersedes:
+superseded_by:
+related_adr: [ADR-0014, ADR-0015, ADR-0016, ADR-0005, ADR-0003, ADR-0008, ADR-0010, ADR-0011, ADR-0012, ADR-0013]
+related_spec: [m1-device-core-mcp-server, m2-live-streaming, m3-node-control-logs-events, agent-guide]
+related_architecture: main-layers
+related_plan:
+related_code: [device.ts#Device, device.ts#DeviceInfo, device.ts#UiNode, device.ts#AvdEntry, errors.ts#ToolErrorKind, registry.ts#createDeviceRegistry, avdController.ts#AvdController, index.ts#createDeviceStack, bootstrap.ts#assembleWithoutSdk, nodeRefs.ts, logManager.ts#LogManagerDeps, streamManager.ts#StreamManagerDeps, stream.ts#StreamDown, stream.ts#ControlIntent, streamDecoder.ts, layering.test.ts, agentGuide.ts]
+tags: [spec, ios, simulator, axe]
+---
+
+# M4 — iOS 시뮬레이터 지원
+
+> 상태·날짜·관련 문서는 위 frontmatter가 단일 출처. 본문은 설계 내용에 집중한다.
+
+## 목표
+
+iOS 시뮬레이터를 Android 에뮬레이터와 거의 같은 수준으로 다룬다. 에이전트는 MCP로 시뮬레이터를
+부팅하고, 앱을 설치·실행하고, 노드로 조작하고, 스크린샷과 로그로 검증한다. 사람은 앱 창에서 iOS
+화면을 실시간으로 보고 마우스로 조작한다.
+
+로드맵은 M4를 "`simctl` 기반 `Device` 구현체"로 적었다. 그러나 `simctl`에는 입력 주입, 접근성
+트리, 실시간 스트림이 없다. 이 세 가지는 AXe로 채운다([ADR-0014](../../adr/0014-ios-control-via-axe.md)).
+
+## 범위
+
+M4는 세 단계로 나눠 계획하고 구현한다. 스펙은 하나, 계획은 단계마다 하나다.
+
+**M4-1 — 기반.** iOS 시뮬레이터가 기기 목록에 뜨고 앱 수명주기와 관찰이 된다.
+
+- `Device` 인터페이스를 넓힌다([ADR-0015](../../adr/0015-platform-difference-surface.md)).
+- `simctlClient`, `IosDevice`(입력·`dumpUi` 제외), simctl 추적 폴링, 시뮬레이터 목록·부팅·종료.
+- MCP `log_read`와 앱 로그 패널에 iOS 로그.
+- AXe 스파이크. 결과를 이 스펙의 "스파이크 결과"에 남기고 M4-2·M4-3 설계를 고친다.
+- 완료 기준: 에이전트가 MCP로 시뮬레이터를 부팅하고, `.app`을 설치·실행하고, 스크린샷과 로그를
+  읽는다. 앱 로그 패널에 iOS 로그가 흐른다.
+
+**M4-2 — 입력과 노드.**
+
+- `axeClient`, `IosDevice`의 `tap`/`swipe`/`inputText`/`pressKey`/`dumpUi`.
+- `ui_find`, ref 탭, [ADR-0011](../../adr/0011-node-ref-revalidation.md) 재검증이 iOS에서 돈다.
+- 완료 기준: 에이전트가 `ui_find` → `ui_tap` → `ui_text`로 iOS 앱의 입력 흐름을 끝낸다.
+
+**M4-3 — 스트리밍과 화면 입력.**
+
+- `StreamSession` 인터페이스, `AxeStreamSession`, renderer JPEG 경로
+  ([ADR-0016](../../adr/0016-stream-codec-per-session.md)).
+- 화면 `ControlIntent`를 AXe로 보낸다.
+- 완료 기준: 앱 창에 iOS 화면이 실시간으로 보이고 마우스로 조작된다.
+
+**제외**
+
+- 실기기 iOS.
+- Windows 호스트의 iOS. Windows에서는 iOS 스택을 조립하지 않는다.
+- 시뮬레이터 생성·삭제(`simctl create`/`delete`). AVD 생성처럼 별도 스펙으로 둔다.
+- 오디오, 녹화, 클립보드 동기화.
+- 여러 기기 동시 스트림. M2 제외 범위를 그대로 따른다.
+
+## 외부 도구
+
+사용자가 설치한 도구를 쓴다. 번들하지 않는다. [ADR-0003](../../adr/0003-no-bundled-android-sdk.md)의
+Android SDK 방침과 같다.
+
+| 도구 | 쓰는 곳 | 없을 때 |
+|---|---|---|
+| Xcode의 `xcrun simctl` | 기기 추적, 수명주기, 앱, 권한, 스크린샷, 로그 | iOS 스택을 조립하지 않는다 |
+| AXe (`brew install cameroncooke/axe/axe`) | 입력, 노드 트리, 스트림 | 해당 호출만 `ios_tool_not_found` |
+
+## 인터페이스
+
+### `Device` 변경 (M4-1)
+
+`src/shared/types/device.ts`를 고친다. 원칙은 [ADR-0005](../../adr/0005-device-interface-abstraction.md)
+그대로다. 위층은 타깃 이름으로 분기하지 않는다.
+
+```ts
+export type Platform = 'android' | 'ios'
+
+export interface DeviceInfo {
+  serial: string
+  platform: Platform
+  model: string
+  /** 사람이 읽는 OS 버전. Android "14 (API 34)", iOS "26.0". */
+  osVersion: string
+  width: number
+  height: number
+}
+
+export interface UiNode {
+  // ...기존 필드
+  /** 입력하면 text가 바뀌는 노드. 지문에서 text를 뺄지 이 필드로 정한다. */
+  editable: boolean
+}
+
+export interface VirtualDeviceEntry {
+  platform: Platform
+  /** AVD 이름 또는 시뮬레이터 이름. */
+  name: string
+  running: boolean
+  serial: string | null
+  osVersion: string | null
+}
+
+export interface Device {
+  /** Android는 adb serial, iOS는 시뮬레이터 UDID. */
+  readonly serial: string
+  /** 표시와 기록에만 쓴다. 위층이 이 값으로 분기하지 않는다. */
+  readonly platform: Platform
+  /** .apk 파일 또는 .app 디렉토리. 반환값은 패키지명 또는 bundle id. */
+  install(appPath: string, opts?: InstallOpts): Promise<string | null>
+  // ...나머지 시그니처는 그대로
+}
+```
+
+- `DeviceInfo.apiLevel`은 없앤다. 쓰는 곳은 `androidDevice.ts`뿐이다.
+- `serial` 이름은 유지한다. 바꾸면 registry·MCP 툴·IPC·renderer를 모두 고치는데 얻는 것이 없다.
+  UDID와 `emulator-5554` 형식은 겹치지 않는다.
+- `AvdEntry`는 `VirtualDeviceEntry`로 바꾼다. `AvdController`는 `VirtualDeviceCatalog`의 한
+  구현이 된다. 시뮬레이터 쪽 구현이 하나 더 붙는다.
+
+### 에러 (M4-1)
+
+`ToolErrorKind`에 둘을 더한다.
+
+- `unsupported` — 이 기기가 할 수 없는 동작. 메시지에 플랫폼과 이유를 넣는다.
+- `ios_tool_not_found` — `xcrun` 또는 `axe`가 없다. 메시지에 설치 안내를 넣는다.
+
+능력 조회 API(`capabilities()`)는 만들지 않는다. 이유는 ADR-0015에 있다.
+
+### iOS에서 달라지는 `Device` 동작
+
+| 메서드 | iOS 동작 |
+|---|---|
+| `install(appPath)` | `simctl install`. `.app`의 `Info.plist`에서 `CFBundleIdentifier`를 읽어 돌려준다 |
+| `uninstall` / `stop` | `simctl uninstall` / `simctl terminate` |
+| `launch(pkg, activity?)` | `simctl launch`. `activity`가 오면 `unsupported` |
+| `clearData(pkg)` | 앱을 종료하고 `simctl get_app_container <udid> <bundle> data` 안쪽을 비운다 |
+| `grantPermission(pkg, permission)` | `simctl privacy <udid> grant <permission> <bundle>`. `permission`은 `photos`, `camera`, `location` 같은 서비스 이름 |
+| `screenshot` | `simctl io <udid> screenshot`. 축소는 Android와 같은 `resizeImage.ts`를 쓴다 |
+| `readLogs` / `clearLogs` | 아래 "로그" 절 |
+| `displayFrame` | point 단위 화면 크기. `describe-ui` 루트 `AXFrame`에서 읽는다 |
+| `tap` / `swipe` / `inputText` / `pressKey` / `dumpUi` | 아래 "입력과 노드" 절. M4-1에서는 `unsupported` |
+
+MCP 툴 인자 이름 `pkg`는 그대로 두고, 설명을 "패키지명 또는 bundle id"로 넓힌다. `app_install`의
+설명과 `app_grant_permission`의 예시에 두 플랫폼을 함께 적는다. `src/shared/agentGuide.ts`에 iOS
+차이(`back` 없음, `activity` 없음, 권한 이름)를 더하고 `guideConsistency.test.ts`를 통과시킨다.
+
+## 동작
+
+### main 층 구조
+
+```
+adbClient    → AndroidDevice ┐
+simctlClient → IosDevice     ├→ DeviceRegistry → mcpTools → mcpHttpServer → ipcBridge
+axeClient ───→ IosDevice     ┘
+```
+
+- `simctlClient`(`src/main/ios/simctlClient.ts`)는 `xcrun simctl` 문법을 아는 유일한 층이다.
+  `exec(args)`와 `stream(args)`를 가진다. 모양은 `adbClient`와 같다.
+- `axeClient`(`src/main/ios/axeClient.ts`)는 `axe` 문법을 아는 유일한 층이다. 모든 호출에
+  `--udid`를 붙인다.
+- 두 클라이언트 모두 셸을 거치지 않고 `execFile`/`spawn`으로 부른다.
+- `IosDevice`(`src/main/device/iosDevice.ts`)가 두 클라이언트 출력을 파싱한다. 파서는
+  `src/main/device/parsers/`에 둔다.
+- mcp 층은 `ios/`와 `iosDevice`를 import하지 못한다. `layering.test.ts`에 규칙을 더한다.
+
+### 기기 추적
+
+- `simctl`에는 `track-devices` 같은 스트림이 없다. `simctl list devices booted -j`를 2초마다
+  폴링하고 이전 결과와 비교해 연결·해제를 만든다.
+- registry는 하나다. `DeviceRegistryDeps.track` 콜백에 `platform`을 더하고,
+  `createDevice(serial, platform)`이 구현체를 고른다. 이 분기는 조립 지점(`createDeviceStack`)에만
+  있다.
+- 폴링이 연속 3회 실패하면 `tracking_failed`를 낸다. adb 쪽과 같은 이벤트라 renderer는 이미
+  처리한다.
+
+### 조립
+
+- 지금 `bootstrap.ts`는 Android SDK가 없으면 `assembleWithoutSdk`로 MCP 서버 없이 앱을 띄운다.
+- 바꾼 뒤에는 플랫폼마다 따로 조립한다. Android와 iOS 중 하나라도 준비되면 MCP 서버를 띄운다.
+- iOS 스택 조건: `process.platform === 'darwin'`이고 `xcrun simctl help`가 성공한다.
+- `axe`가 없어도 M4-1 기능은 모두 돈다. 입력·`dumpUi`·스트림만 `ios_tool_not_found`를 낸다.
+- 두 플랫폼 모두 준비되지 않았을 때의 화면(`SdkMissing`)은 iOS 안내를 함께 보여 준다.
+
+### 로그
+
+**MCP `log_read`**
+
+- `readLogs`는 `simctl spawn <udid> log show --style ndjson --start <시각>`이다.
+- 시작 시각은 `since`가 있으면 그것, 없으면 마지막 `clearLogs` 워터마크, 그것도 없으면 최근 5분이다.
+- `filter`는 `--predicate`로 좁혀 `log show`의 비용을 줄인다.
+- `clearLogs`는 iOS 통합 로그를 지울 수 없어서 워터마크 시각만 기록한다. 에이전트가 보는 의미는
+  Android와 같다.
+- 압축 형식과 예산([ADR-0008](../../adr/0008-log-read-response-shape.md))은 mcp 층에 있어 그대로다.
+
+**`LogLine` 매핑**
+
+| iOS ndjson | `LogLine` |
+|---|---|
+| `messageType` `Debug` / `Info` / `Default` / `Error` / `Fault` | `level` `D` / `I` / `I` / `E` / `F` |
+| `subsystem`, 비었으면 프로세스 이름 | `tag` |
+| `processID` | `pid` |
+| `timestamp` | `timestamp`, `MM-DD HH:mm:ss.SSS`로 바꾼다 |
+| `eventMessage` | `message` |
+
+iOS에는 W와 V에 해당하는 레벨이 없다. 쓰지 않는다.
+
+**앱 로그 패널**
+
+- `LogManagerDeps`의 `createTail`/`seedPids`/`pidof`는 adb 전용이다. `iosLogDeps.ts`가 iOS 쪽을
+  구현하고, 조립 지점의 라우터가 serial의 platform으로 고른다. `logManager` 본체는 그대로다.
+- tail은 `simctl spawn <udid> log stream --style ndjson`이다. 기본은 info 이상이다.
+- `seedPids`와 `pidof`는 `simctl spawn <udid> launchctl list`를 쓴다.
+  `UIKitApplication:<bundle id>[...]` 줄에서 bundle id와 pid를 함께 얻는다.
+- iOS 로그는 양이 많다([ADR-0013](../../adr/0013-log-transport-dedicated-port.md)). 링 버퍼 용량은
+  그대로 두고, M4-1 완료 검증 때 초당 줄 수를 재어 넘치면 그때 조정한다.
+
+### 입력과 노드 (M4-2)
+
+**좌표.** AXe는 point 좌표를 쓴다. `IosDevice.displayFrame()`이 point 크기를 주므로 mcp 층의
+`toPixel`은 고치지 않아도 point를 낸다. 스크린샷은 실제 픽셀이지만 툴 좌표가 0..1이라
+([ADR-0012](../../adr/0012-normalized-tool-coordinates.md)) 상관없다.
+
+**입력 매핑**
+
+| `Device` | AXe |
+|---|---|
+| `tap(x, y)` | `tap -x -y` |
+| `swipe(x1, y1, x2, y2, durationMs)` | `swipe --start-x --start-y --end-x --end-y --duration <초>` |
+| `inputText(text)` | `type --stdin`. 텍스트를 인자로 넘기지 않는다 |
+| `pressKey('home')` | `button home` |
+| `pressKey('enter')` / `pressKey('tab')` | `key 40` / `key 43` (HID keycode) |
+| `pressKey('back')` | `unsupported` |
+
+**노드: `describe-ui` → `UiNode`**
+
+| AX 속성 | `UiNode` |
+|---|---|
+| `type` (Button, TextField, StaticText …) | `className` |
+| `AXUniqueId` (`accessibilityIdentifier`) | `resourceId` |
+| `AXLabel` | `contentDesc` |
+| `AXValue`, StaticText는 `AXLabel` | `text` |
+| `AXFrame` ÷ `displayFrame` | `bounds` |
+| `enabled` | `enabled` |
+| 역할이 Button·Link·Cell·Switch·TextField 계열 | `clickable` |
+| 역할이 ScrollView·Table·CollectionView | `scrollable` |
+| 역할이 TextField·SecureTextField·TextView | `editable` |
+| 얻을 수 없다 | `focused`는 `false` |
+
+- 빈 Group 버리기, `index`/`parentIndex` 규칙은 Android `parseUiDump`와 같은 원칙이다.
+- `nodeRefs.ts`는 지금 `className`이 `EditText`로 끝나는지로 text를 뺀다. 이것을 `editable`
+  필드로 바꾼다. Android 파서는 `EditText` 계열에 `editable: true`를 채운다.
+  ADR-0011에 변경 메모를 단다.
+
+### 스트리밍과 화면 입력 (M4-3)
+
+**main.** `StreamManagerDeps.createSession`이 돌려주는 타입을 `ScrcpySession`에서 `StreamSession`
+인터페이스(`start`/`stop`/`send(intent)`와 핸들러)로 올린다. `ScrcpySession`과 `AxeStreamSession`이
+구현한다. 재연결·포트 관리는 `streamManager` 본체에 그대로 둔다. 어느 세션을 쓸지는 조립 지점이
+platform으로 고른다.
+
+`AxeStreamSession`은 `axe stream-video --udid <udid> --format mjpeg --fps <n> --scale <s> --quality <q>`
+를 띄우고 stdout을 JPEG 한 장 단위로 자른다. 시작값은 fps 30, scale 0.5, quality 70이다.
+
+**포트 메시지** (`src/shared/types/stream.ts`)
+
+```ts
+export type StreamDown =
+  | { type: 'status'; status: SessionStatus }
+  | { type: 'session'; width: number; height: number; codec: 'h264' | 'jpeg'; keys: DeviceKey[] }
+  | { type: 'packet'; config: boolean; key: boolean; ptsUs: number | null; data: Uint8Array }
+  /** JPEG 한 장. 크기는 session 메시지가 이미 알렸다. */
+  | { type: 'frame'; data: Uint8Array }
+```
+
+**renderer.**
+
+- `session.codec`으로 디코더를 고른다. `h264`는 지금의 `streamDecoder`, `jpeg`는 새 `jpegRenderer`다.
+- `jpegRenderer`는 `createImageBitmap(blob)`으로 디코드해 canvas에 그린다. 디코드 중 새 프레임이
+  오면 최신 한 장만 남긴다. 지연이 쌓이지 않게 한다.
+- 툴바 키 버튼은 `session.keys`에 있는 것만 그린다. renderer는 `platform`을 읽지 않는다.
+
+**화면 입력.** 변환은 `axeControl.ts`에 모은다. Android의 `scrcpyProtocol`과 같은 자리다.
+
+- AXe `touch`에는 move가 없고 호출마다 프로세스가 뜬다. 그래서 제스처를 main에 모은다.
+  - `down`: 시작점과 시각을 적는다.
+  - `move`: 끝점만 갱신한다.
+  - `up`: 이동이 작으면 `tap`, 크면 `swipe`(시작점→끝점, `duration`은 실제 경과 시간).
+- 알려진 한계: 드래그가 손을 뗀 뒤에 한 번에 반영되고, 곡선 경로가 직선이 된다. 스파이크에서
+  `batch --stdin`이 열린 세션으로 단계를 바로 실행하면 그쪽으로 바꾼다.
+- `VideoPoint`(JPEG 프레임 픽셀)를 `displayFrame`(point) 비율로 바꾼다.
+- `scroll`은 그 위치의 짧은 `swipe`다. 방향은 `vScroll`/`hScroll`의 부호로 정한다.
+- `text`는 `type`, `key`는 HID keycode 표를 쓴다. `power`는 `button lock`이다. iOS `keys`에는
+  `back`, `app_switch`, `volume_up`, `volume_down`이 없다.
+
+**스트림 실패.** 지금처럼 스크린샷 PNG로 강등한다.
+
+## 실패 처리
+
+| 상황 | 결과 |
+|---|---|
+| macOS가 아니거나 `xcrun simctl`이 없다 | iOS 스택을 조립하지 않는다. Android는 그대로다 |
+| `axe`가 없다 | 입력·`dumpUi`·스트림 호출이 `ios_tool_not_found`. 설치 안내 포함 |
+| iOS에 없는 동작(`back`, `activity`) | `unsupported`. 플랫폼과 이유 포함 |
+| simctl 폴링 연속 실패 | `tracking_failed`. renderer가 추적 중단을 표시한다 |
+| `.app`에서 bundle id를 못 읽는다 | `apk_path_invalid`를 `app_path_invalid`로 이름을 넓혀 쓴다 |
+| 노드 재검증 실패 | Android와 같은 `stale_ref` |
+| `stream-video` 종료 | 기존 재연결 정책, 실패하면 스크린샷으로 강등 |
+
+## 테스트
+
+- **단위.** `fakeSimctl()`, `fakeAxe()`를 `fakeAdb()`와 같은 모양으로 만든다. `IosDevice`, 추적
+  폴링, `iosLogDeps`, `AxeStreamSession`, `axeControl`을 실기기 없이 검증한다.
+- **fixture.** 파서 테스트는 실제 출력만 쓴다. `simctl list -j`, `log show`/`log stream` ndjson,
+  `launchctl list`, `describe-ui` JSON, MJPEG stdout 조각을 M4-1 스파이크에서 채집해
+  `__fixtures__/ios/`에 둔다. 손으로 지어낸 fixture는 쓰지 않는다.
+- **계약.** 같은 `Device` 시나리오를 `AndroidDevice`(가짜 adb)와 `IosDevice`(가짜 simctl·axe)에
+  돌린다. 두 구현의 의미가 같은지 본다.
+- **층.** `layering.test.ts`: mcp 층은 `ios/`·`iosDevice`를 import하지 못한다. renderer는
+  `platform`을 읽지 않는다.
+- **renderer.** `jpegRenderer`는 jsdom에서 `createImageBitmap`을 목으로 바꿔 최신 프레임만 남기는지
+  본다.
+- **통합.** `*.ios.integration.test.ts`는 부팅된 시뮬레이터와 `axe`가 있을 때만 돈다. 대상 앱은
+  기본 설치된 Settings(`com.apple.Preferences`)다. 테스트용 앱을 저장소에 두지 않는다.
+- **완료 검증.** 단계마다 앱을 띄우고 MCP 클라이언트로 완료 기준 시나리오를 돌려 이 스펙에 남긴다.
+
+## 파일 구성
+
+| 파일 | 역할 | 단계 |
+|---|---|---|
+| `src/shared/types/device.ts` | `Platform`, `DeviceInfo`, `UiNode.editable`, `VirtualDeviceEntry` | M4-1 |
+| `src/shared/types/errors.ts` | `unsupported`, `ios_tool_not_found`, `app_path_invalid` | M4-1 |
+| `src/main/ios/simctlClient.ts` | `xcrun simctl` 경계 | M4-1 |
+| `src/main/ios/trackSimulators.ts` | `list devices booted -j` 폴링과 비교 | M4-1 |
+| `src/main/ios/simulatorCatalog.ts` | 시뮬레이터 목록·부팅·종료 | M4-1 |
+| `src/main/device/iosDevice.ts` | `Device`의 iOS 구현 | M4-1, M4-2 |
+| `src/main/device/parsers/` | simctl·log·launchctl·describe-ui 파서 | M4-1, M4-2 |
+| `src/main/logs/iosLogDeps.ts` | 로그 패널 iOS deps | M4-1 |
+| `src/main/ios/axeClient.ts` | `axe` 경계 | M4-2 |
+| `src/main/stream/axeStreamSession.ts` | MJPEG 스트림 세션 | M4-3 |
+| `src/main/stream/axeControl.ts` | `ControlIntent` → AXe | M4-3 |
+| `src/renderer/src/stream/jpegRenderer.ts` | JPEG 프레임 그리기 | M4-3 |
+
+`docs/architecture/main-layers.md`에 iOS 줄을 M4-1에서 더하고 `verified`를 갱신한다.
+
+## 스파이크 (M4-1 첫 작업)
+
+확인할 것:
+
+1. `describe-ui` JSON의 실제 필드 이름과 트리 모양. SwiftUI 앱과 UIKit 앱의 차이.
+2. `describe-ui` 한 번의 소요 시간. 재검증마다 부르므로 1초를 넘기면 설계를 고친다.
+3. `type`이 한글·이모지를 넣는가. 막히면 `simctl pbcopy`와 붙여넣기 우회를 검토한다.
+4. `stream-video --format mjpeg`의 stdout 형식(multipart 경계인지 JPEG 연결인지), 실제 fps, 지연.
+5. `batch --stdin`이 EOF 전에 단계를 하나씩 실행하는가.
+6. Xcode 26 시뮬레이터에서 위가 모두 도는가.
+
+결과는 이 절 아래에 적고, 어긋난 설계는 본문을 고친다.
+
+## 열린 질문
+
+- 없음. 스파이크 결과에 따라 입력·스트림 세부가 바뀔 수 있다.
