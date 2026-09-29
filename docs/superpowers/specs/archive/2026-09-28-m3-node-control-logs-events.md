@@ -68,7 +68,7 @@ M1 스펙 로드맵의 M3 자리다. 로드맵의 M3는 "logcat 실시간 tail, 
 
 ## 구조
 
-main 층 구조는 [main-layers](../../architecture/main-layers.md)를 따른다. 이번에 바뀌는 곳은 이렇다.
+main 층 구조는 [main-layers](../../../architecture/main-layers.md)를 따른다. 이번에 바뀌는 곳은 이렇다.
 
 ```
                  main                                                     preload          renderer
@@ -83,10 +83,10 @@ MCP 툴      nodeRefs(스냅샷·재검증) ── ui.ts(ref | 0..1 좌표)     
 ```
 
 - **노드 제어**는 기기 구현 층과 MCP 툴 층에서 끝난다. 파서가 노드마다 부모와 정규화 bounds를 만든다.
-  MCP 툴 층의 `nodeRefs`가 스냅샷과 재검증을 맡는다. 근거는 [ADR-0011](../../adr/0011-node-ref-revalidation.md),
-  [ADR-0012](../../adr/0012-normalized-tool-coordinates.md).
+  MCP 툴 층의 `nodeRefs`가 스냅샷과 재검증을 맡는다. 근거는 [ADR-0011](../../../adr/0011-node-ref-revalidation.md),
+  [ADR-0012](../../../adr/0012-normalized-tool-coordinates.md).
 - **로그**는 층 옆에 붙는 파이프라인이다. 스트림과 같은 자리다. tail과 버퍼의 수명은 기기 연결을 따르고,
-  포트는 전달만 맡는다. 근거는 [ADR-0013](../../adr/0013-log-transport-dedicated-port.md).
+  포트는 전달만 맡는다. 근거는 [ADR-0013](../../../adr/0013-log-transport-dedicated-port.md).
 - **타임라인**은 앱 상태 층의 기존 툴 호출 링을 넓힌 것이다. 새 통로가 없다.
 - MCP 툴 층은 여전히 adb를 모른다. `log_read`의 앱 필터는 `ToolContext`에 선언한 함수 시그니처
   `pidHistory`로 pid를 받는다. `ToolContext`는 `src/main/logs/`의 타입을 import하지 않는다.
@@ -250,7 +250,7 @@ type Gesture =
   app_launch로 먼저 실행해라"다. 설치만 확인하는 기존 hint와 구분한다.
 - pid가 재사용되면 같은 pid의 다른 프로세스 줄이 섞일 수 있다. `log_read`에서는 받아들인다. 로그 탭은 아래
   `LogEntry.pkg`로 이 문제를 피한다.
-- 응답 모양은 [ADR-0008](../../adr/0008-log-read-response-shape.md) 그대로다.
+- 응답 모양은 [ADR-0008](../../../adr/0008-log-read-response-shape.md) 그대로다.
 
 ### 로그 파이프라인
 
