@@ -1,20 +1,22 @@
 // @vitest-environment jsdom
 import { act, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Gesture, MainEvent, ToolCallRecord } from '../../../shared/types/ipc'
+import type { Gesture, MainEvent, TimelineEntry } from '../../../shared/types/ipc'
 import { GESTURE_VISIBLE_MS, GestureOverlay, gestureToVideo } from './GestureOverlay'
 
 function toolCall(id: string, gesture?: Gesture): MainEvent {
-  const record: ToolCallRecord = {
+  const entry: TimelineEntry = {
+    kind: 'tool_call',
     id,
+    at: 0,
     tool: gesture?.kind === 'swipe' ? 'ui_swipe' : 'ui_tap',
     argsSummary: '{}',
-    startedAt: 0,
     durationMs: 1,
     ok: true,
+    detail: { args: '{}' },
     ...(gesture ? { gesture } : {})
   }
-  return { type: 'tool_call', record }
+  return { type: 'timeline', entry }
 }
 
 function bus() {
@@ -51,6 +53,17 @@ describe('gestureToVideo', () => {
 describe('GestureOverlay', () => {
   const video = { width: 540, height: 1200 }
 
+  it('draws the gesture of a timeline tool_call entry', () => {
+    const b = bus()
+    const { container } = render(<GestureOverlay serial="emulator-5554" video={video} subscribe={b.subscribe} />)
+
+    b.emit(toolCall('1', { kind: 'tap', serial: 'emulator-5554', x: 0.5, y: 0.25 }))
+
+    const circle = container.querySelector('circle.gesture-tap')
+    expect(circle?.getAttribute('cx')).toBe('270')
+    expect(circle?.getAttribute('cy')).toBe('300')
+  })
+
   it('draws a tap of its own device', () => {
     const b = bus()
     const { container } = render(<GestureOverlay serial="emulator-5554" video={video} subscribe={b.subscribe} />)
@@ -80,7 +93,14 @@ describe('GestureOverlay', () => {
   it.each([
     ['another device', toolCall('1', { kind: 'tap', serial: 'emulator-5556', x: 0.1, y: 0.1 })],
     ['a call without a gesture', toolCall('1')],
-    ['a non tool_call event', { type: 'active_changed', serial: 'emulator-5554' } as MainEvent]
+    ['a non timeline event', { type: 'active_changed', serial: 'emulator-5554' } as MainEvent],
+    [
+      'a device timeline entry',
+      {
+        type: 'timeline',
+        entry: { kind: 'device', id: 'd', at: 0, serial: 'emulator-5554', event: 'stream_started' }
+      } as MainEvent
+    ]
   ])('draws nothing for %s', (_name, event) => {
     const b = bus()
     const { container } = render(<GestureOverlay serial="emulator-5554" video={video} subscribe={b.subscribe} />)

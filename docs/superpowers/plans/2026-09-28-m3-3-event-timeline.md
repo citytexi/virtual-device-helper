@@ -1,10 +1,10 @@
 ---
 id: m3-3-event-timeline         # 파일명에서 날짜 접두사를 뺀 slug
 title: M3-3 — 이벤트 타임라인
-status: draft                   # draft | in-progress | done | abandoned | superseded
+status: done                    # draft | in-progress | done | abandoned | superseded
 type: work-order                # work-order | handoff
 created: 2026-09-28
-updated: 2026-09-28
+updated: 2026-09-29
 owner: virtual-device-helper 팀
 scope: [main, mcp, renderer, shared, docs]
 hosts: []                       # windows | macos — 호스트 OS마다 작업이 갈릴 때만 채운다

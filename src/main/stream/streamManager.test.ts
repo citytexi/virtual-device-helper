@@ -46,8 +46,10 @@ function harness(opts: { startResults?: Array<'ok' | 'fail' | 'pending'>; connec
   let resolveSleep: (() => void) | null = null
   const sleeps: number[] = []
   let id = 0
+  const states: Array<[string, string]> = []
 
   const manager = createStreamManager({
+    onState: (serial, state) => states.push([serial, state]),
     createSession: (serial, handlers) => {
       const outcome = results.shift() ?? 'ok'
       // 'pending'은 close()가 불릴 때까지 끝나지 않는 start다. 실제 세션처럼 시작 중 닫히면 던진다.
@@ -95,7 +97,7 @@ function harness(opts: { startResults?: Array<'ok' | 'fail' | 'pending'>; connec
     await new Promise((r) => setImmediate(r))
   }
 
-  return { manager, sessions, ports, posted, sleeps, wake }
+  return { manager, sessions, ports, posted, sleeps, wake, states }
 }
 
 const endError = deviceError('command_failed', '비디오 스트림이 끊겼다', '다시 연결해라')
@@ -321,6 +323,82 @@ describe('createStreamManager', () => {
 
     expect(h.ports[0]?.sent.some((m) => m.type === 'session')).toBe(false)
     expect(h.ports[1]?.sent.some((m) => m.type === 'session')).toBe(false)
+  })
+})
+
+describe('createStreamManager onState', () => {
+  it('reports started when streaming, reconnecting on retry, stopped on close and failure', async () => {
+    const h = harness({ startResults: ['ok', 'fail', 'ok', 'fail'] })
+
+    await h.manager.open('emulator-5554')
+    expect(h.states).toEqual([['emulator-5554', 'started']])
+
+    // 끊김 → 재시도 1회 실패 → 재시도 2회 성공
+    h.sessions[0]?.handlers.onEnded(endError)
+    await h.wake()
+    await h.wake()
+    await vi.waitFor(() => expect(h.states).toHaveLength(4))
+    expect(h.states.slice(1)).toEqual([
+      ['emulator-5554', 'reconnecting'],
+      ['emulator-5554', 'reconnecting'],
+      ['emulator-5554', 'started']
+    ])
+
+    // 닫힘 → stopped
+    await h.manager.stop()
+    expect(h.states.at(-1)).toEqual(['emulator-5554', 'stopped'])
+
+    // 첫 시작이 실패해도 stopped
+    await h.manager.open('emulator-5556')
+    expect(h.states.at(-1)).toEqual(['emulator-5556', 'stopped'])
+  })
+
+  it('reports stopped when the first start fails, and does not repeat it on close', async () => {
+    const h = harness({ startResults: ['fail'] })
+
+    await h.manager.open('emulator-5554')
+    await h.manager.stop()
+
+    expect(h.states).toEqual([['emulator-5554', 'stopped']])
+  })
+
+  it('reports stopped once when every reconnect attempt fails', async () => {
+    const h = harness({ startResults: ['ok', 'fail', 'fail', 'fail'] })
+    await h.manager.open('emulator-5554')
+
+    h.sessions[0]?.handlers.onEnded(endError)
+    await h.wake()
+    await h.wake()
+    await h.wake()
+    await vi.waitFor(() => expect(h.states.at(-1)).toEqual(['emulator-5554', 'stopped']))
+    await h.manager.stop()
+
+    expect(h.states.map(([, state]) => state)).toEqual(['started', 'reconnecting', 'reconnecting', 'reconnecting', 'stopped'])
+  })
+
+  it('reports stopped for the previous device when another opens, and on disconnect', async () => {
+    const h = harness()
+    await h.manager.open('emulator-5554')
+    await h.manager.open('emulator-5556')
+    await h.manager.handleDisconnect('emulator-5556')
+
+    expect(h.states).toEqual([
+      ['emulator-5554', 'started'],
+      ['emulator-5554', 'stopped'],
+      ['emulator-5556', 'started'],
+      ['emulator-5556', 'stopped']
+    ])
+  })
+
+  it('does not report stopped for a session closed before it ever started', async () => {
+    const h = harness({ startResults: ['pending'] })
+    const opening = h.manager.open('emulator-5554')
+    await vi.waitFor(() => expect(h.sessions).toHaveLength(1))
+
+    await h.manager.stop()
+    await opening
+
+    expect(h.states).toEqual([])
   })
 })
 

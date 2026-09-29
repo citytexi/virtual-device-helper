@@ -1,8 +1,8 @@
 ---
 id: m3-node-control-logs-events # 파일명에서 날짜 접두사를 뺀 slug
 title: M3 — 노드 기반 제어와 로그·이벤트 패널
-status: draft                   # draft | in-progress | implemented | superseded
-verified: 2026-09-28          # 코드와 대조해 확인한 날짜
+status: implemented             # draft | in-progress | implemented | superseded
+verified: 2026-09-29          # 코드와 대조해 확인한 날짜
 scope: [main, renderer, preload, mcp, shared, android]
 hosts: []                       # windows | macos — 호스트 OS마다 동작이 갈릴 때만 채운다
 supersedes:                     # 이 스펙이 대체하는 기존 스펙 id (없으면 비움)
@@ -356,6 +356,11 @@ type TimelineEntry =
   - `summarise?: (payload) => string` — 결과 요약.
   - `redact?: (args) => unknown` — 기록 전에 인자를 가린다. `argsSummary`와 `detail.args`가 모두 가린 값을 쓴다.
     `ui_text`는 `text`를 `"<N자 가림>"`으로 바꾼다. 비밀번호가 타임라인에 남지 않게 하기 위해서다.
+  - `redactError?: (error) => ToolError` — 실패 기록의 `detail.error`에만 적용한다. 에이전트에게 돌려주는 MCP
+    에러 결과는 바꾸지 않는다. 던지면 `details`를 버리고 message를 `"<가림 실패>"`로 둔다. `ui_text`는 원문이
+    에러의 message·details에 원문 또는 adb용으로 이스케이프한 형태로 섞여 들어오므로(`escapeInputText` 거부,
+    adb 명령 실패·타임아웃), 찾아 바꾸지 않고 `details`를 버리고 message를 통째로 갈아 끼운다. `kind`·`hint`는 남긴다.
+  - 기록용 에러의 message도 `details`와 같은 2KB 상한으로 자른다.
 - `AppSnapshot.toolCalls`는 `timeline`이 된다. `MainEvent`의 `tool_call`은 `timeline`(항목 하나)이 된다.
 - `streamManager`와 `logManager`에 상태 변화 콜백을 둔다. 앱 상태가 이 콜백으로 스트림 이벤트와 `log_stopped`를
   기록한다.
@@ -415,7 +420,11 @@ type TimelineEntry =
   줄 때문에 위치가 틀린다.
 - `at >= 호출.at - 2000`인 첫 줄로 스크롤하고 따라가기를 멈춘다. `[호출.at, 호출.at + durationMs]` 구간의 줄은 강조한다.
 - 호출의 `serial`이 로그 탭의 기기(`targetSerial`)가 아니거나 비어 있으면 버튼을 끄고 이유를 보여 준다. 점프 때문에 활성 기기를
-  바꾸지 않는다. 활성 기기는 에이전트의 기본 대상이다.
+  바꾸지 않는다. 활성 기기는 에이전트의 기본 대상이다. `serial`이 비어 있으면 "대상 기기가 정해지기 전에 끝난
+  호출"이라는 이유를, 다른 기기면 "활성 기기의 호출만" 이유를 따로 보여 준다.
+- 점프 요청(`LogJump`)은 호출의 `serial`을 싣는다. 적용 전에 로그 탭의 기기가 바뀌거나 끊기면 `WorkArea`가 요청을
+  버리고, 로그 탭도 기기가 다른 요청은 적용하지 않고 `onJumpDone(id, 'skipped')`로 치운다. 새 기기 로그에 옛 호출
+  시각·강조를 대거나 한참 뒤에 스크롤을 빼앗지 않게 하기 위해서다.
 - 밀려남은 renderer 버퍼로 판단한다. renderer 버퍼는 main과 같은 상한이고 `gap`을 받으므로 같은 구간을 든다.
   그 시각이 renderer 버퍼의 가장 오래된 줄보다 앞이면 "로그 버퍼에서 밀려난 구간이다"라고 알린다.
 
@@ -595,6 +604,33 @@ vitest와 TDD로 간다. 실기기가 필요한 테스트는 `*.integration.test
 - 자동화 테스트가 덮는 범위: renderer 단위 테스트가 버퍼 상한·pause/resume와 `gap`(`useLogStream.test.tsx`),
   따라가기·스크롤(`LogTab.test.tsx`), 필터 조합(`logFilter.test.ts`, `LogFilters.test.tsx`)을 실기기 부하 없이
   확인하고, M3-2a의 크래시 로그 경로는 `logRead.integration.test.ts` 통합 테스트가 확인한다.
+
+### M3-3 검증 결과 (2026-09-29)
+
+- 옛 ref로 `ui_tap`을 불러 일부러 실패시킨 뒤(`stale_ref`) 활동 탭에서 그 행을 펼쳐 "이 시점 로그 보기"를
+  누르면 로그 탭이 그 호출 시각 근처로 스크롤되고 강조가 보인다 — 확인됨 (`Pixel_7_API_36` 에뮬레이터)
+- 로그 탭을 숨긴 상태에서 같은 조작을 반복해도 같은 위치로 간다 — 확인됨
+- 에뮬레이터를 끊었다 붙이면(`adb disconnect`/`adb connect` 또는 재시작) 타임라인에 연결 끊김·연결됨 행이
+  끼인다 — 확인됨 (`adb -s emulator-5554 reconnect`로 끊음. 연결 끊김·연결됨·활성 기기 해제됨 행이 끼인다)
+- `ui_text`로 `hunter2`를 넣은 뒤 활동 탭 상세와 `getSnapshot` 결과 어디에도 `hunter2`가 없다 —
+  확인됨 (성공한 `hunter2`와 `%` 때문에 거부된 `hunter2%` 두 호출 모두 상세에 가림 문구만 보이고, 활동 탭
+  텍스트 검색에 `hunter2`를 넣어도 걸리는 행이 없다. `getSnapshot`은 renderer IPC라 화면과 검색으로 대신 확인했다)
+- 자동화 테스트가 덮는 범위: 입력 텍스트를 가리는 것은 `runTool.test.ts`(`argsSummary`·`detail.args` 모두
+  가림, `redact`가 던지면 `<가림 실패>`, `redactError`는 기록용 에러에만 적용되고 던지면 `details`를 버리고
+  message를 `<가림 실패>`로 둠, 기록용 에러 message의 2KB 상한)와 `ui.test.ts`(`ui_text`가 성공할 때, 그리고
+  `escapeInputText` 거부·adb 명령 실패·adb 타임아웃 모양의 `DeviceError`로 실패할 때 `ToolCallRecord`를
+  직렬화한 결과에 원문도 adb용으로 이스케이프한 형태도 없고, 에이전트가 받는 에러 message는 그대로임)가
+  실기기 없이 확인한다. 실패 경로는 가짜 기기가 그 모양의 에러를 던지게 해서 확인한다. 그중 `escapeInputText`
+  거부는 위의 앱 확인에서 실제 경로로도 확인했고, adb 명령 실패와 타임아웃은 `adbClient.ts`가 실제로 만드는
+  에러로는 확인하지 않았다. 활동 탭 화면에 원문이 없는지는 위의 앱 확인 항목이다. 타임라인에 툴 호출과 기기·스트림·로그 이벤트가 함께 쌓이는 것은 `appState.test.ts`
+  (1000개 상한, registry의 연결·해제·활성 전환 기록), `bootstrap.test.ts`(스트림·로그 훅이 기기 이벤트로
+  이어짐), `streamManager.test.ts`(started·reconnecting·stopped 보고), `logManager.test.ts`(tail 상태 보고)가
+  확인하고, 창을 연 직후 스냅샷과 겹쳐 온 이벤트의 중복 제거와 1000개로 자르기는 `useAppState.test.tsx`가
+  확인한다. 활동 탭의 기기 이벤트 행·상세 펼침·필터는 `ActivityTab.test.tsx`·`TimelineDetail.test.tsx`·
+  `timelineFilter.test.ts`가 확인하고, 호출 시점 로그 점프는 로그 탭이 숨겨진 채 점프를 받았다가 `caughtUp`이
+  된 뒤에야 적용되는 경로, 다른 기기용 요청을 적용하지 않고 치우는 경로, 치운 뒤 같은 호출을 다시 누르면
+  다시 점프하는 경로를 포함해 `LogTab.test.tsx`가, 적용 전에 활성 기기가 바뀌면 요청을 버리는 것은
+  `WorkArea.test.tsx`가 확인한다.
 
 ## 계획 분할
 

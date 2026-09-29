@@ -277,6 +277,175 @@ describe('LogTab', () => {
     expect(renderedRows().map((row) => row.hasAttribute('data-highlight'))).toEqual([false, true, false])
   })
 
+  it('applies a jump only when visible and caughtUp', () => {
+    const rows = Array.from({ length: 100 }, (_, i) => line(i))
+    const onJumpDone = vi.fn()
+    const jump = { id: 'c1', serial: 'emulator-5554', at: 30, highlight: { fromAt: 30, toAt: 32 } }
+    const hidden = makeStream(rows, { caughtUp: false })
+    const { rerender } = render(<LogTab serial="emulator-5554" visible={false} stream={hidden} />)
+    const list = sizeList(200)
+
+    // 숨겨진 채로 점프를 받는다 — 아직 resume 전이라 적용하지 않는다.
+    rerender(<LogTab serial="emulator-5554" visible={false} stream={hidden} jump={jump} onJumpDone={onJumpDone} />)
+    expect(onJumpDone).not.toHaveBeenCalled()
+
+    // 보이게 됐지만 resumed가 아직 오지 않았다 — 여전히 맨 아래를 따라간다.
+    rerender(<LogTab serial="emulator-5554" visible stream={hidden} jump={jump} onJumpDone={onJumpDone} />)
+    expect(onJumpDone).not.toHaveBeenCalled()
+    expect(list.scrollTop).toBe(100 * LOG_ROW_HEIGHT - 200)
+
+    // resumed로 따라잡았다 — 이제 점프한다.
+    rerender(
+      <LogTab
+        serial="emulator-5554"
+        visible
+        stream={makeStream(rows, { caughtUp: true, version: 2 })}
+        jump={jump}
+        onJumpDone={onJumpDone}
+      />
+    )
+    expect(onJumpDone).toHaveBeenCalledWith('c1', 'ok')
+    expect(list.scrollTop).toBe(30 * LOG_ROW_HEIGHT)
+    expect(screen.getByRole('button', { name: '맨 아래로' })).toBeDefined()
+    const lit = renderedRows()
+      .filter((row) => row.hasAttribute('data-highlight'))
+      .map((row) => row.textContent)
+    expect(lit).toEqual([
+      expect.stringContaining('line 30'),
+      expect.stringContaining('line 31'),
+      expect.stringContaining('line 32')
+    ])
+  })
+
+  it('jumps to the first visible row after the time when filters hide the exact row', async () => {
+    const rows = Array.from({ length: 100 }, (_, i) => line(i, { tag: i === 30 ? 'B' : 'A' }))
+    const stream = makeStream(rows)
+    const onJumpDone = vi.fn()
+    const { rerender } = render(<LogTab serial="emulator-5554" visible stream={stream} />)
+    const list = sizeList(200)
+    await userEvent.click(screen.getByRole('button', { name: 'A' }))
+
+    rerender(
+      <LogTab
+        serial="emulator-5554"
+        visible
+        stream={stream}
+        jump={{ id: 'c1', serial: 'emulator-5554', at: 30, highlight: { fromAt: 30, toAt: 30 } }}
+        onJumpDone={onJumpDone}
+      />
+    )
+
+    // 걸러진 목록에서 line 31이 index 30이다.
+    expect(onJumpDone).toHaveBeenCalledWith('c1', 'ok')
+    expect(list.scrollTop).toBe(30 * LOG_ROW_HEIGHT)
+    expect(renderedRows().some((row) => row.textContent?.includes('line 31'))).toBe(true)
+    expect(renderedRows().some((row) => row.textContent?.includes('line 30'))).toBe(false)
+  })
+
+  it('shows 로그 버퍼에서 밀려난 구간이다 when the jump is evicted', () => {
+    const rows = Array.from({ length: 10 }, (_, i) => line(100 + i))
+    const onJumpDone = vi.fn()
+    render(
+      <LogTab
+        serial="emulator-5554"
+        visible
+        stream={makeStream(rows)}
+        jump={{ id: 'c1', serial: 'emulator-5554', at: 50, highlight: { fromAt: 52, toAt: 60 } }}
+        onJumpDone={onJumpDone}
+      />
+    )
+
+    expect(onJumpDone).toHaveBeenCalledWith('c1', 'evicted')
+    expect(within(screen.getByRole('status')).getByText('로그 버퍼에서 밀려난 구간이다')).toBeDefined()
+  })
+
+  it('applies the same jump id only once', () => {
+    const rows = Array.from({ length: 100 }, (_, i) => line(i))
+    const onJumpDone = vi.fn()
+    const { rerender } = render(<LogTab serial="emulator-5554" visible stream={makeStream(rows)} />)
+    const list = sizeList(200)
+    rerender(
+      <LogTab
+        serial="emulator-5554"
+        visible
+        stream={makeStream(rows, { version: 2 })}
+        jump={{ id: 'c1', serial: 'emulator-5554', at: 30, highlight: { fromAt: 30, toAt: 30 } }}
+        onJumpDone={onJumpDone}
+      />
+    )
+    expect(list.scrollTop).toBe(30 * LOG_ROW_HEIGHT)
+
+    // 사용자가 다른 곳으로 옮긴 뒤 같은 id의 점프가 새 객체로 다시 온다.
+    list.scrollTop = 0
+    fireEvent.scroll(list)
+    rows.push(line(100))
+    rerender(
+      <LogTab
+        serial="emulator-5554"
+        visible
+        stream={makeStream(rows, { version: 3 })}
+        jump={{ id: 'c1', serial: 'emulator-5554', at: 30, highlight: { fromAt: 30, toAt: 30 } }}
+        onJumpDone={onJumpDone}
+      />
+    )
+
+    expect(list.scrollTop).toBe(0)
+    expect(onJumpDone).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not apply a jump meant for another device, and clears it', () => {
+    const rows = Array.from({ length: 100 }, (_, i) => line(i))
+    const onJumpDone = vi.fn()
+    const { rerender } = render(<LogTab serial="emulator-5554" visible stream={makeStream(rows)} />)
+    const list = sizeList(200)
+    rerender(
+      <LogTab
+        serial="emulator-5554"
+        visible
+        stream={makeStream(rows, { version: 2 })}
+        jump={{ id: 'c1', serial: 'emulator-5556', at: 30, highlight: { fromAt: 30, toAt: 30 } }}
+        onJumpDone={onJumpDone}
+      />
+    )
+
+    expect(list.scrollTop).not.toBe(30 * LOG_ROW_HEIGHT)
+    expect(screen.queryByRole('button', { name: '맨 아래로' })).toBeNull()
+    expect(renderedRows().some((row) => row.hasAttribute('data-highlight'))).toBe(false)
+    expect(onJumpDone).toHaveBeenCalledWith('c1', 'skipped')
+  })
+
+  it('jumps again for the same call after the request was cleared', () => {
+    const rows = Array.from({ length: 100 }, (_, i) => line(i))
+    const onJumpDone = vi.fn()
+    const jump = { id: 'c1', serial: 'emulator-5554', at: 30, highlight: { fromAt: 30, toAt: 30 } }
+    const { rerender } = render(<LogTab serial="emulator-5554" visible stream={makeStream(rows)} />)
+    const list = sizeList(200)
+    rerender(
+      <LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 2 })} jump={jump} onJumpDone={onJumpDone} />
+    )
+    expect(list.scrollTop).toBe(30 * LOG_ROW_HEIGHT)
+
+    // onJumpDone을 받은 부모가 요청을 치운다.
+    rerender(
+      <LogTab serial="emulator-5554" visible stream={makeStream(rows, { version: 2 })} jump={null} onJumpDone={onJumpDone} />
+    )
+    list.scrollTop = 0
+    fireEvent.scroll(list)
+
+    // 같은 호출을 다시 누른다.
+    rerender(
+      <LogTab
+        serial="emulator-5554"
+        visible
+        stream={makeStream(rows, { version: 3 })}
+        jump={{ ...jump }}
+        onJumpDone={onJumpDone}
+      />
+    )
+    expect(list.scrollTop).toBe(30 * LOG_ROW_HEIGHT)
+    expect(onJumpDone).toHaveBeenCalledTimes(2)
+  })
+
   it('applies filters to the whole buffer and offers top tags as chips', async () => {
     render(
       <LogTab

@@ -93,7 +93,7 @@ app
         const avd = createAvdController({ adb, emulatorPath: paths.emulator, spawn })
         return { registry, avd }
       },
-      createStreamManager: (registry, paths) => {
+      createStreamManager: (registry, paths, hooks) => {
         const adb = createAdbClient(paths.adb)
         const jarPath = resolveScrcpyJar({
           isPackaged: app.isPackaged,
@@ -104,10 +104,11 @@ app
           createSession: (serial, handlers) => createScrcpySession({ serial, adb, jarPath, connect: connectLoopback }, handlers),
           createChannel: () => createPortChannel<StreamDown>(),
           postPort: (meta, remote) => postPortToRenderer(IPC_CHANNELS.streamPort, meta, remote),
-          isConnected: (serial) => registry.serials().includes(serial)
+          isConnected: (serial) => registry.serials().includes(serial),
+          onState: hooks.onState
         })
       },
-      createLogManager: (registry, paths) => {
+      createLogManager: (registry, paths, hooks) => {
         const adb = createAdbClient(paths.adb)
         return createLogManager({
           createTail: (serial, handlers) =>
@@ -115,7 +116,8 @@ app
           seedPids: createSeedPids(adb),
           pidof: createPidof(adb),
           createChannel: () => createPortChannel<LogDown>(),
-          postPort: (meta, remote) => postPortToRenderer(IPC_CHANNELS.logPort, meta, remote)
+          postPort: (meta, remote) => postPortToRenderer(IPC_CHANNELS.logPort, meta, remote),
+          onTailState: hooks.onTailState
         })
       },
       startServer: (opts) => startMcpHttpServer({ ...opts, version: app.getVersion() })

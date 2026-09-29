@@ -63,6 +63,7 @@ function harness(
     pidof?: (serial: string, pkg: string) => Promise<number[]>
   } = {}
 ) {
+  const tailStates: Array<[string, string]> = []
   const tails: Record<string, FakeTail> = {}
   const ports: FakePort[] = []
   const posted: Array<{ serial: string; sessionId: string }> = []
@@ -97,11 +98,12 @@ function harness(
     newSessionId: () => `s${sessionCounter++}`,
     batchMs: opts.batchMs,
     snapshotChunk: opts.snapshotChunk,
-    capacity: opts.capacity
+    capacity: opts.capacity,
+    onTailState: (serial, state) => tailStates.push([serial, state])
   }
 
   const manager = createLogManager(deps)
-  return { manager, tails, ports, posted, seedResolvers }
+  return { manager, tails, ports, posted, seedResolvers, tailStates }
 }
 
 function lastPort(ports: FakePort[]): FakePort {
@@ -656,5 +658,32 @@ describe('createLogManager', () => {
     expect(tails.e1!.stop).toHaveBeenCalled()
     expect(tails.e2!.stop).toHaveBeenCalled()
     expect(port.close).toHaveBeenCalled()
+  })
+
+  it('reports tail state through onTailState', async () => {
+    const h = harness()
+    h.manager.handleConnect('emulator-5554')
+    const tail = h.tails['emulator-5554']!
+
+    tail.handlers.onState('reconnecting')
+    tail.handlers.onState('running')
+    tail.handlers.onState('stopped')
+
+    expect(h.tailStates).toEqual([
+      ['emulator-5554', 'reconnecting'],
+      ['emulator-5554', 'running'],
+      ['emulator-5554', 'stopped']
+    ])
+  })
+
+  it('does not report the stop of a tail it stopped itself on disconnect, reconnect or stopAll', () => {
+    const h = harness()
+    h.manager.handleConnect('emulator-5554')
+    h.manager.handleConnect('emulator-5554') // 옛 tail을 멈춘다
+    h.manager.handleDisconnect('emulator-5554')
+    h.manager.handleConnect('emulator-5556')
+    h.manager.stopAll()
+
+    expect(h.tailStates).toEqual([])
   })
 })

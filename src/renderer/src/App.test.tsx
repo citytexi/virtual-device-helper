@@ -42,7 +42,7 @@ const ready: AppSnapshot = {
   avds: [{ name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' }],
   devices: ['emulator-5554'],
   activeSerial: 'emulator-5554',
-  toolCalls: [],
+  timeline: [],
   trackingFailure: null
 }
 

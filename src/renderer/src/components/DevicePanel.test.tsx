@@ -30,7 +30,7 @@ function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
     ],
     devices: ['emulator-5554'],
     activeSerial: 'emulator-5554',
-    toolCalls: [],
+    timeline: [],
     trackingFailure: null,
     ...overrides
   }

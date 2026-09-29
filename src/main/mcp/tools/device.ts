@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { Device } from '../../../shared/types/device'
 import { runTool } from '../runTool'
 import type { ToolContext } from '../toolContext'
 
@@ -33,11 +34,21 @@ export function registerDeviceTools(server: McpServer, context: ToolContext): vo
         'AVD를 부팅하고 부팅이 끝날 때까지 기다린 뒤 기기 정보를 돌려준다. 이름은 device_list로 확인한다.',
       inputSchema: { avd: z.string().describe('부팅할 AVD 이름') }
     },
-    async ({ avd }) =>
-      runTool(context, 'device_boot', { avd }, async () => {
-        const serial = await context.avd.boot(avd)
-        return context.registry.resolve(serial).info()
-      })
+    async ({ avd }) => {
+      let target: Device | null = null
+      return runTool(
+        context,
+        'device_boot',
+        { avd },
+        async () => {
+          const serial = await context.avd.boot(avd)
+          const device = context.registry.resolve(serial)
+          target = device
+          return device.info()
+        },
+        { serial: () => target?.serial }
+      )
+    }
   )
 
   server.registerTool(
@@ -46,16 +57,25 @@ export function registerDeviceTools(server: McpServer, context: ToolContext): vo
       description: '실행 중인 에뮬레이터를 종료한다. serial을 생략하면 활성 기기를 끈다.',
       inputSchema: serialArg
     },
-    async ({ serial }) =>
+    async ({ serial }) => {
+      let target: Device | null = null
       // 여기서만 context.registry.run(...) 직렬화 큐를 의도적으로 건너뛰고 context.avd.shutdown을
       // 바로 부른다. device_shutdown은 device_unresponsive 에러의 복구 경로이기 때문이다.
       // 큐에 줄을 세우면 이미 막혀 있는 명령 뒤에서 종료 명령까지 같은 타임아웃만큼 늦어져
       // 복구 자체가 안 된다. "빠진 직렬화"로 보고 큐에 넣지 마라.
-      runTool(context, 'device_shutdown', { serial }, async () => {
-        const device = context.registry.resolve(serial)
-        await context.avd.shutdown(device.serial)
-        return { serial: device.serial, shutdown: true }
-      })
+      return runTool(
+        context,
+        'device_shutdown',
+        { serial },
+        async () => {
+          const device = context.registry.resolve(serial)
+          target = device
+          await context.avd.shutdown(device.serial)
+          return { serial: device.serial, shutdown: true }
+        },
+        { serial: () => target?.serial }
+      )
+    }
   )
 
   server.registerTool(
@@ -78,10 +98,19 @@ export function registerDeviceTools(server: McpServer, context: ToolContext): vo
       description: '기기의 모델명, API 레벨, 화면 크기를 돌려준다. 좌표를 계산하기 전에 쓴다.',
       inputSchema: serialArg
     },
-    async ({ serial }) =>
-      runTool(context, 'device_info', { serial }, async () => {
-        const device = context.registry.resolve(serial)
-        return context.registry.run(device.serial, () => device.info())
-      })
+    async ({ serial }) => {
+      let target: Device | null = null
+      return runTool(
+        context,
+        'device_info',
+        { serial },
+        async () => {
+          const device = context.registry.resolve(serial)
+          target = device
+          return context.registry.run(device.serial, () => device.info())
+        },
+        { serial: () => target?.serial }
+      )
+    }
   )
 }

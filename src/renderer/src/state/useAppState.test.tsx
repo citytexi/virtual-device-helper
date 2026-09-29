@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AppSnapshot, MainEvent, RendererApi } from '../../../shared/types/ipc'
+import type { AppSnapshot, MainEvent, RendererApi, TimelineEntry } from '../../../shared/types/ipc'
 import { targetSerial, useAppState } from './useAppState'
 
 const baseSnapshot: AppSnapshot = {
@@ -10,8 +10,21 @@ const baseSnapshot: AppSnapshot = {
   avds: [{ name: 'Pixel_7_API_34', running: false, serial: null }],
   devices: [],
   activeSerial: null,
-  toolCalls: [],
+  timeline: [],
   trackingFailure: null
+}
+
+function toolCallEntry(id: string, at: number): TimelineEntry {
+  return {
+    kind: 'tool_call',
+    id,
+    at,
+    tool: 'ui_tap',
+    argsSummary: '{}',
+    durationMs: 2,
+    ok: true,
+    detail: { args: '{}' }
+  }
 }
 
 let listener: ((event: MainEvent) => void) | undefined
@@ -88,14 +101,31 @@ describe('useAppState', () => {
     expect(result.current.snapshot?.activeSerial).toBe('emulator-5554')
   })
 
-  it('appends tool calls in arrival order', async () => {
+  it('appends timeline entries in arrival order', async () => {
     const { result } = renderHook(() => useAppState())
     await waitFor(() => expect(result.current.loading).toBe(false))
 
-    const record = { id: 'a', tool: 'ui_tap', argsSummary: '{}', startedAt: 1, durationMs: 2, ok: true }
-    act(() => listener?.({ type: 'tool_call', record }))
+    const first = toolCallEntry('a', 5)
+    const second: TimelineEntry = { kind: 'device', id: 'b', at: 1, serial: 'emulator-5554', event: 'connected' }
+    act(() => listener?.({ type: 'timeline', entry: first }))
+    act(() => listener?.({ type: 'timeline', entry: second }))
 
-    expect(result.current.snapshot?.toolCalls).toEqual([record])
+    // at으로 다시 정렬하지 않는다.
+    expect(result.current.snapshot?.timeline).toEqual([first, second])
+  })
+
+  it('trims the renderer timeline to 1000', async () => {
+    const full = Array.from({ length: 1000 }, (_, i) => toolCallEntry(String(i), i))
+    installApi(vi.fn(async () => ({ ...baseSnapshot, timeline: full })))
+    const { result } = renderHook(() => useAppState())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    act(() => listener?.({ type: 'timeline', entry: toolCallEntry('new', 1000) }))
+
+    const timeline = result.current.snapshot?.timeline ?? []
+    expect(timeline).toHaveLength(1000)
+    expect(timeline[0]?.id).toBe('1')
+    expect(timeline.at(-1)?.id).toBe('new')
   })
 
   it('replaces the avd list when it changes', async () => {
@@ -156,23 +186,29 @@ describe('useAppState', () => {
     expect(result.current.snapshot?.devices).toEqual(['emulator-5554'])
   })
 
-  it('does not duplicate a tool_call record that is buffered but already present in the resolved snapshot', async () => {
-    const record = { id: 'a', tool: 'ui_tap', argsSummary: '{}', startedAt: 1, durationMs: 2, ok: true }
-    const snapshotWithRecord: AppSnapshot = { ...baseSnapshot, toolCalls: [record] }
+  it('does not duplicate an entry that arrives before and inside the snapshot', async () => {
+    const entry = toolCallEntry('a', 1)
+    const later = toolCallEntry('b', 2)
+    const snapshotWithEntry: AppSnapshot = { ...baseSnapshot, timeline: [entry] }
     const pending = deferred<AppSnapshot>()
     installApi(vi.fn(() => pending.promise))
 
     const { result } = renderHook(() => useAppState())
 
-    act(() => listener?.({ type: 'tool_call', record }))
+    act(() => listener?.({ type: 'timeline', entry }))
+    act(() => listener?.({ type: 'timeline', entry: later }))
 
     await act(async () => {
-      pending.resolve(snapshotWithRecord)
+      pending.resolve(snapshotWithEntry)
       await pending.promise
     })
 
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(result.current.snapshot?.toolCalls).toEqual([record])
+    expect(result.current.snapshot?.timeline).toEqual([entry, later])
+
+    // 스냅샷 뒤에 같은 id가 다시 와도 쌓지 않는다.
+    act(() => listener?.({ type: 'timeline', entry: later }))
+    expect(result.current.snapshot?.timeline).toEqual([entry, later])
   })
 
   it('sets an error and stops loading when getSnapshot rejects, leaving the snapshot null', async () => {

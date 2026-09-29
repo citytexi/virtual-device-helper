@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { deviceError } from '../../shared/types/errors'
-import { runTool } from './runTool'
+import { redactText, runTool } from './runTool'
 import type { ToolCallRecord } from './toolContext'
 
 function collector(): { onToolCall: (record: ToolCallRecord) => void; records: ToolCallRecord[] } {
@@ -190,5 +190,204 @@ describe('runTool gesture', () => {
     expect(result.isError).toBeFalsy()
     expect(sink.records[0]).toMatchObject({ ok: true })
     expect(sink.records[0]?.gesture).toBeUndefined()
+  })
+})
+
+describe('runTool detail', () => {
+  it('records the serial the handler resolved', async () => {
+    const sink = collector()
+
+    await runTool(sink, 't', {}, async () => ({}), { serial: () => 'emulator-5554' })
+
+    expect(sink.records[0]?.serial).toBe('emulator-5554')
+  })
+
+  it('omits serial when the callback returns undefined or throws', async () => {
+    const sink = collector()
+
+    await runTool(sink, 't', {}, async () => ({}), { serial: () => undefined })
+    expect(sink.records[0]?.serial).toBeUndefined()
+
+    const sink2 = collector()
+    await runTool(sink2, 't', {}, async () => ({}), {
+      serial: () => {
+        throw new Error('boom')
+      }
+    })
+    expect(sink2.records[0]?.serial).toBeUndefined()
+  })
+
+  it('records the full args json in detail', async () => {
+    const sink = collector()
+
+    await runTool(sink, 't', { x: 1, y: 2 }, async () => ({}))
+
+    expect(sink.records[0]?.detail.args).toBe(JSON.stringify({ x: 1, y: 2 }))
+  })
+
+  it('truncates detail args past 2KB and marks it', async () => {
+    const sink = collector()
+
+    await runTool(sink, 't', { q: 'x'.repeat(5000) }, async () => ({}))
+
+    const args = sink.records[0]!.detail.args
+    expect(Buffer.byteLength(args)).toBeLessThanOrEqual(2048)
+    expect(args.endsWith('…(잘림)')).toBe(true)
+  })
+
+  it('applies redact to both argsSummary and detail.args', async () => {
+    const sink = collector()
+    await runTool(sink, 'ui_text', { text: 'hunter2' }, async () => ({}), {
+      redact: (a) => ({ ...(a as object), text: redactText('hunter2') })
+    })
+    const r = sink.records[0]!
+    expect(r.argsSummary).not.toContain('hunter2')
+    expect(r.detail.args).toContain('<7자 가림>')
+  })
+
+  it('replaces args with <가림 실패> when redact throws', async () => {
+    const sink = collector()
+
+    await runTool(sink, 'ui_text', { text: 'hunter2' }, async () => ({}), {
+      redact: () => {
+        throw new Error('boom')
+      }
+    })
+
+    const r = sink.records[0]!
+    expect(r.argsSummary).toBe('<가림 실패>')
+    expect(r.detail.args).toBe('<가림 실패>')
+  })
+
+  it('stores the ToolError in detail on failure', async () => {
+    const sink = collector()
+
+    await runTool(sink, 'app_launch', {}, async () => {
+      throw deviceError('package_not_found', '없다', '설치해라')
+    })
+
+    expect(sink.records[0]?.detail.error).toEqual({
+      kind: 'package_not_found',
+      message: '없다',
+      hint: '설치해라'
+    })
+  })
+
+  it('replaces oversized error details with a truncated string field', async () => {
+    const sink = collector()
+
+    await runTool(sink, 'app_launch', {}, async () => {
+      throw deviceError('command_failed', '실패', '다시 시도해라', { stderr: 'x'.repeat(5000) })
+    })
+
+    const error = sink.records[0]!.detail.error!
+    expect(typeof error.details?.truncated).toBe('string')
+    expect((error.details!.truncated as string).endsWith('…(잘림)')).toBe(true)
+    expect(Buffer.byteLength(error.details!.truncated as string)).toBeLessThanOrEqual(2048)
+  })
+
+  it('truncates an oversized error message in the record but not in the tool result', async () => {
+    const sink = collector()
+    const longMessage = '가'.repeat(5000)
+
+    const result = await runTool(sink, 'app_launch', {}, async () => {
+      throw deviceError('command_failed', longMessage, '다시 시도해라')
+    })
+
+    const message = sink.records[0]!.detail.error!.message
+    expect(message.endsWith('…(잘림)')).toBe(true)
+    expect(Buffer.byteLength(message)).toBeLessThanOrEqual(2048)
+    expect(JSON.parse((result.content[0] as { text: string }).text).message).toBe(longMessage)
+  })
+
+  it('applies redactError only to the recorded error, not to the tool result', async () => {
+    const sink = collector()
+    const original = { kind: 'command_failed', message: 'failed: hunter2', hint: 'h', details: { text: 'hunter2' } }
+
+    const result = await runTool(
+      sink,
+      'ui_text',
+      {},
+      async () => {
+        throw deviceError('command_failed', original.message, original.hint, original.details)
+      },
+      { redactError: (e) => ({ kind: e.kind, message: '가림', hint: e.hint }) }
+    )
+
+    expect(sink.records[0]?.detail.error).toEqual({ kind: 'command_failed', message: '가림', hint: 'h' })
+    expect(JSON.parse((result.content[0] as { text: string }).text)).toEqual(original)
+  })
+
+  it('drops details and marks the message when redactError throws', async () => {
+    const sink = collector()
+
+    const result = await runTool(
+      sink,
+      'ui_text',
+      {},
+      async () => {
+        throw deviceError('command_failed', 'failed: hunter2', 'h', { text: 'hunter2' })
+      },
+      {
+        redactError: () => {
+          throw new Error('boom')
+        }
+      }
+    )
+
+    expect(sink.records[0]?.detail.error).toEqual({ kind: 'command_failed', message: '<가림 실패>', hint: 'h' })
+    expect(sink.records[0]?.errorKind).toBe('command_failed')
+    expect(result.isError).toBe(true)
+    expect(JSON.parse((result.content[0] as { text: string }).text).message).toBe('failed: hunter2')
+  })
+
+  it('records without detail.args when the args cannot be serialized', async () => {
+    const sink = collector()
+    const args: Record<string, unknown> = {}
+    args.self = args
+
+    const result = await runTool(sink, 't', args, async () => ({ ok: true }))
+
+    expect(result.isError).toBeFalsy()
+    expect(sink.records[0]?.detail.args).toBe('<직렬화 실패>')
+  })
+
+  it('stores a result summary on success and none when summarise throws', async () => {
+    const sink = collector()
+    await runTool(sink, 't', {}, async () => ({ n: 3 }), {
+      summarise: (payload) => `n=${(payload as { n: number }).n}`
+    })
+    expect(sink.records[0]?.detail.resultSummary).toBe('n=3')
+
+    const sink2 = collector()
+    await runTool(sink2, 't', {}, async () => ({ n: 3 }), {
+      summarise: () => {
+        throw new Error('boom')
+      }
+    })
+    expect(sink2.records[0]?.detail.resultSummary).toBeUndefined()
+  })
+
+  it('keeps the tool result unchanged when serial or summarise throws', async () => {
+    const sink = collector()
+
+    const result = await runTool(sink, 't', {}, async () => ({ ok: true }), {
+      serial: () => {
+        throw new Error('boom')
+      },
+      summarise: () => {
+        throw new Error('boom')
+      }
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(result.content[0]).toEqual({ type: 'text', text: JSON.stringify({ ok: true }) })
+  })
+})
+
+describe('redactText', () => {
+  it('counts code points, not UTF-16 units', () => {
+    expect(redactText('hunter2')).toBe('<7자 가림>')
+    expect(redactText('안녕')).toBe('<2자 가림>')
   })
 })

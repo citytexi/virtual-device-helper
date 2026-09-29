@@ -110,6 +110,45 @@ describe('app_launch', () => {
 
     await harness.close()
   })
+
+  it('records the resolved serial for app_launch', async () => {
+    const harness = await harnessFor({ launch: vi.fn(async () => {}) })
+
+    await harness.call('app_launch', { pkg: 'com.example.app' })
+
+    expect(harness.records[0]?.serial).toBe('emulator-5554')
+
+    await harness.close()
+  })
+
+  it('records no serial when resolve fails', async () => {
+    const harness = await createToolHarness({
+      registry: {
+        start: vi.fn(),
+        stop: vi.fn(),
+        serials: () => [],
+        resolve: () => {
+          throw deviceError('no_device', '연결된 기기가 없다', 'device_boot로 부팅해라')
+        },
+        setActive: vi.fn(),
+        clearActive: vi.fn(),
+        getActive: () => null,
+        run: (_serial: string, task: () => Promise<unknown>) => task(),
+        on: () => () => {}
+      } as unknown as DeviceRegistry,
+      avd: {
+        list: async () => [],
+        boot: async () => 'emulator-5554',
+        shutdown: async () => {}
+      } as AvdController
+    })
+
+    await harness.callExpectingError('app_launch', { pkg: 'com.example.app' })
+
+    expect(harness.records[0]?.serial).toBeUndefined()
+
+    await harness.close()
+  })
 })
 
 describe('app lifecycle tools', () => {

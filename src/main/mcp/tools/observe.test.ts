@@ -393,6 +393,44 @@ describe('log_read response budget in UTF-8 bytes', () => {
   })
 })
 
+describe('detail: serial·summarise', () => {
+  it('summarises screenshot as W×H PNG and records the resolved serial', async () => {
+    const harness = await harnessFor({
+      screenshot: async () => ({ base64: 'QUJD', width: 360, height: 800 })
+    })
+
+    await harness.call('screenshot')
+
+    expect(harness.records[0]?.detail.resultSummary).toBe('360×800 PNG')
+    expect(harness.records[0]?.serial).toBe('emulator-5554')
+
+    await harness.close()
+  })
+
+  it('summarises log_read as 로그 N줄 and records the resolved serial', async () => {
+    const harness = await harnessFor({
+      readLogs: async () => ({ lines: [line, line], truncated: false, droppedCount: 0 })
+    })
+
+    await harness.call('log_read')
+
+    expect(harness.records[0]?.detail.resultSummary).toBe('로그 2줄')
+    expect(harness.records[0]?.serial).toBe('emulator-5554')
+
+    await harness.close()
+  })
+
+  it('records the resolved serial for log_clear', async () => {
+    const harness = await harnessFor({ clearLogs: vi.fn(async () => {}) })
+
+    await harness.call('log_clear')
+
+    expect(harness.records[0]?.serial).toBe('emulator-5554')
+
+    await harness.close()
+  })
+})
+
 describe('log_clear', () => {
   it('clears the log buffer', async () => {
     const clearLogs = vi.fn(async () => {})
