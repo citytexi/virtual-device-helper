@@ -1,7 +1,7 @@
 ---
 id: m3-node-control-logs-events # 파일명에서 날짜 접두사를 뺀 slug
 title: M3 — 노드 기반 제어와 로그·이벤트 패널
-status: draft                   # draft | in-progress | implemented | superseded
+status: implemented             # draft | in-progress | implemented | superseded
 verified: 2026-09-29          # 코드와 대조해 확인한 날짜
 scope: [main, renderer, preload, mcp, shared, android]
 hosts: []                       # windows | macos — 호스트 OS마다 동작이 갈릴 때만 채운다
@@ -608,20 +608,21 @@ vitest와 TDD로 간다. 실기기가 필요한 테스트는 `*.integration.test
 ### M3-3 검증 결과 (2026-09-29)
 
 - 옛 ref로 `ui_tap`을 불러 일부러 실패시킨 뒤(`stale_ref`) 활동 탭에서 그 행을 펼쳐 "이 시점 로그 보기"를
-  누르면 로그 탭이 그 호출 시각 근처로 스크롤되고 강조가 보인다 — 미검증 — 앱에서 사용자 확인 필요
-- 로그 탭을 숨긴 상태에서 같은 조작을 반복해도 같은 위치로 간다 — 미검증 — 앱에서 사용자 확인 필요
+  누르면 로그 탭이 그 호출 시각 근처로 스크롤되고 강조가 보인다 — 확인됨 (`Pixel_7_API_36` 에뮬레이터)
+- 로그 탭을 숨긴 상태에서 같은 조작을 반복해도 같은 위치로 간다 — 확인됨
 - 에뮬레이터를 끊었다 붙이면(`adb disconnect`/`adb connect` 또는 재시작) 타임라인에 연결 끊김·연결됨 행이
-  끼인다 — 미검증 — 앱에서 사용자 확인 필요
+  끼인다 — 확인됨 (`adb -s emulator-5554 reconnect`로 끊음. 연결 끊김·연결됨·활성 기기 해제됨 행이 끼인다)
 - `ui_text`로 `hunter2`를 넣은 뒤 활동 탭 상세와 `getSnapshot` 결과 어디에도 `hunter2`가 없다 —
-  미검증 — 앱에서 사용자 확인 필요
+  확인됨 (성공한 `hunter2`와 `%` 때문에 거부된 `hunter2%` 두 호출 모두 상세에 가림 문구만 보이고, 활동 탭
+  텍스트 검색에 `hunter2`를 넣어도 걸리는 행이 없다. `getSnapshot`은 renderer IPC라 화면과 검색으로 대신 확인했다)
 - 자동화 테스트가 덮는 범위: 입력 텍스트를 가리는 것은 `runTool.test.ts`(`argsSummary`·`detail.args` 모두
   가림, `redact`가 던지면 `<가림 실패>`, `redactError`는 기록용 에러에만 적용되고 던지면 `details`를 버리고
   message를 `<가림 실패>`로 둠, 기록용 에러 message의 2KB 상한)와 `ui.test.ts`(`ui_text`가 성공할 때, 그리고
   `escapeInputText` 거부·adb 명령 실패·adb 타임아웃 모양의 `DeviceError`로 실패할 때 `ToolCallRecord`를
   직렬화한 결과에 원문도 adb용으로 이스케이프한 형태도 없고, 에이전트가 받는 에러 message는 그대로임)가
-  실기기 없이 확인한다. 실패 경로는 가짜 기기가 그 모양의 에러를 던지게 해서 확인하므로 `adbClient.ts`가
-  실제로 만드는 에러와 맞는지는 앱 확인 항목에 남는다. 활동 탭 화면과 `getSnapshot` IPC까지 원문이 없는지는
-  위의 사용자 확인 항목이다. 타임라인에 툴 호출과 기기·스트림·로그 이벤트가 함께 쌓이는 것은 `appState.test.ts`
+  실기기 없이 확인한다. 실패 경로는 가짜 기기가 그 모양의 에러를 던지게 해서 확인한다. 그중 `escapeInputText`
+  거부는 위의 앱 확인에서 실제 경로로도 확인했고, adb 명령 실패와 타임아웃은 `adbClient.ts`가 실제로 만드는
+  에러로는 확인하지 않았다. 활동 탭 화면에 원문이 없는지는 위의 앱 확인 항목이다. 타임라인에 툴 호출과 기기·스트림·로그 이벤트가 함께 쌓이는 것은 `appState.test.ts`
   (1000개 상한, registry의 연결·해제·활성 전환 기록), `bootstrap.test.ts`(스트림·로그 훅이 기기 이벤트로
   이어짐), `streamManager.test.ts`(started·reconnecting·stopped 보고), `logManager.test.ts`(tail 상태 보고)가
   확인하고, 창을 연 직후 스냅샷과 겹쳐 온 이벤트의 중복 제거와 1000개로 자르기는 `useAppState.test.tsx`가
