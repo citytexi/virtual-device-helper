@@ -1,7 +1,7 @@
 ---
 id: ADR-0013
 title: 로그 전송은 용도별 전용 MessagePort로 한다
-status: proposed                # proposed | accepted | superseded | deprecated
+status: accepted                # proposed | accepted | superseded | deprecated
 date: 2026-09-28
 deciders: virtual-device-helper 팀   # 팀/역할 (실명·개인정보 금지)
 scope: [main, preload, renderer]

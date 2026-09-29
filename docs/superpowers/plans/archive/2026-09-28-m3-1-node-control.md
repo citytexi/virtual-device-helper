@@ -1,14 +1,14 @@
 ---
 id: m3-1-node-control         # 파일명에서 날짜 접두사를 뺀 slug
 title: M3-1 — 노드 기반 제어
-status: in-progress             # draft | in-progress | done | abandoned | superseded
+status: done                    # draft | in-progress | done | abandoned | superseded
 type: work-order                # work-order | handoff
 created: 2026-09-28
-updated: 2026-09-28
+updated: 2026-09-29
 owner: virtual-device-helper 팀
 scope: [main, mcp, android, shared, renderer, docs]
 hosts: []                       # windows | macos — 호스트 OS마다 작업이 갈릴 때만 채운다
-archived_reason:                # done/abandoned 시 사유 (활성 계획은 비움)
+archived_reason: done — M3-1 구현 완료. 노드 트리·정규화 bounds, ref 재검증, UI 툴의 ref·0..1 좌표 입력, 제스처 정규화. PR #18로 develop에 머지. 앱 확인 일부 미검증(스펙 "M3-1 검증 결과")
 related_adr: [ADR-0011, ADR-0012]
 related_spec: m3-node-control-logs-events
 related_architecture: main-layers
@@ -32,9 +32,9 @@ tags: [plan, node, mcp, coordinates]
 
 **Tech Stack:** TypeScript, zod 4, `@modelcontextprotocol/sdk` 1.30, fast-xml-parser, React 19, Vitest, @testing-library/react
 
-**Spec:** [`../specs/2026-09-28-m3-node-control-logs-events.md`](../specs/2026-09-28-m3-node-control-logs-events.md)
+**Spec:** [`../specs/2026-09-28-m3-node-control-logs-events.md`](../../specs/archive/2026-09-28-m3-node-control-logs-events.md)
 — 특히 "UiDump와 Device", "ui_find", "nodeRefs", "ui_tap · ui_swipe · ui_text", "Gesture" 절. 결정 근거는
-[ADR-0011](../../adr/0011-node-ref-revalidation.md), [ADR-0012](../../adr/0012-normalized-tool-coordinates.md).
+[ADR-0011](../../../adr/0011-node-ref-revalidation.md), [ADR-0012](../../../adr/0012-normalized-tool-coordinates.md).
 
 **선행 조건:** 없다. M3-2와 독립이다.
 

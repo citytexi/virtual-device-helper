@@ -8,7 +8,7 @@ updated: 2026-09-29
 owner: virtual-device-helper 팀
 scope: [main, mcp, renderer, shared, docs]
 hosts: []                       # windows | macos — 호스트 OS마다 작업이 갈릴 때만 채운다
-archived_reason:                # done/abandoned 시 사유 (활성 계획은 비움)
+archived_reason: done — M3-3 구현 완료. 툴 호출 상세·가림, 기기·스트림·로그 이벤트 타임라인, 활동 탭, 로그 점프. PR #20으로 develop에 머지. 앱 확인 완료
 related_adr: [ADR-0013]
 related_spec: m3-node-control-logs-events
 related_architecture: main-layers
@@ -31,7 +31,7 @@ tags: [plan, timeline, renderer, mcp]
 
 **Tech Stack:** TypeScript, React 19, `@modelcontextprotocol/sdk` 1.30, Vitest, @testing-library/react
 
-**Spec:** [`../specs/2026-09-28-m3-node-control-logs-events.md`](../specs/2026-09-28-m3-node-control-logs-events.md)
+**Spec:** [`../specs/2026-09-28-m3-node-control-logs-events.md`](../../specs/archive/2026-09-28-m3-node-control-logs-events.md)
 — "타임라인", "활동 탭", "로그 점프" 절.
 
 **선행 조건:** [M3-1](2026-09-28-m3-1-node-control.md), [M3-2a](2026-09-28-m3-2a-log-core.md),
