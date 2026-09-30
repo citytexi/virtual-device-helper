@@ -176,7 +176,8 @@ export function createIosDevice(deps: IosDeviceDeps): Device & { readonly platfo
     try {
       await simctl.exec(['launch', udid, pkg])
     } catch (error) {
-      if (/not installed|found nothing/i.test(stderrOf(error))) {
+      // 실제 simctl은 미설치 번들에 "FBSOpenApplicationServiceErrorDomain, code=4 ... The request to open ... failed"를 낸다.
+      if (/not installed|found nothing|FBSOpenApplicationServiceErrorDomain, code=4/i.test(stderrOf(error))) {
         throw deviceError('package_not_found', `시뮬레이터에 ${pkg}가 설치돼 있지 않다`, 'app_install로 먼저 설치해라', { pkg })
       }
       throw error

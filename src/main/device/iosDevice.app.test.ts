@@ -56,6 +56,13 @@ describe('IosDevice lifecycle', () => {
     await expect(device.launch('com.x')).rejects.toMatchObject({ toolError: { kind: 'package_not_found' } })
   })
 
+  it('launch maps the real simctl not-installed stderr (FBSOpenApplicationServiceErrorDomain code=4)', async () => {
+    const stderr =
+      'An error was encountered processing the command (domain=FBSOpenApplicationServiceErrorDomain, code=4):\nSimulator device failed to launch com.x.\nUnderlying error (domain=FBSOpenApplicationServiceErrorDomain, code=4):\n\tThe request to open "com.x" failed.'
+    const { device } = make({ [`launch ${UDID} com.x`]: deviceError('command_failed', 'x', 'y', { stderr }) })
+    await expect(device.launch('com.x')).rejects.toMatchObject({ toolError: { kind: 'package_not_found' } })
+  })
+
   it('launch passes other failures through', async () => {
     const failure = deviceError('command_failed', 'x', 'y', { stderr: 'boom' })
     const { device } = make({ [`launch ${UDID} com.x`]: failure })

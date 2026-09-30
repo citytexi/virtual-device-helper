@@ -449,3 +449,32 @@ SwiftUI와 UIKit의 차이를 가를 서드파티 앱은 이번에 쓰지 못했
 ## 열린 질문
 
 - 없음. 스파이크 결과에 따라 입력·스트림 세부가 바뀔 수 있다.
+
+## M4-1 검증 결과
+
+2026-09-30에 iPhone 17 Pro(iOS 26.0) 시뮬레이터 하나를 부팅해 확인했다. 확인한 뒤 그 시뮬레이터를 껐다.
+`npm run dev` 앱 창은 사람이 볼 수 없어서, 앱을 통하지 않고 실제 모듈(`simctl` 클라이언트, `IosDevice`, 기기
+관리 층, `startMcpHttpServer`)을 그대로 조립해 MCP 클라이언트로 HTTP 호출했다. 앱 조립 코드(`index.ts`,
+`bootstrap.ts`) 자체는 이 경로에 없다. 앱은 `npm run dev`로 25초 동안 띄워 크래시 없이 뜨는 것만 봤다.
+
+**통합 테스트** (`iosDevice.ios.integration.test.ts`, 부팅된 시뮬레이터에서): 일곱 개 모두 통과했다. `platform`이
+`ios`, 설정 앱 실행 뒤 `readLogs` 한 줄 이상, 스크린샷 PNG 디코드와 긴 변 상한, `stop` 두 번 연속 성공,
+`clearLogs` 이전 timestamp 없음, 미설치 번들 `launch`의 `package_not_found`, `%`·`"`·`\`가 든 `filter`가 거절되지 않음.
+
+| 항목 | 결과 | 관찰 |
+|---|---|---|
+| 1. `device_list` | 확인 | 가상 기기가 `platform: 'ios'`, `id`=UDID, `osVersion`과 함께 나온다. |
+| 2. `device_info` | 확인(`device_boot`는 미호출) | 부팅해 둔 기기에서 `platform`, `model`, `osVersion: '26.0'`, 화면 크기를 준다. 기기 패널의 iOS 라벨은 사람 확인 필요. |
+| 3. `app_install` → `app_launch` → `screenshot` → `log_read` | 부분 확인 | 설치할 `.app`이 없어 `app_install`은 실패 경로만 봤다(없는 경로는 `app_path_invalid`). 설치 성공은 미검증 — 설치할 .app 없음. 시스템 앱 설정으로 `screenshot`(PNG 반환)과 `log_read`(줄 반환)는 확인했다. |
+| 4. `app_reset_and_launch` | 미검증 — 설치할 .app 없음 | 미설치 번들은 `package_not_found`. 시스템 앱(설정)은 `get_app_container data`가 `(null)`을 줘 `command_failed`다. 시스템 앱은 데이터 컨테이너가 없으므로 기대된 동작이지만, `settleSkipped: 'unsupported'`가 붙는 성공 경로는 보지 못했다. |
+| 5. 로그 패널의 iOS 로그 | 사람 확인 필요 | 패널은 못 봤다. 대신 `xcrun simctl spawn <udid> log stream --style ndjson`을 15초 받으니 374줄(초당 약 25줄, 거의 놀고 있는 시뮬레이터, 필터 없는 원본 줄)이었다. `readLogs`로 최근 5분을 필터 없이 읽으면 잘리기 전 줄 수가 256,288이었다. 링 버퍼 상한을 다시 볼 때 이 둘을 참고한다. |
+| 6. 화면 영역의 스크린샷 강등과 `unsupported` 안내 | 사람 확인 필요 | 스트림 세션 라우터의 `unsupported`는 단위 테스트로만 확인했다. |
+| 7. `ui_tap` | 확인 | `unsupported`로 끝난다. 다만 좌표 탭은 화면 크기를 먼저 읽다 실패해 메시지가 `디스플레이 크기 읽기을 할 수 없다`(작업 이름이 탭이 아니고 조사도 어색하다)로 나온다. 종류는 맞고 문구만 거칠다. |
+
+**통합 테스트로 잡은 것.** 미설치 번들의 실제 `simctl launch` stderr는 `not installed`나 `found nothing`이
+아니라 `FBSOpenApplicationServiceErrorDomain, code=4`와 `The request to open "..." failed`다.
+`iosDevice.ts#launch`의 정규식이 이를 놓쳐 `command_failed`로 나가던 것을 고쳤다. `logFilterPredicate`의
+`%`는 실제 `log show`에서 문제없이 통과해 고치지 않았다.
+
+**열린 것.** 설치 성공 경로(`app_install`, `app_reset_and_launch`의 `settleSkipped`)는 시뮬레이터용으로 빌드한
+`.app`이 있는 환경에서 한 번 더 확인해야 한다. 앱 창에서 보는 항목(5·6, 기기 패널 라벨)은 사람이 확인한다.
