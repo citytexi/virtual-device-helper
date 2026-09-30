@@ -2,7 +2,7 @@
 id: m4-ios-simulator
 title: M4 — iOS 시뮬레이터 지원
 status: draft
-verified: 2026-09-29
+verified: 2026-09-30
 scope: [main, renderer, preload, mcp, shared, ios, streaming]
 hosts: [macos]
 supersedes:
@@ -210,7 +210,11 @@ axeClient ───→ IosDevice     ┘
 
 - `readLogs`는 `simctl spawn <udid> log show --style ndjson --start <시각>`이다.
 - 시작 시각은 `since`가 있으면 그것, 없으면 마지막 `clearLogs` 워터마크, 그것도 없으면 최근 5분이다.
-- `filter`는 `--predicate`로 좁혀 `log show`의 비용을 줄인다.
+- `filter`는 `--predicate`로 좁혀 `log show`의 비용을 줄인다. `pids`가 있으면 `processID IN {…}`(정수만)를
+  predicate에 AND로 더한다. 최종 pid 판정은 줄을 파싱한 뒤 한 번 더 한다.
+- 출력은 `simctl.stream`으로 줄 단위로 읽고 마지막 `limit`줄만 고리 버퍼에 남긴다. 한가한 시뮬레이터도
+  5분 창이면 출력이 매우 커서 `exec`로 통째로 모으지 않는다. 제한 시간을 넘기면 스트림을 닫고
+  `device_unresponsive`로 끝낸다.
 - `clearLogs`는 iOS 통합 로그를 지울 수 없어서 워터마크 시각만 기록한다. 에이전트가 보는 의미는
   Android와 같다.
 - 압축 형식과 예산([ADR-0008](../../adr/0008-log-read-response-shape.md))은 mcp 층에 있어 그대로다.
@@ -466,15 +470,21 @@ SwiftUI와 UIKit의 차이를 가를 서드파티 앱은 이번에 쓰지 못했
 | 1. `device_list` | 확인 | 가상 기기가 `platform: 'ios'`, `id`=UDID, `osVersion`과 함께 나온다. |
 | 2. `device_info` | 확인(`device_boot`는 미호출) | 부팅해 둔 기기에서 `platform`, `model`, `osVersion: '26.0'`, 화면 크기를 준다. 기기 패널의 iOS 라벨은 사람 확인 필요. |
 | 3. `app_install` → `app_launch` → `screenshot` → `log_read` | 부분 확인 | 설치할 `.app`이 없어 `app_install`은 실패 경로만 봤다(없는 경로는 `app_path_invalid`). 설치 성공은 미검증 — 설치할 .app 없음. 시스템 앱 설정으로 `screenshot`(PNG 반환)과 `log_read`(줄 반환)는 확인했다. |
-| 4. `app_reset_and_launch` | 미검증 — 설치할 .app 없음 | 미설치 번들은 `package_not_found`. 시스템 앱(설정)은 `get_app_container data`가 `(null)`을 줘 `command_failed`다. 시스템 앱은 데이터 컨테이너가 없으므로 기대된 동작이지만, `settleSkipped: 'unsupported'`가 붙는 성공 경로는 보지 못했다. |
-| 5. 로그 패널의 iOS 로그 | 사람 확인 필요 | 패널은 못 봤다. 대신 `xcrun simctl spawn <udid> log stream --style ndjson`을 15초 받으니 374줄(초당 약 25줄, 거의 놀고 있는 시뮬레이터, 필터 없는 원본 줄)이었다. `readLogs`로 최근 5분을 필터 없이 읽으면 잘리기 전 줄 수가 256,288이었다. 링 버퍼 상한을 다시 볼 때 이 둘을 참고한다. |
+| 4. `app_reset_and_launch` | 미검증 — 설치할 .app 없음 | 미설치 번들은 `package_not_found`. 시스템 앱(설정)은 `get_app_container data`가 `(null)`을 준다. 처음엔 경로 가드의 `command_failed`로 나갔고, 최종 리뷰 뒤 `unsupported`("iOS에서는 시스템 앱 데이터 지우기를 할 수 없다")로 바꿨다. 시스템 앱은 데이터 컨테이너가 없으므로 기대된 동작이지만, `settleSkipped: 'unsupported'`가 붙는 성공 경로는 보지 못했다. |
+| 5. 로그 패널의 iOS 로그 | 사람 확인 필요 | 패널은 못 봤다. 대신 `xcrun simctl spawn <udid> log stream --style ndjson`을 15초 받으니 374줄(초당 약 25줄, 거의 놀고 있는 시뮬레이터, 필터 없는 원본 줄)이었다. `readLogs`로 최근 5분을 필터 없이 읽으면 잘리기 전 줄 수가 256,288이었다. 링 버퍼 상한을 다시 볼 때 이 둘을 참고한다. 최종 리뷰 뒤 `readLogs`는 이 출력을 스트림으로 읽어 `limit`줄만 남긴다. |
 | 6. 화면 영역의 스크린샷 강등과 `unsupported` 안내 | 사람 확인 필요 | 스트림 세션 라우터의 `unsupported`는 단위 테스트로만 확인했다. |
-| 7. `ui_tap` | 확인 | `unsupported`로 끝난다. 다만 좌표 탭은 화면 크기를 먼저 읽다 실패해 메시지가 `디스플레이 크기 읽기을 할 수 없다`(작업 이름이 탭이 아니고 조사도 어색하다)로 나온다. 종류는 맞고 문구만 거칠다. |
+| 7. `ui_tap` | 확인 | `unsupported`로 끝난다. 다만 좌표 탭은 화면 크기를 먼저 읽다 실패해 메시지가 `디스플레이 크기 읽기을 할 수 없다`(작업 이름이 탭이 아니고 조사도 어색하다)로 나왔다. 최종 리뷰 뒤 `unsupported`가 받침으로 을/를을 고르고 플랫폼을 `iOS`로 표시해 `iOS에서는 디스플레이 크기 읽기를 할 수 없다`가 된다. 작업 이름이 탭이 아닌 것은 그대로다. |
 
 **통합 테스트로 잡은 것.** 미설치 번들의 실제 `simctl launch` stderr는 `not installed`나 `found nothing`이
 아니라 `FBSOpenApplicationServiceErrorDomain, code=4`와 `The request to open "..." failed`다.
 `iosDevice.ts#launch`의 정규식이 이를 놓쳐 `command_failed`로 나가던 것을 고쳤다. `logFilterPredicate`의
 `%`는 실제 `log show`에서 문제없이 통과해 고치지 않았다.
+
+**최종 리뷰 뒤 실제 시뮬레이터로 확인한 것.** `device_boot`는 부팅 직후 `registry.resolve` 대신
+`registry.waitFor`로 기기 등록을 기다린다. simctl 폴링이 아직 못 본 기기에서 `no_device`가 나던 경합을 막는다.
+실제 부팅(`catalog.boot` + 실제 `trackSimulators`)에서는 `bootstatus -b`가 끝날 무렵 폴링이 이미 기기를 봐
+대기가 사실상 없었다 — 경합은 재현되지 않았고 방어로 둔다. `log stream` tail을 `SIGTERM`으로 닫으면 호스트의
+`simctl spawn`과 시뮬레이터 안 `log` 프로세스가 모두 사라진다(남는 프로세스 없음).
 
 **열린 것.** 설치 성공 경로(`app_install`, `app_reset_and_launch`의 `settleSkipped`)는 시뮬레이터용으로 빌드한
 `.app`이 있는 환경에서 한 번 더 확인해야 한다. 앱 창에서 보는 항목(5·6, 기기 패널 라벨)은 사람이 확인한다.

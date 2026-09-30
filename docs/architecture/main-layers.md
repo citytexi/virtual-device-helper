@@ -32,7 +32,7 @@ main 프로세스는 아래에서 위로 쌓인다. 타깃 디바이스를 가�
 | adb 경계 | `src/main/adb/` · `adbClient.ts#createAdbClient` | adb 바이너리 실행, `exec`(일회성)과 `stream`(장시간). `processClient` 위에 선다 | adb 문법 |
 | simctl 경계 | `src/main/ios/` · `simctlClient.ts#createSimctlClient` | `xcrun simctl` 실행과 iOS 도구 실패 분류. `processClient` 위에 선다 | simctl 문법 |
 | 기기 구현 | `src/main/device/` · `androidDevice.ts#createAndroidDevice`, `iosDevice.ts#createIosDevice` | adb / simctl 출력에 의미를 붙여 `Device`를 구현한다. 출력 파싱은 `device/parsers/`에 둔다. iOS는 아직 지원하지 않는 동작을 `unsupported`로 거절한다 | Android / iOS 도메인 |
-| 기기 관리 | `src/main/device/` · `registry.ts#createDeviceRegistry` | 연결된 기기와 활성 기기, 기기별 직렬 실행(`run`). 기기 추적은 adb 쪽 `trackDevices`와 simctl 폴링 `ios/trackSimulators.ts#trackSimulators`가 같은 `onChange`로 합류한다 | `Device` 인터페이스 |
+| 기기 관리 | `src/main/device/` · `registry.ts#createDeviceRegistry` | 연결된 기기와 활성 기기, 기기별 직렬 실행(`run`), 부팅 직후 등록 대기(`waitFor`). 기기 추적은 adb 쪽 `trackDevices`와 simctl 폴링 `ios/trackSimulators.ts#trackSimulators`가 같은 `onChange`로 합류한다 | `Device` 인터페이스 |
 | MCP 툴 | `src/main/mcp/` · `registerTools.ts#registerTools`, `runTool.ts#runTool` | 툴 정의, 응답 크기 제어, 호출 기록 | MCP 규격 |
 | MCP 전송 | `src/main/mcp/` · `httpServer.ts#startMcpHttpServer` | Streamable HTTP, 세션, 인증. 근거는 [ADR-0001](../adr/0001-mcp-transport-http-in-app.md) | HTTP |
 | 앱 상태 · IPC | `src/main/app/` · `appState.ts#createAppState`, `ipcBridge.ts#registerIpcBridge` | renderer로 상태·이벤트 전달, renderer 요청 처리 | Electron IPC |
