@@ -86,10 +86,4 @@ describe('IosDevice M4-2 actions', () => {
     const device = createIosDevice({ udid: 'U', simctl: fakeSimctl({}), resizeImage: noopResize })
     await expect(device.tap(0, 0)).rejects.toMatchObject({ toolError: { kind: 'unsupported' } })
   })
-
-  it('log methods are unsupported until Task 7', async () => {
-    const device = createIosDevice({ udid: 'U', simctl: fakeSimctl({}), resizeImage: noopResize })
-    await expect(device.readLogs()).rejects.toMatchObject({ toolError: { kind: 'unsupported' } })
-    await expect(device.clearLogs()).rejects.toMatchObject({ toolError: { kind: 'unsupported' } })
-  })
 })

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { SimctlClient } from '../ios/simctlClient'
+import { DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT } from '../../shared/limits'
 import { deviceError, isDeviceError, unsupported } from '../../shared/types/errors'
 import type {
   Device,
@@ -12,12 +13,15 @@ import type {
   DisplayFrame,
   InstallOpts,
   KeyName,
+  LogLine,
+  LogOpts,
   LogReadResult,
   ScreenshotOpts,
   ScreenshotResult,
   UiDump
 } from '../../shared/types/device'
 import { assertValidScreenshotScale, DEFAULT_MAX_LONG_EDGE, scaledLongEdge } from './androidDevice'
+import { formatLogShowStart, logFilterPredicate, parseIosLogLine, toLogShowStart } from './parsers/iosLog'
 import { parseSimctlDevices } from './parsers/simctlDevices'
 import type { ResizeImage } from './resizeImage'
 
@@ -39,6 +43,9 @@ export interface IosDeviceDeps {
 
 const SCREENSHOT_TIMEOUT_MS = 60_000
 const INSTALL_TIMEOUT_MS = 180_000
+/** since도 워터마크도 없을 때 읽기 시작점: 최근 5분. */
+const DEFAULT_LOG_WINDOW_MS = 300_000
+const LOG_SHOW_TIMEOUT_MS = 60_000
 const DATA_CONTAINER_MARKER = '/data/Containers/Data/Application/'
 
 /** 셸 없이 plutil을 부른다. 경로는 인자 배열로만 넘긴다. */
@@ -93,7 +100,8 @@ export function createIosDevice(deps: IosDeviceDeps): Device & { readonly platfo
     },
     emptyDirectory = defaultEmptyDirectory,
     readFile = fsReadFile,
-    removeFile = (path: string) => rm(path, { force: true })
+    removeFile = (path: string) => rm(path, { force: true }),
+    now = Date.now
   } = deps
 
   // 화면 크기는 연결 동안 바뀌지 않으므로 한 번 재서 캐시한다. 실패는 캐시하지 않는다.
@@ -219,7 +227,44 @@ export function createIosDevice(deps: IosDeviceDeps): Device & { readonly platfo
   }
 
   const later = (action: string) => () => Promise.reject(unsupported('ios', action, 'M4-2에서 지원한다'))
-  const logsLater = (action: string) => () => Promise.reject(unsupported('ios', action, 'M4-1 Task 7에서 구현한다'))
+
+  // iOS 통합 로그는 지울 수 없어서 clearLogs 시각만 적어 두고 다음 readLogs의 시작점으로 쓴다.
+  let logWatermark: number | null = null
+
+  async function readLogs(opts: LogOpts = {}): Promise<LogReadResult> {
+    const limit = Math.min(opts.limit ?? DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT)
+    const nowMs = now()
+    const start = opts.since
+      ? toLogShowStart(opts.since, nowMs)
+      : formatLogShowStart(logWatermark ?? nowMs - DEFAULT_LOG_WINDOW_MS)
+
+    // filter는 셸을 거치지 않고 --predicate 한 인자로 간다. 이스케이프는 logFilterPredicate가 한다.
+    const args = ['spawn', udid, 'log', 'show', '--style', 'ndjson', '--start', start]
+    if (opts.filter) args.push('--predicate', logFilterPredicate(opts.filter))
+
+    const stdout = (await simctl.exec(args, { timeoutMs: LOG_SHOW_TIMEOUT_MS })).stdout
+    let lines: LogLine[] = []
+    for (const raw of stdout.split('\n')) {
+      const parsed = raw ? parseIosLogLine(raw) : null
+      if (parsed) {
+        const { epochMs: _epochMs, ...line } = parsed
+        lines.push(line)
+      }
+    }
+
+    // pid 필터는 줄 수 상한보다 먼저 건다(Android readLogs와 같다).
+    if (opts.pids) {
+      const pids = new Set(opts.pids)
+      lines = lines.filter((line) => pids.has(line.pid))
+    }
+
+    if (lines.length <= limit) return { lines, truncated: false, droppedCount: 0 }
+    return { lines: lines.slice(lines.length - limit), truncated: true, droppedCount: lines.length - limit }
+  }
+
+  async function clearLogs(): Promise<void> {
+    logWatermark = now()
+  }
 
   return {
     serial: udid,
@@ -238,7 +283,7 @@ export function createIosDevice(deps: IosDeviceDeps): Device & { readonly platfo
     pressKey: later('키 입력') as (key: KeyName) => Promise<void>,
     dumpUi: later('UI 덤프') as () => Promise<UiDump>,
     displayFrame: later('디스플레이 크기 읽기') as () => Promise<DisplayFrame>,
-    readLogs: logsLater('로그 읽기') as () => Promise<LogReadResult>,
-    clearLogs: logsLater('로그 지우기') as () => Promise<void>
+    readLogs,
+    clearLogs
   }
 }
