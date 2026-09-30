@@ -107,4 +107,34 @@ describe('trackSimulators', () => {
 
     expect(simctl.calls).toHaveLength(before)
   })
+
+  it('keeps polling when onChange throws, and logs the error', async () => {
+    const simctl = sequencedSimctl([booting, withState(bootingUdid, 'Booted')])
+    const changes: Array<[string, boolean]> = []
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let thrown = false
+
+    const stop = trackSimulators(
+      simctl,
+      (serial, connected) => {
+        if (!thrown) {
+          thrown = true
+          throw new Error('구독자 실패')
+        }
+        changes.push([serial, connected])
+      },
+      () => {},
+      { intervalMs: 2000 }
+    )
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(logged).toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(simctl.calls).toHaveLength(2)
+    expect(changes).toContainEqual([bootingUdid, true])
+
+    stop()
+    logged.mockRestore()
+  })
 })

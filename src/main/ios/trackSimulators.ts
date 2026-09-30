@@ -66,10 +66,24 @@ export function trackSimulators(
     if (stopped) return
 
     failures = 0
-    for (const udid of booted) if (!connected.has(udid)) onChange(udid, true)
-    for (const udid of connected) if (!booted.has(udid)) onChange(udid, false)
+    const previous = connected
     connected = booted
-    schedule()
+    try {
+      for (const udid of booted) if (!previous.has(udid)) notify(udid, true)
+      for (const udid of previous) if (!booted.has(udid)) notify(udid, false)
+    } finally {
+      // 구독자가 던져도 폴링은 이어 간다. 여기서 멈추면 기기 목록이 조용히 얼어붙는다.
+      schedule()
+    }
+  }
+
+  /** 구독자 하나의 실패가 나머지 알림과 다음 폴링을 막지 않게 가둔다. */
+  function notify(udid: string, isConnected: boolean): void {
+    try {
+      onChange(udid, isConnected)
+    } catch (error) {
+      console.error('시뮬레이터 연결 변경을 알리다 실패했다', udid, error)
+    }
   }
 
   void poll()
