@@ -82,10 +82,3 @@ describe('IosDevice.screenshot', () => {
     expect(result.width).toBe(1000)
   })
 })
-
-describe('IosDevice M4-2 actions', () => {
-  it('tap is unsupported', async () => {
-    const device = createIosDevice({ udid: 'U', simctl: fakeSimctl({}), axe: null, resizeImage: noopResize })
-    await expect(device.tap(0, 0)).rejects.toMatchObject({ toolError: { kind: 'unsupported' } })
-  })
-})

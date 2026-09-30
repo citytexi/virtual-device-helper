@@ -63,10 +63,27 @@ describe('promptTemplates', () => {
     }
   })
 
-  it('leaves package and APK placeholders for the agent to resolve', () => {
+  it('leaves package and app path placeholders for the agent to resolve', () => {
     for (const template of promptTemplates(null)) {
       expect(template.body).toContain('<패키지명>')
-      expect(template.body).toContain('<APK 경로>')
+      expect(template.body).toContain('<앱 경로>')
+    }
+  })
+
+  it('covers both platforms instead of Android only', () => {
+    for (const template of promptTemplates(null)) {
+      expect(template.body).toContain('iOS')
+      expect(template.body).toContain('.apk')
+      expect(template.body).toContain('.app')
+      expect(template.body).not.toContain('Android 앱')
+    }
+  })
+
+  it('has the platform differences section, including iOS node differences', () => {
+    for (const template of promptTemplates(null)) {
+      expect(template.body).toContain('## 플랫폼 차이')
+      expect(template.body).toContain('accessibilityIdentifier')
+      expect(template.body).not.toContain('아직 안 된다')
     }
   })
 

@@ -35,7 +35,7 @@ const RULES = [
 
 export function serverInstructions(): string {
   return [
-    `${MCP_SERVER_NAME}는 Android 에뮬레이터를 조작하는 MCP 서버다. 다음 규칙을 지켜라.`,
+    `${MCP_SERVER_NAME}는 Android 에뮬레이터와 iOS 시뮬레이터를 조작하는 MCP 서버다. 다음 규칙을 지켜라.`,
     ...RULES.map((rule) => `- ${rule}`)
   ].join('\n')
 }
@@ -50,13 +50,15 @@ function deviceSection(targetSerial: string | null): string {
 const APP_SECTION = [
   '## 앱',
   '- 패키지명: <패키지명>',
-  '- APK 경로: <APK 경로>',
-  '모르면 이 프로젝트에서 찾아라(예: build.gradle의 `applicationId`, 빌드 산출물 경로). APK가 없으면 디버그 빌드부터 만든다.'
+  '- 앱 경로: <앱 경로> (Android는 `.apk` 파일, iOS는 시뮬레이터용 `.app` 디렉토리)',
+  '모르면 이 프로젝트에서 찾아라(Android는 build.gradle의 `applicationId`와 APK 산출물, iOS는 Info.plist의 `CFBundleIdentifier`와 시뮬레이터용 빌드 산출물). 산출물이 없으면 디버그 빌드부터 만든다.'
 ].join('\n')
 
 const PLATFORM_SECTION = [
   '## 플랫폼 차이',
   '- iOS에는 `back` 키와 `activity`가 없다. 쓰면 `unsupported` 에러가 온다.',
+  '- iOS 좌표와 노드 크기는 픽셀이 아니라 point 단위다. `ui_find`가 준 ref와 0..1 좌표를 쓰면 단위를 신경 쓸 필요 없다.',
+  '- iOS 노드에서 `resourceId`는 `accessibilityIdentifier`이고, `focused`는 늘 false다. 포커스 여부로 판단하지 마라.',
   '- 권한 이름은 iOS에서 `photos`·`camera`·`location` 같은 `simctl privacy` 서비스 이름이다.',
   '- `pkg`는 Android에서는 패키지명, iOS에서는 bundle id다.'
 ].join('\n')
@@ -83,11 +85,11 @@ export function promptTemplates(targetSerial: string | null): PromptTemplate[] {
       id: 'smoke',
       label: '스모크 테스트',
       description: '설치하고 실행했을 때 죽지 않는지만 빠르게 본다.',
-      body: body('virtual-device-helper MCP로 이 프로젝트의 Android 앱을 스모크 테스트해라.', targetSerial, [
+      body: body('virtual-device-helper MCP로 이 프로젝트의 앱을 스모크 테스트해라.', targetSerial, [
         [
           '## 할 일',
           '1. `log_clear`로 로그를 비운다.',
-          '2. `app_install`로 APK를 설치한다.',
+          '2. `app_install`로 앱(APK 또는 .app)을 설치한다.',
           '3. `app_launch`로 실행한다.',
           '4. `screenshot`으로 첫 화면을 확인한다.',
           '5. `log_read`로 크래시(FATAL EXCEPTION)나 ANR이 있는지 본다.'
@@ -99,11 +101,11 @@ export function promptTemplates(targetSerial: string | null): PromptTemplate[] {
       id: 'scenario',
       label: '시나리오 E2E',
       description: '적어 둔 사용자 시나리오를 단계마다 확인하며 끝까지 수행한다.',
-      body: body('virtual-device-helper MCP로 이 프로젝트의 Android 앱에서 아래 시나리오를 수행하고 검증해라.', targetSerial, [
+      body: body('virtual-device-helper MCP로 이 프로젝트의 앱에서 아래 시나리오를 수행하고 검증해라.', targetSerial, [
         ['## 시나리오', '<시나리오>', '(한 줄에 한 단계씩, 단계마다 기대 결과를 적는다)'].join('\n'),
         [
           '## 할 일',
-          '1. `app_install`로 APK를 설치한다.',
+          '1. `app_install`로 앱(Android는 APK, iOS는 .app)을 설치한다.',
           '2. `log_clear`로 로그를 비운다.',
           '3. `app_reset_and_launch`로 깨끗한 상태에서 실행한다.',
           '4. 시나리오의 단계마다 `ui_find`로 요소를 찾아 ref를 받고, 그 ref로 `ui_tap`·`ui_text`·`ui_swipe`를 부르거나 `ui_key`로 조작하고, `screenshot` 또는 `ui_find`로 기대 결과를 확인한다.',
@@ -116,11 +118,11 @@ export function promptTemplates(targetSerial: string | null): PromptTemplate[] {
       id: 'bug-repro',
       label: '버그 재현',
       description: '증상을 재현하고 스크린샷과 로그를 모은다.',
-      body: body('virtual-device-helper MCP로 이 프로젝트의 Android 앱에서 아래 버그를 재현해라.', targetSerial, [
+      body: body('virtual-device-helper MCP로 이 프로젝트의 앱에서 아래 버그를 재현해라.', targetSerial, [
         ['## 버그', '- 증상: <증상>', '- 재현 단계: <재현 단계(모르면 비워 둔다)>'].join('\n'),
         [
           '## 할 일',
-          '1. `app_install`로 APK를 설치한다.',
+          '1. `app_install`로 앱(Android는 APK, iOS는 .app)을 설치한다.',
           '2. `log_clear`로 로그를 비운다.',
           '3. `app_reset_and_launch`로 깨끗한 상태에서 실행한다.',
           '4. 재현 단계를 따라 한다. 단계가 비어 있으면 증상에서 추측한 경로를 시도한다.',

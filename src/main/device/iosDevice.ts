@@ -4,7 +4,7 @@ import { readdir, readFile as fsReadFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { AxeClient } from '../ios/axeClient'
+import { AXE_HINT, type AxeClient } from '../ios/axeClient'
 import type { SimctlClient } from '../ios/simctlClient'
 import { DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT } from '../../shared/limits'
 import { deviceError, isDeviceError, unsupported } from '../../shared/types/errors'
@@ -23,13 +23,14 @@ import type {
 } from '../../shared/types/device'
 import { assertValidScreenshotScale, DEFAULT_MAX_LONG_EDGE, scaledLongEdge } from './androidDevice'
 import { formatLogShowStart, logFilterPredicate, parseIosLogLine, toLogShowStart } from './parsers/iosLog'
+import { parseAxeFrame, parseAxeUi } from './parsers/axeUi'
 import { parseSimctlDevices } from './parsers/simctlDevices'
 import type { ResizeImage } from './resizeImage'
 
 export interface IosDeviceDeps {
   udid: string
   simctl: SimctlClient
-  /** AXe를 못 찾았으면 null. 입력·노드·실시간 화면이 이 값에 기대며, Task 3부터 쓴다. */
+  /** AXe를 못 찾았으면 null. 입력·노드·실시간 화면이 이 값에 기대고, null이면 `ios_tool_not_found`로 끝난다. */
   axe: AxeClient | null
   resizeImage: ResizeImage
   /** `plutil -extract CFBundleIdentifier raw -o - <plist>`. 기본값은 execFile. */
@@ -91,6 +92,7 @@ export function createIosDevice(deps: IosDeviceDeps): Device & { readonly platfo
   const {
     udid,
     simctl,
+    axe,
     resizeImage,
     readBundleId = defaultReadBundleId,
     fileExists = existsSync,
@@ -241,7 +243,68 @@ export function createIosDevice(deps: IosDeviceDeps): Device & { readonly platfo
     await simctl.exec(['privacy', udid, 'grant', permission, pkg])
   }
 
-  const later = (action: string) => () => Promise.reject(unsupported('ios', action, 'M4-2에서 지원한다'))
+  /** axe가 없으면 입력·노드·화면 크기 모두 못 하므로 같은 에러로 끝낸다. */
+  function requireAxe(): AxeClient {
+    if (!axe) throw deviceError('ios_tool_not_found', 'axe를 찾을 수 없다', AXE_HINT)
+    return axe
+  }
+
+  async function tap(x: number, y: number): Promise<void> {
+    await requireAxe().exec(udid, ['tap', '-x', String(Math.round(x)), '-y', String(Math.round(y))])
+  }
+
+  async function swipe(x1: number, y1: number, x2: number, y2: number, durationMs: number): Promise<void> {
+    if (durationMs <= 0) {
+      throw deviceError('command_failed', `durationMs는 0보다 커야 한다: ${durationMs}`, '100에서 1000 사이 값을 써라')
+    }
+    // axe는 초 단위 duration을 받는다.
+    await requireAxe().exec(udid, [
+      'swipe',
+      '--start-x',
+      String(Math.round(x1)),
+      '--start-y',
+      String(Math.round(y1)),
+      '--end-x',
+      String(Math.round(x2)),
+      '--end-y',
+      String(Math.round(y2)),
+      '--duration',
+      String(durationMs / 1000)
+    ])
+  }
+
+  // axe type은 ASCII 전용이고 시뮬레이터 키보드가 한글이면 ASCII도 깨진다. 그래서 모든 텍스트를
+  // 시뮬레이터 클립보드에 넣고 ⌘V(modifier 227 = Left GUI, key 25 = V)로 붙여 넣는다.
+  async function inputText(text: string): Promise<void> {
+    const client = requireAxe()
+    await simctl.exec(['pbcopy', udid], { input: text })
+    await client.exec(udid, ['key-combo', '--modifiers', '227', '--key', '25'])
+  }
+
+  // HID usage 코드. home은 하드웨어 버튼이라 button 명령이다.
+  const KEY_ARGS: Record<Exclude<KeyName, 'back'>, string[]> = {
+    home: ['button', 'home'],
+    enter: ['key', '40'],
+    tab: ['key', '43']
+  }
+
+  async function pressKey(key: KeyName): Promise<void> {
+    if (key === 'back') throw unsupported('ios', 'back 키', 'iOS에는 back 버튼이 없다')
+    await requireAxe().exec(udid, KEY_ARGS[key])
+  }
+
+  async function describeUi(): Promise<string> {
+    return (await requireAxe().exec(udid, ['describe-ui'])).stdout
+  }
+
+  async function dumpUi(): Promise<UiDump> {
+    return parseAxeUi(await describeUi())
+  }
+
+  // 화면이 회전할 수 있어 캐시하지 않는다.
+  async function displayFrame(): Promise<DisplayFrame> {
+    return parseAxeFrame(await describeUi())
+  }
 
   // iOS 통합 로그는 지울 수 없어서 clearLogs 시각만 적어 두고 다음 readLogs의 시작점으로 쓴다.
   let logWatermark: number | null = null
@@ -343,12 +406,12 @@ export function createIosDevice(deps: IosDeviceDeps): Device & { readonly platfo
     stop,
     clearData,
     grantPermission,
-    tap: later('탭') as (x: number, y: number) => Promise<void>,
-    swipe: later('스와이프') as Device['swipe'],
-    inputText: later('텍스트 입력') as (text: string) => Promise<void>,
-    pressKey: later('키 입력') as (key: KeyName) => Promise<void>,
-    dumpUi: later('UI 덤프') as () => Promise<UiDump>,
-    displayFrame: later('디스플레이 크기 읽기') as () => Promise<DisplayFrame>,
+    tap,
+    swipe,
+    inputText,
+    pressKey,
+    dumpUi,
+    displayFrame,
     readLogs,
     clearLogs
   }

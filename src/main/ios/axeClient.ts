@@ -14,7 +14,7 @@ export interface AxeClient {
   stream(udid: string, args: string[]): ProcessStream
 }
 
-const AXE_HINT = 'brew install cameroncooke/axe/axe로 설치하고 앱을 다시 켜라'
+export const AXE_HINT = 'brew install cameroncooke/axe/axe로 설치하고 앱을 다시 켜라'
 
 const axeFailures: ProcessFailures = {
   notFound: () => deviceError('ios_tool_not_found', 'axe를 찾을 수 없다', AXE_HINT),
