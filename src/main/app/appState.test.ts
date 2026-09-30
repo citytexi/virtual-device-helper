@@ -3,7 +3,7 @@ import type { VirtualDeviceCatalog } from '../device/virtualDeviceCatalog'
 import type { DeviceRegistry, RegistryEvent } from '../device/registry'
 import type { McpServerHandle } from '../mcp/httpServer'
 import { deviceError } from '../../shared/types/errors'
-import type { MainEvent } from '../../shared/types/ipc'
+import type { AppSnapshot, MainEvent } from '../../shared/types/ipc'
 import { createAppState } from './appState'
 
 function parts() {
@@ -40,11 +40,20 @@ function parts() {
   return { registry, catalog, server, fire: (event: RegistryEvent) => registryListener?.(event) }
 }
 
+const ANDROID_READY: AppSnapshot['platforms'] = {
+  android: { ok: true, location: '/opt/sdk' },
+  ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [] }
+}
+const NONE_READY: AppSnapshot['platforms'] = {
+  android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/sdk/platform-tools/adb'] },
+  ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [] }
+}
+
 describe('createAppState snapshot', () => {
-  it('reports the sdk status it was given', async () => {
+  it('reports the platform status it was given', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: false, searched: ['/opt/sdk/platform-tools/adb'] },
+      platforms: NONE_READY,
       registry: p.registry,
       catalog: p.catalog,
       server: null
@@ -52,14 +61,15 @@ describe('createAppState snapshot', () => {
 
     const snapshot = await state.snapshot()
 
-    expect(snapshot.sdk).toEqual({ ok: false, searched: ['/opt/sdk/platform-tools/adb'] })
+    expect(snapshot.platforms).toEqual(NONE_READY)
+    expect(snapshot.virtualDevices).toEqual([])
     expect(snapshot.server).toBeNull()
   })
 
   it('includes virtualDevices, devices, active serial and the server endpoint', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
       catalog: p.catalog,
       server: p.server
@@ -73,10 +83,24 @@ describe('createAppState snapshot', () => {
     expect(snapshot.server).toEqual({ url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' })
   })
 
+  it('lists virtual devices when only iOS is ready', async () => {
+    const p = parts()
+    const state = createAppState({
+      platforms: { android: NONE_READY.android, ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer' } },
+      registry: p.registry,
+      catalog: p.catalog,
+      server: p.server
+    })
+
+    const snapshot = await state.snapshot()
+
+    expect(snapshot.virtualDevices).toHaveLength(1)
+  })
+
   it('keeps at most 1000 timeline entries', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
       catalog: p.catalog,
       server: p.server
@@ -104,7 +128,7 @@ describe('createAppState snapshot', () => {
   it('keeps entries in record order even when a later tool call started earlier', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
       catalog: p.catalog,
       server: p.server
@@ -131,7 +155,7 @@ describe('createAppState events', () => {
   it('forwards registry events to subscribers', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
       catalog: p.catalog,
       server: p.server
@@ -148,7 +172,7 @@ describe('createAppState events', () => {
   it('emits a timeline event for a tool call and puts it in the snapshot', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
       catalog: p.catalog,
       server: p.server
@@ -188,7 +212,7 @@ describe('createAppState events', () => {
   it('carries the error kind of a failed tool call', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
       catalog: p.catalog,
       server: p.server
@@ -213,7 +237,7 @@ describe('createAppState events', () => {
   it('records registry connect, disconnect and active change as device entries', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
       catalog: p.catalog,
       server: p.server
@@ -246,7 +270,7 @@ describe('createAppState events', () => {
   it('records device events given by the managers', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
       catalog: p.catalog,
       server: p.server
@@ -265,7 +289,7 @@ describe('createAppState events', () => {
   it('emits server_changed and updates the snapshot when the endpoint opens', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
       catalog: p.catalog,
       server: null
@@ -290,7 +314,7 @@ describe('createAppState events', () => {
   it('emits virtual_devices_changed after a device connects so the list refreshes', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
       catalog: p.catalog,
       server: p.server
@@ -308,7 +332,7 @@ describe('createAppState tracking failures', () => {
   it('has no tracking failure in the snapshot until one happens', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
       catalog: p.catalog,
       server: p.server
@@ -322,7 +346,7 @@ describe('createAppState tracking failures', () => {
   it('flattens the DeviceError into a plain ToolError so it survives IPC', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
       catalog: p.catalog,
       server: p.server
@@ -353,7 +377,7 @@ describe('createAppState tracking failures', () => {
   it('keeps a null error when the tracker exited without one', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
       catalog: p.catalog,
       server: p.server
@@ -370,7 +394,7 @@ describe('createAppState tracking failures', () => {
   it('does not refresh the catalog list for a tracking failure', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
       catalog: p.catalog,
       server: p.server
@@ -397,7 +421,7 @@ describe('createAppState catalog refresh failures', () => {
 
     try {
       const state = createAppState({
-        sdk: { ok: true, sdkRoot: '/opt/sdk' },
+        platforms: ANDROID_READY,
         registry: p.registry,
         catalog: p.catalog,
         server: p.server
@@ -426,7 +450,7 @@ describe('createAppState snapshot when the catalog list fails', () => {
 
     try {
       const state = createAppState({
-        sdk: { ok: true, sdkRoot: '/opt/sdk' },
+        platforms: ANDROID_READY,
         registry: p.registry,
         catalog: p.catalog,
         server: p.server
@@ -435,7 +459,7 @@ describe('createAppState snapshot when the catalog list fails', () => {
       const snapshot = await state.snapshot()
 
       expect(snapshot).toEqual({
-        sdk: { ok: true, sdkRoot: '/opt/sdk' },
+        platforms: ANDROID_READY,
         server: { url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' },
         virtualDevices: [],
         devices: ['emulator-5554'],

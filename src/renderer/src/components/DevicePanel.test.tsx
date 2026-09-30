@@ -22,7 +22,10 @@ beforeEach(() => {
 
 function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
   return {
-    sdk: { ok: true, sdkRoot: '/opt/sdk' },
+    platforms: {
+      android: { ok: true, location: '/opt/sdk' },
+      ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer' }
+    },
     server: null,
     virtualDevices: [
       { platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null },
@@ -35,6 +38,60 @@ function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
     ...overrides
   }
 }
+
+describe('DevicePanel platform notices', () => {
+  it('shows a one-line Android notice when only iOS is ready', () => {
+    render(
+      <DevicePanel
+        snapshot={snapshot({
+          platforms: {
+            android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/a/adb'] },
+            ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer' }
+          }
+        })}
+      />
+    )
+
+    expect(screen.getByText('Android SDK를 찾지 못해 AVD는 쓸 수 없다.')).toBeDefined()
+  })
+
+  it('shows a one-line iOS notice with the reason when only Android is ready', () => {
+    render(
+      <DevicePanel
+        snapshot={snapshot({
+          platforms: {
+            android: { ok: true, location: '/opt/sdk' },
+            ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [] }
+          }
+        })}
+      />
+    )
+
+    expect(screen.getByText('macOS에서만 iOS 시뮬레이터를 쓸 수 있다 — iOS 시뮬레이터는 쓸 수 없다.')).toBeDefined()
+  })
+
+  it('shows the notice even when there are no virtual devices', () => {
+    render(
+      <DevicePanel
+        snapshot={snapshot({
+          virtualDevices: [],
+          platforms: {
+            android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: [] },
+            ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer' }
+          }
+        })}
+      />
+    )
+
+    expect(screen.getByText('Android SDK를 찾지 못해 AVD는 쓸 수 없다.')).toBeDefined()
+  })
+
+  it('shows no platform notice when both are ready', () => {
+    render(<DevicePanel snapshot={snapshot()} />)
+
+    expect(screen.queryByText(/쓸 수 없다\./)).toBeNull()
+  })
+})
 
 describe('DevicePanel', () => {
   it('lists every AVD by name', () => {

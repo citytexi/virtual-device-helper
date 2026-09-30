@@ -4,10 +4,11 @@ import { createDeviceRegistry, type DeviceRegistry } from '../device/registry'
 import type { LogManager } from '../logs/logManager'
 import type { TailState } from '../../shared/types/logs'
 import type { McpServerHandle, StartMcpHttpServerOpts } from '../mcp/httpServer'
+import type { IosToolsResult } from '../ios/locateIosTools'
 import type { LocateSdkResult, SdkPaths } from '../sdk/locateSdk'
 import type { StreamLifecycle, StreamManager } from '../stream/streamManager'
 import { deviceError } from '../../shared/types/errors'
-import type { DeviceTimelineEvent } from '../../shared/types/ipc'
+import type { DeviceTimelineEvent, PlatformStatuses } from '../../shared/types/ipc'
 import { createAppState, type AppState } from './appState'
 import { registerIpcBridge, type BridgeActions, type SendToRenderer } from './ipcBridge'
 
@@ -27,15 +28,21 @@ export interface LogManagerHooks {
 }
 
 export interface BootstrapDeps {
+  /** Android SDK를 찾은 결과. */
   located: LocateSdkResult
+  /** iOS 도구(xcode-select·xcrun simctl)를 찾은 결과. */
+  iosTools: IosToolsResult
   ipcMain: IpcMain
   send: SendToRenderer
-  /** adb·에뮬레이터에 실제로 닿는 부품들. 테스트에서 가짜로 바꾼다. */
-  createDeviceStack: (paths: SdkPaths) => DeviceStack
-  /** 화면 스트림 세션을 관리한다. 실제 adb·소켓·Electron 포트에 닿으므로 테스트에서 가짜로 바꾼다. */
-  createStreamManager: (registry: DeviceRegistry, paths: SdkPaths, hooks: StreamManagerHooks) => StreamManager
-  /** 기기별 logcat tail·버퍼·로그 포트를 관리한다. 실제 adb·Electron 포트에 닿으므로 테스트에서 가짜로 바꾼다. */
-  createLogManager: (registry: DeviceRegistry, paths: SdkPaths, hooks: LogManagerHooks) => LogManager
+  /**
+   * adb·에뮬레이터·simctl에 실제로 닿는 부품들. 테스트에서 가짜로 바꾼다.
+   * android는 SDK가 없으면 null, ios는 iOS 도구가 준비됐는지다. 준비된 플랫폼의 추적·소스만 넣는다.
+   */
+  createDeviceStack: (android: SdkPaths | null, ios: boolean) => DeviceStack
+  /** 화면 스트림 세션을 관리한다. 실제 adb·소켓·Electron 포트에 닿으므로 테스트에서 가짜로 바꾼다. paths는 Android SDK가 없으면 null. */
+  createStreamManager: (registry: DeviceRegistry, paths: SdkPaths | null, hooks: StreamManagerHooks) => StreamManager
+  /** 기기별 로그 tail·버퍼·로그 포트를 관리한다. 실제 adb·simctl·Electron 포트에 닿으므로 테스트에서 가짜로 바꾼다. paths는 Android SDK가 없으면 null. */
+  createLogManager: (registry: DeviceRegistry, paths: SdkPaths | null, hooks: LogManagerHooks) => LogManager
   startServer: (opts: StartMcpHttpServerOpts) => Promise<McpServerHandle>
 }
 
@@ -76,11 +83,21 @@ function sdkMissingError() {
   )
 }
 
+/** 두 탐색 결과를 스냅샷의 플랫폼 상태로 옮긴다. */
+function platformStatuses(located: LocateSdkResult, iosTools: IosToolsResult): PlatformStatuses {
+  return {
+    android: located.ok
+      ? { ok: true, location: located.paths.sdkRoot }
+      : { ok: false, reason: 'Android SDK를 찾지 못했다', searched: located.searched },
+    ios: iosTools.ok ? { ok: true, location: iosTools.developerDir } : { ok: false, reason: iosTools.reason, searched: [] }
+  }
+}
+
 /**
- * SDK가 없을 때의 조립. MCP 서버를 열지 않는다. 툴이 전부 실패할 서버를 여는 것은
- * 거짓말이다. 그래도 스냅샷은 내줘야 renderer가 안내 화면을 띄울 수 있다.
+ * Android·iOS 어느 쪽도 준비되지 않았을 때의 조립. MCP 서버를 열지 않는다. 툴이 전부 실패할
+ * 서버를 여는 것은 거짓말이다. 그래도 스냅샷은 내줘야 renderer가 안내 화면을 띄울 수 있다.
  */
-function assembleWithoutSdk(searched: string[]): { state: AppState; actions: BridgeActions } {
+function assembleWithoutPlatforms(platforms: PlatformStatuses): { state: AppState; actions: BridgeActions } {
   const registry = createDeviceRegistry({
     track: () => () => {},
     createDevice: () => {
@@ -96,7 +113,7 @@ function assembleWithoutSdk(searched: string[]): { state: AppState; actions: Bri
       throw sdkMissingError()
     }
   }
-  const state = createAppState({ sdk: { ok: false, searched }, registry, catalog, server: null })
+  const state = createAppState({ platforms, registry, catalog, server: null })
   const reject = async (): Promise<never> => {
     throw sdkMissingError()
   }
@@ -125,26 +142,24 @@ function assembleWithoutSdk(searched: string[]): { state: AppState; actions: Bri
  * AppState를 먼저 만들고 서버를 연 뒤 setServer로 이어 붙인다.
  */
 export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp> {
-  const { located } = deps
+  const { located, iosTools } = deps
+  const platforms = platformStatuses(located, iosTools)
 
-  if (!located.ok) {
-    const { state, actions } = assembleWithoutSdk(located.searched)
+  // 플랫폼마다 따로 조립한다. 하나라도 준비되면 전체 조립과 MCP 서버를 연다.
+  if (!located.ok && !iosTools.ok) {
+    const { state, actions } = assembleWithoutPlatforms(platforms)
     registerIpcBridge(deps.ipcMain, state, actions, deps.send)
     return { state, server: null, stop: async () => {} }
   }
 
-  const { registry, catalog } = deps.createDeviceStack(located.paths)
-  const state = createAppState({
-    sdk: { ok: true, sdkRoot: located.paths.sdkRoot },
-    registry,
-    catalog,
-    server: null
-  })
+  const androidPaths = located.ok ? located.paths : null
+  const { registry, catalog } = deps.createDeviceStack(androidPaths, iosTools.ok)
+  const state = createAppState({ platforms, registry, catalog, server: null })
 
-  const stream = deps.createStreamManager(registry, located.paths, {
+  const stream = deps.createStreamManager(registry, androidPaths, {
     onState: (serial, streamState) => state.recordDeviceEvent(serial, STREAM_EVENTS[streamState])
   })
-  const logs = deps.createLogManager(registry, located.paths, {
+  const logs = deps.createLogManager(registry, androidPaths, {
     onTailState: (serial, tailState) => {
       // 끊김으로 멈춘 tail은 disconnected 항목이 이미 말한다. 기기가 아직 붙어 있는데 멈춘 것만 남긴다.
       if (tailState === 'stopped' && registry.serials().includes(serial)) state.recordDeviceEvent(serial, 'log_stopped')

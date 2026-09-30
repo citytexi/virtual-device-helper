@@ -11,6 +11,7 @@ import { electronResizeImage } from './device/resizeImage'
 import { createIosDevice } from './device/iosDevice'
 import { createSimctlClient } from './ios/simctlClient'
 import { createSimulatorCatalog } from './ios/simulatorCatalog'
+import { defaultLocateIosToolsDeps, locateIosTools } from './ios/locateIosTools'
 import { trackSimulators } from './ios/trackSimulators'
 import { createLogManager } from './logs/logManager'
 import { createLogTail } from './logs/logTail'
@@ -22,9 +23,11 @@ import { startMcpHttpServer } from './mcp/httpServer'
 import { defaultLocateSdkDeps, locateSdk } from './sdk/locateSdk'
 import { resolveScrcpyJar } from './stream/scrcpyJar'
 import { connectLoopback, createScrcpySession } from './stream/scrcpySession'
+import { createPlatformStreamSession } from './stream/rejectingSession'
 import { createStreamManager } from './stream/streamManager'
 import { bootstrapApp, rendererSender, type BootstrappedApp } from './app/bootstrap'
 import { createPortChannel } from './app/portChannel'
+import { deviceError } from '../shared/types/errors'
 import { IPC_CHANNELS } from '../shared/types/ipc'
 import type { LogDown } from '../shared/types/logs'
 import type { StreamDown } from '../shared/types/stream'
@@ -90,15 +93,17 @@ app
   .then(async () => {
     running = await bootstrapApp({
       located: locateSdk(defaultLocateSdkDeps()),
+      iosTools: await locateIosTools(defaultLocateIosToolsDeps()),
       ipcMain,
       send: rendererSender(() => window),
-      createDeviceStack: (paths) => {
-        const adb = createAdbClient(paths.adb)
-        // 시뮬레이터는 macOS에서만 있다. iOS 조립 조건은 Task 9에서 더 붙는다.
-        const simctl = process.platform === 'darwin' ? createSimctlClient() : null
+      createDeviceStack: (paths, ios) => {
+        // 준비된 플랫폼의 추적·소스만 넣는다. iOS는 locateIosTools가 ok일 때만 조립한다 —
+        // Xcode 없는 Mac에서 simctl 추적을 시작하면 tracking_failed만 남는다.
+        const adb = paths ? createAdbClient(paths.adb) : null
+        const simctl = ios ? createSimctlClient() : null
         const registry = createDeviceRegistry({
           track: (onChange, onFailure) => {
-            const stopAdb = trackDevices(adb, (serial, connected) => onChange(serial, connected, 'android'), onFailure)
+            const stopAdb = adb ? trackDevices(adb, (serial, connected) => onChange(serial, connected, 'android'), onFailure) : () => {}
             const stopSimulators = simctl
               ? trackSimulators(simctl, (serial, connected) => onChange(serial, connected, 'ios'), onFailure)
               : () => {}
@@ -107,25 +112,33 @@ app
               stopSimulators()
             }
           },
-          createDevice: (serial, platform) =>
-            platform === 'ios' && simctl
-              ? createIosDevice({ udid: serial, simctl, resizeImage: electronResizeImage })
-              : createAndroidDevice({ serial, adb, resizeImage: electronResizeImage })
+          createDevice: (serial, platform) => {
+            if (platform === 'ios' && simctl) return createIosDevice({ udid: serial, simctl, resizeImage: electronResizeImage })
+            if (platform === 'android' && adb) return createAndroidDevice({ serial, adb, resizeImage: electronResizeImage })
+            // 추적하지 않는 플랫폼의 기기는 생기지 않는다. 만일을 위한 방어다.
+            throw deviceError('no_device', `${platform} 기기를 조립하지 않았다: ${serial}`, '앱을 다시 실행해라')
+          }
         })
-        const avd = createAvdController({ adb, emulatorPath: paths.emulator, spawn })
-        const sources: VirtualDeviceSource[] = [avd]
+        const sources: VirtualDeviceSource[] = []
+        if (paths && adb) sources.push(createAvdController({ adb, emulatorPath: paths.emulator, spawn }))
         if (simctl) sources.push(createSimulatorCatalog({ simctl }))
         return { registry, catalog: createVirtualDeviceCatalog(sources) }
       },
       createStreamManager: (registry, paths, hooks) => {
-        const adb = createAdbClient(paths.adb)
+        const adb = paths ? createAdbClient(paths.adb) : null
         const jarPath = resolveScrcpyJar({
           isPackaged: app.isPackaged,
           resourcesPath: process.resourcesPath,
           appPath: app.getAppPath()
         })
         return createStreamManager({
-          createSession: (serial, handlers) => createScrcpySession({ serial, adb, jarPath, connect: connectLoopback }, handlers),
+          // iOS 기기는 M4-3 전까지 unsupported로 거절하는 세션을 받는다. 판단은 라우터가 한다.
+          createSession: createPlatformStreamSession({
+            platformOf: (serial) => registry.resolve(serial).platform,
+            android: adb
+              ? (serial, handlers) => createScrcpySession({ serial, adb, jarPath, connect: connectLoopback }, handlers)
+              : null
+          }),
           createChannel: () => createPortChannel<StreamDown>(),
           postPort: (meta, remote) => postPortToRenderer(IPC_CHANNELS.streamPort, meta, remote),
           isConnected: (serial) => registry.serials().includes(serial),
@@ -133,17 +146,19 @@ app
         })
       },
       createLogManager: (registry, paths, hooks) => {
-        const adb = createAdbClient(paths.adb)
-        // simctl은 상태가 없어 로그용으로 따로 만들어도 된다. iOS 기기는 macOS에서만 생긴다.
+        const adb = paths ? createAdbClient(paths.adb) : null
+        // simctl은 상태가 없어 로그용으로 따로 만들어도 된다. iOS 기기가 없으면 불리지 않는다.
         const simctl = createSimctlClient()
         const platformDeps = createPlatformLogDeps({
           platformOf: (serial) => registry.resolve(serial).platform,
-          android: {
-            createTail: (serial, handlers) =>
-              createLogTail({ serial, adb, isConnected: () => registry.serials().includes(serial) }, handlers),
-            seedPids: createSeedPids(adb),
-            pidof: createPidof(adb)
-          },
+          android: adb
+            ? {
+                createTail: (serial, handlers) =>
+                  createLogTail({ serial, adb, isConnected: () => registry.serials().includes(serial) }, handlers),
+                seedPids: createSeedPids(adb),
+                pidof: createPidof(adb)
+              }
+            : null,
           ios: {
             createTail: (udid, handlers) =>
               createIosLogTail({ udid, simctl, isConnected: () => registry.serials().includes(udid) }, handlers),

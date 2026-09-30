@@ -42,4 +42,24 @@ describe('createPlatformLogDeps', () => {
     expect(ios.seedPids).not.toHaveBeenCalled()
     expect(android.seedPids).not.toHaveBeenCalled()
   })
+
+  it('Android SDK가 없으면(android: null) android 기기는 아무것도 하지 않는 tail과 빈 결과를 받는다', async () => {
+    const ios = { createTail: vi.fn(() => 'i-tail'), seedPids: vi.fn(async () => 'i-seed'), pidof: vi.fn(async () => [2]) }
+    const deps = createPlatformLogDeps({ platformOf: () => 'android', android: null, ios: ios as never })
+
+    const tail = deps.createTail('s', handlers)
+    await expect(tail.start()).resolves.toBeUndefined()
+    expect(() => tail.stop()).not.toThrow()
+    expect(await deps.seedPids('s')).toBe('')
+    expect(await deps.pidof('s', 'p')).toEqual([])
+    expect(ios.createTail).not.toHaveBeenCalled()
+  })
+
+  it('Android SDK가 없어도 ios 기기는 ios 구현으로 간다', async () => {
+    const ios = { createTail: vi.fn(() => 'i-tail'), seedPids: vi.fn(async () => 'i-seed'), pidof: vi.fn(async () => [2]) }
+    const deps = createPlatformLogDeps({ platformOf: () => 'ios', android: null, ios: ios as never })
+
+    expect(deps.createTail('s', handlers)).toBe('i-tail')
+    expect(await deps.seedPids('s')).toBe('i-seed')
+  })
 })

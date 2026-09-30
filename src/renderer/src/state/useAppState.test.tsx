@@ -5,7 +5,10 @@ import type { AppSnapshot, MainEvent, RendererApi, TimelineEntry } from '../../.
 import { targetSerial, useAppState } from './useAppState'
 
 const baseSnapshot: AppSnapshot = {
-  sdk: { ok: true, sdkRoot: '/opt/sdk' },
+  platforms: {
+    android: { ok: true, location: '/opt/sdk' },
+    ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer' }
+  },
   server: { url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' },
   virtualDevices: [{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: false, serial: null, osVersion: null }],
   devices: [],
@@ -70,7 +73,7 @@ describe('useAppState', () => {
     expect(result.current.loading).toBe(true)
 
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(result.current.snapshot?.sdk).toEqual({ ok: true, sdkRoot: '/opt/sdk' })
+    expect(result.current.snapshot?.platforms.android).toEqual({ ok: true, location: '/opt/sdk' })
   })
 
   it('adds a device when a device_connected event arrives', async () => {

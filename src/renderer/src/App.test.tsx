@@ -37,7 +37,10 @@ function mockApiRejecting(reason: string): void {
 }
 
 const ready: AppSnapshot = {
-  sdk: { ok: true, sdkRoot: '/opt/sdk' },
+  platforms: {
+    android: { ok: true, location: '/opt/sdk' },
+    ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer' }
+  },
   server: { url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' },
   virtualDevices: [{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null }],
   devices: ['emulator-5554'],
@@ -66,13 +69,37 @@ describe('App', () => {
     expect(screen.getByText('http://127.0.0.1:9321/mcp')).toBeDefined()
   })
 
-  it('replaces the whole screen with the SDK guidance when no SDK was found', async () => {
-    mockApi({ ...ready, sdk: { ok: false, searched: ['/opt/a/adb'] }, server: null, virtualDevices: [] })
+  it('replaces the whole screen with the guidance when neither platform is ready', async () => {
+    mockApi({
+      ...ready,
+      platforms: {
+        android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/a/adb'] },
+        ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [] }
+      },
+      server: null,
+      virtualDevices: []
+    })
 
     render(<App />)
 
     await waitFor(() => expect(screen.getByText(/Android Studio/)).toBeDefined())
     expect(screen.queryByRole('region', { name: '작업 영역' })).toBeNull()
+  })
+
+  it('keeps the device panel and shows a one-line Android notice when only Android is missing', async () => {
+    mockApi({
+      ...ready,
+      platforms: {
+        android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/a/adb'] },
+        ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer' }
+      }
+    })
+
+    render(<App />)
+
+    await waitFor(() => expect(screen.getByRole('region', { name: '기기' })).toBeDefined())
+    expect(screen.getByText('Android SDK를 찾지 못해 AVD는 쓸 수 없다.')).toBeDefined()
+    expect(screen.queryByRole('main', { name: 'Android SDK를 찾지 못했다' })).toBeNull()
   })
 
   it('derives the screen target from the single connected device when nothing is explicitly active', async () => {

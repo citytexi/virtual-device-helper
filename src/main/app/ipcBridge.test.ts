@@ -13,7 +13,7 @@ function harness() {
   }
 
   const state = {
-    snapshot: vi.fn(async () => ({ sdk: { ok: true, sdkRoot: '/opt/sdk' } })),
+    snapshot: vi.fn(async () => ({ platforms: { android: { ok: true, location: '/opt/sdk' } } })),
     recordToolCall: vi.fn(),
     onEvent: vi.fn((listener: (event: unknown) => void) => {
       listeners.push(listener)

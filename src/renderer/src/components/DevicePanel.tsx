@@ -28,6 +28,17 @@ function TrackingFailureNotice({ failure }: { failure: TrackingFailure }): JSX.E
   )
 }
 
+/**
+ * 한 플랫폼만 준비됐을 때 빠진 쪽을 한 줄로 알린다. 둘 다 빠진 경우는 App이 SdkMissing으로
+ * 화면을 바꾸므로 여기 오지 않는다. 기기의 platform이 아니라 조립 상태만 본다.
+ */
+function PlatformNotice({ platforms }: { platforms: AppSnapshot['platforms'] }): JSX.Element | null {
+  const { android, ios } = platforms
+  if (!android.ok && ios.ok) return <p className="notice notice-info">Android SDK를 찾지 못해 AVD는 쓸 수 없다.</p>
+  if (android.ok && !ios.ok) return <p className="notice notice-info">{ios.reason} — iOS 시뮬레이터는 쓸 수 없다.</p>
+  return null
+}
+
 /** 표시 전용 라벨. 이 값으로 동작을 나누지 않는다. */
 const PLATFORM_LABEL: Record<Platform, string> = { android: 'Android', ios: 'iOS' }
 
@@ -62,6 +73,7 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
     return (
       <section aria-label="기기" className="device-panel">
         <h2 className="pane-title">기기</h2>
+        <PlatformNotice platforms={snapshot.platforms} />
         {trackingNotice}
         <p className="empty">가상 기기가 없다. Android Studio에서 AVD를 만들거나 Xcode에서 시뮬레이터를 추가하고 앱을 다시 켜라.</p>
       </section>
@@ -74,6 +86,7 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
     <section aria-label="기기" className="device-panel">
       <h2 className="pane-title">기기</h2>
 
+      <PlatformNotice platforms={snapshot.platforms} />
       {trackingNotice}
       {busy === 'boot' ? <p className="notice notice-info">부팅 중…</p> : null}
       {failure ? (

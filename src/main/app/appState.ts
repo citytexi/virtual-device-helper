@@ -8,14 +8,14 @@ import type {
   AppSnapshot,
   DeviceTimelineEvent,
   MainEvent,
-  SdkStatus,
+  PlatformStatuses,
   TimelineEntry,
   ToolCallRecord,
   TrackingFailure
 } from '../../shared/types/ipc'
 
 export interface AppStateDeps {
-  sdk: SdkStatus
+  platforms: PlatformStatuses
   registry: DeviceRegistry
   catalog: VirtualDeviceCatalog
   server: McpServerHandle | null
@@ -92,6 +92,7 @@ export function createAppState(deps: AppStateDeps): AppState {
   const listeners = new Set<(event: MainEvent) => void>()
   let server: McpServerHandle | null = deps.server
   let trackingFailure: TrackingFailure | null = null
+  const anyReady = deps.platforms.android.ok || deps.platforms.ios.ok
 
   function emit(event: MainEvent): void {
     for (const listener of listeners) listener(event)
@@ -148,9 +149,9 @@ export function createAppState(deps: AppStateDeps): AppState {
   return {
     async snapshot() {
       return {
-        sdk: deps.sdk,
+        platforms: deps.platforms,
         server: endpoint(),
-        virtualDevices: deps.sdk.ok ? await listVirtualDevicesOrEmpty() : [],
+        virtualDevices: anyReady ? await listVirtualDevicesOrEmpty() : [],
         devices: deps.registry.serials(),
         activeSerial: deps.registry.getActive(),
         timeline: [...timeline],

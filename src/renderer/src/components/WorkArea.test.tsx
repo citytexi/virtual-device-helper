@@ -43,7 +43,10 @@ function logHarness() {
 }
 
 const snapshot: AppSnapshot = {
-  sdk: { ok: true, sdkRoot: '/opt/sdk' },
+  platforms: {
+    android: { ok: true, location: '/opt/sdk' },
+    ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer' }
+  },
   server: { url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' },
   virtualDevices: [{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null }],
   devices: ['emulator-5554'],

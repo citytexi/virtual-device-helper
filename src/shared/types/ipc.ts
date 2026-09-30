@@ -82,7 +82,16 @@ export const IPC_CHANNELS = {
   event: 'app:event'
 } as const
 
-export type SdkStatus = { ok: true; sdkRoot: string } | { ok: false; searched: string[] }
+/**
+ * 플랫폼 하나가 준비됐는지. Android는 location이 SDK 경로, searched가 찾아본 경로다.
+ * iOS는 location이 Xcode 개발자 디렉토리이고 searched는 비어 있다.
+ */
+export type PlatformStatus = { ok: true; location: string } | { ok: false; reason: string; searched: string[] }
+
+export interface PlatformStatuses {
+  android: PlatformStatus
+  ios: PlatformStatus
+}
 
 /**
  * IPC를 넘는 결과. 예외로 던지지 않는다 — Electron IPC를 넘는 Error는
@@ -108,7 +117,7 @@ export interface TrackingFailure {
 }
 
 export interface AppSnapshot {
-  sdk: SdkStatus
+  platforms: PlatformStatuses
   server: ServerStatus | null
   virtualDevices: VirtualDeviceEntry[]
   devices: string[]
