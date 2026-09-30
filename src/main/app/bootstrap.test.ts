@@ -74,6 +74,7 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
       paths: { sdkRoot: '/opt/sdk', adb: '/opt/sdk/platform-tools/adb', emulator: '/opt/sdk/emulator/emulator', source: 'ANDROID_HOME' }
     },
     iosTools: iosMissing,
+    axePath: '/opt/homebrew/bin/axe',
     ipcMain: ipcMain as never,
     send: vi.fn(),
     createDeviceStack: vi.fn(() => ({ registry: stack.registry, catalog: stack.catalog })),
@@ -309,7 +310,7 @@ describe('bootstrapApp with an SDK', () => {
     const onOrder = vi.mocked(h.stack.registry.on).mock.invocationCallOrder[0]!
     const startOrder = vi.mocked(h.stack.registry.start).mock.invocationCallOrder[0]!
     expect(onOrder).toBeLessThan(startOrder)
-    expect(snapshot.platforms.android).toEqual({ ok: true, location: '/opt/sdk' })
+    expect(snapshot.platforms.android).toEqual({ ok: true, location: '/opt/sdk', notes: [] })
     expect(snapshot.platforms.ios).toEqual({ ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [] })
     expect(snapshot.server).toEqual({ url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' })
     expect(app.server).toBe(h.server)
@@ -455,7 +456,20 @@ describe('bootstrapApp with only iOS', () => {
       reason: 'Android SDK를 찾지 못했다',
       searched: ['/opt/sdk/platform-tools/adb']
     })
-    expect(snapshot.platforms.ios).toEqual({ ok: true, location: '/Applications/Xcode.app/Contents/Developer' })
+    expect(snapshot.platforms.ios).toEqual({ ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: [] })
+  })
+
+  it('adds a note to the iOS status when AXe is missing', async () => {
+    const h = harness({ located: missing, iosTools: iosReady, axePath: null })
+
+    await bootstrapApp(h.deps)
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(snapshot.platforms.ios).toEqual({
+      ok: true,
+      location: '/Applications/Xcode.app/Contents/Developer',
+      notes: ['AXe가 없어 iOS 입력·노드·실시간 화면을 쓸 수 없다. brew install cameroncooke/axe/axe로 설치하고 앱을 다시 켜라']
+    })
   })
 
   it('builds the stack, stream and log managers without Android paths', async () => {

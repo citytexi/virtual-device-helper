@@ -1,6 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, type MessagePortMain } from 'electron'
 import { join } from 'node:path'
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { promisify } from 'node:util'
 import { createAdbClient } from './adb/adbClient'
 import { trackDevices } from './adb/trackDevices'
 import { createAndroidDevice } from './device/androidDevice'
@@ -9,6 +11,8 @@ import { createVirtualDeviceCatalog, type VirtualDeviceSource } from './device/v
 import { createDeviceRegistry } from './device/registry'
 import { electronResizeImage } from './device/resizeImage'
 import { createIosDevice } from './device/iosDevice'
+import { createAxeClient } from './ios/axeClient'
+import { locateAxe } from './ios/locateAxe'
 import { createSimctlClient } from './ios/simctlClient'
 import { createSimulatorCatalog } from './ios/simulatorCatalog'
 import { defaultLocateIosToolsDeps, locateIosTools } from './ios/locateIosTools'
@@ -91,9 +95,22 @@ function postPortToRenderer(channel: string, meta: unknown, remote: unknown): vo
 app
   .whenReady()
   .then(async () => {
+    // AXe는 iOS 입력·노드·실시간 화면에만 필요하다. 없어도 iOS 자체는 조립하고 안내만 남긴다.
+    const axePath = await locateAxe({
+      fileExists: existsSync,
+      which: async () => {
+        try {
+          const { stdout } = await promisify(execFile)('which', ['axe'], { timeout: 5_000 })
+          return stdout.trim() || null
+        } catch {
+          return null
+        }
+      }
+    })
     running = await bootstrapApp({
       located: locateSdk(defaultLocateSdkDeps()),
       iosTools: await locateIosTools(defaultLocateIosToolsDeps()),
+      axePath,
       ipcMain,
       send: rendererSender(() => window),
       createDeviceStack: (paths, ios) => {
@@ -101,6 +118,7 @@ app
         // Xcode 없는 Mac에서 simctl 추적을 시작하면 tracking_failed만 남는다.
         const adb = paths ? createAdbClient(paths.adb) : null
         const simctl = ios ? createSimctlClient() : null
+        const axe = axePath ? createAxeClient(axePath) : null
         const registry = createDeviceRegistry({
           track: (onChange, onFailure) => {
             const stopAdb = adb ? trackDevices(adb, (serial, connected) => onChange(serial, connected, 'android'), onFailure) : () => {}
@@ -113,7 +131,7 @@ app
             }
           },
           createDevice: (serial, platform) => {
-            if (platform === 'ios' && simctl) return createIosDevice({ udid: serial, simctl, resizeImage: electronResizeImage })
+            if (platform === 'ios' && simctl) return createIosDevice({ udid: serial, simctl, axe, resizeImage: electronResizeImage })
             if (platform === 'android' && adb) return createAndroidDevice({ serial, adb, resizeImage: electronResizeImage })
             // 추적하지 않는 플랫폼의 기기는 생기지 않는다. 만일을 위한 방어다.
             throw deviceError('no_device', `${platform} 기기를 조립하지 않았다: ${serial}`, '앱을 다시 실행해라')

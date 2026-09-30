@@ -51,6 +51,7 @@ describe.skipIf(udid === null)('IosDevice (실제 시뮬레이터)', () => {
     device = createIosDevice({
       udid: udid as string,
       simctl: createSimctlClient(),
+      axe: null,
       // 스크린샷 축소는 Electron nativeImage가 필요하다. 크기만 헤더에서 읽어 비율로 돌려주는 대역이다.
       resizeImage: (png, maxLongEdge) => {
         const { width, height } = pngSize(png)

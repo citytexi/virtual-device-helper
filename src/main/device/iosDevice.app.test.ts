@@ -8,7 +8,7 @@ const noopResize = (png: Buffer) => ({ png, width: 1, height: 1 })
 
 function make(handlers: Parameters<typeof fakeSimctl>[0], extra: Partial<IosDeviceDeps> = {}) {
   const simctl = fakeSimctl(handlers)
-  const device = createIosDevice({ udid: UDID, simctl, resizeImage: noopResize, ...extra })
+  const device = createIosDevice({ udid: UDID, simctl, axe: null, resizeImage: noopResize, ...extra })
   return { simctl, device }
 }
 

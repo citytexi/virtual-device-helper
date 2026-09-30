@@ -4,6 +4,7 @@ import { readdir, readFile as fsReadFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import type { AxeClient } from '../ios/axeClient'
 import type { SimctlClient } from '../ios/simctlClient'
 import { DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT } from '../../shared/limits'
 import { deviceError, isDeviceError, unsupported } from '../../shared/types/errors'
@@ -28,6 +29,8 @@ import type { ResizeImage } from './resizeImage'
 export interface IosDeviceDeps {
   udid: string
   simctl: SimctlClient
+  /** AXe를 못 찾았으면 null. 입력·노드·실시간 화면이 이 값에 기대며, Task 3부터 쓴다. */
+  axe: AxeClient | null
   resizeImage: ResizeImage
   /** `plutil -extract CFBundleIdentifier raw -o - <plist>`. 기본값은 execFile. */
   readBundleId?: (infoPlistPath: string) => Promise<string>

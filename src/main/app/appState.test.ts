@@ -41,7 +41,7 @@ function parts() {
 }
 
 const ANDROID_READY: AppSnapshot['platforms'] = {
-  android: { ok: true, location: '/opt/sdk' },
+  android: { ok: true, location: '/opt/sdk', notes: [] },
   ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [] }
 }
 const NONE_READY: AppSnapshot['platforms'] = {
@@ -86,7 +86,7 @@ describe('createAppState snapshot', () => {
   it('lists virtual devices when only iOS is ready', async () => {
     const p = parts()
     const state = createAppState({
-      platforms: { android: NONE_READY.android, ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer' } },
+      platforms: { android: NONE_READY.android, ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: [] } },
       registry: p.registry,
       catalog: p.catalog,
       server: p.server

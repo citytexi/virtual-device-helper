@@ -23,8 +23,8 @@ beforeEach(() => {
 function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
   return {
     platforms: {
-      android: { ok: true, location: '/opt/sdk' },
-      ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer' }
+      android: { ok: true, location: '/opt/sdk', notes: [] },
+      ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: [] }
     },
     server: null,
     virtualDevices: [
@@ -40,13 +40,29 @@ function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
 }
 
 describe('DevicePanel platform notices', () => {
+  it('renders each platform note as an info notice', () => {
+    render(
+      <DevicePanel
+        snapshot={snapshot({
+          platforms: {
+            android: { ok: true, location: '/opt/sdk', notes: [] },
+            ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: ['AXe가 없어 iOS 입력을 쓸 수 없다'] }
+          }
+        })}
+      />
+    )
+
+    const note = screen.getByText('AXe가 없어 iOS 입력을 쓸 수 없다')
+    expect(note.className).toContain('notice-info')
+  })
+
   it('shows a one-line Android notice when only iOS is ready', () => {
     render(
       <DevicePanel
         snapshot={snapshot({
           platforms: {
             android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/a/adb'] },
-            ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer' }
+            ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: [] }
           }
         })}
       />
@@ -60,7 +76,7 @@ describe('DevicePanel platform notices', () => {
       <DevicePanel
         snapshot={snapshot({
           platforms: {
-            android: { ok: true, location: '/opt/sdk' },
+            android: { ok: true, location: '/opt/sdk', notes: [] },
             ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [] }
           }
         })}
@@ -77,7 +93,7 @@ describe('DevicePanel platform notices', () => {
           virtualDevices: [],
           platforms: {
             android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: [] },
-            ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer' }
+            ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: [] }
           }
         })}
       />

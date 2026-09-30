@@ -39,6 +39,21 @@ function PlatformNotice({ platforms }: { platforms: AppSnapshot['platforms'] }):
   return null
 }
 
+/** 준비된 플랫폼이 덧붙인 알림(예: AXe 없음)을 한 줄씩 보인다. */
+function PlatformNotes({ platforms }: { platforms: AppSnapshot['platforms'] }): JSX.Element | null {
+  const notes = [platforms.android, platforms.ios].flatMap((status) => (status.ok ? status.notes : []))
+  if (notes.length === 0) return null
+  return (
+    <>
+      {notes.map((note) => (
+        <p key={note} className="notice notice-info">
+          {note}
+        </p>
+      ))}
+    </>
+  )
+}
+
 /** 표시 전용 라벨. 이 값으로 동작을 나누지 않는다. */
 const PLATFORM_LABEL: Record<Platform, string> = { android: 'Android', ios: 'iOS' }
 
@@ -74,6 +89,7 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
       <section aria-label="기기" className="device-panel">
         <h2 className="pane-title">기기</h2>
         <PlatformNotice platforms={snapshot.platforms} />
+      <PlatformNotes platforms={snapshot.platforms} />
         {trackingNotice}
         <p className="empty">가상 기기가 없다. Android Studio에서 AVD를 만들거나 Xcode에서 시뮬레이터를 추가하고 앱을 다시 켜라.</p>
       </section>
@@ -87,6 +103,7 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
       <h2 className="pane-title">기기</h2>
 
       <PlatformNotice platforms={snapshot.platforms} />
+      <PlatformNotes platforms={snapshot.platforms} />
       {trackingNotice}
       {busy === 'boot' ? <p className="notice notice-info">부팅 중…</p> : null}
       {failure ? (
