@@ -4,6 +4,7 @@ import { createDeviceRegistry, type DeviceRegistry } from '../device/registry'
 import type { LogManager } from '../logs/logManager'
 import type { TailState } from '../../shared/types/logs'
 import type { McpServerHandle, StartMcpHttpServerOpts } from '../mcp/httpServer'
+import { AXE_HINT } from '../ios/axeClient'
 import type { IosToolsResult } from '../ios/locateIosTools'
 import type { LocateSdkResult, SdkPaths } from '../sdk/locateSdk'
 import type { StreamLifecycle, StreamManager } from '../stream/streamManager'
@@ -79,7 +80,7 @@ const STREAM_EVENTS = {
 
 const XCODE_HINT = 'Xcode를 설치하고 xcode-select -s로 개발자 디렉토리를 정해라'
 
-const AXE_MISSING_NOTE = 'AXe가 없어 iOS 입력·노드·실시간 화면을 쓸 수 없다. brew install cameroncooke/axe/axe로 설치하고 앱을 다시 켜라'
+const AXE_MISSING_NOTE = `AXe가 없어 iOS 입력·노드·실시간 화면을 쓸 수 없다. ${AXE_HINT}`
 
 function sdkMissingError() {
   return deviceError(

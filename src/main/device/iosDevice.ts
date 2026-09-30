@@ -43,6 +43,8 @@ export interface IosDeviceDeps {
   readFile?: (path: string) => Promise<Buffer>
   removeFile?: (path: string) => Promise<void>
   now?: () => number
+  /** describe-ui 재시도 대기. 테스트에서 바꿔 끼운다. 기본값은 setTimeout. */
+  sleep?: (ms: number) => Promise<void>
 }
 
 const SCREENSHOT_TIMEOUT_MS = 60_000
@@ -50,6 +52,9 @@ const INSTALL_TIMEOUT_MS = 180_000
 /** since도 워터마크도 없을 때 읽기 시작점: 최근 5분. */
 const DEFAULT_LOG_WINDOW_MS = 300_000
 const LOG_SHOW_TIMEOUT_MS = 60_000
+/** 앱을 막 띄운 직후 첫 describe-ui가 이 stderr로 실패할 수 있다(스펙 스파이크 2). 잠시 뒤 한 번만 다시 시도한다. */
+const DESCRIBE_UI_RETRY_STDERR = 'No translation object returned for simulator'
+const DESCRIBE_UI_RETRY_DELAY_MS = 500
 const DATA_CONTAINER_MARKER = '/data/Containers/Data/Application/'
 
 /** 셸 없이 plutil을 부른다. 경로는 인자 배열로만 넘긴다. */
@@ -106,7 +111,8 @@ export function createIosDevice(deps: IosDeviceDeps): Device & { readonly platfo
     emptyDirectory = defaultEmptyDirectory,
     readFile = fsReadFile,
     removeFile = (path: string) => rm(path, { force: true }),
-    now = Date.now
+    now = Date.now,
+    sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
   } = deps
 
   // 화면 크기는 연결 동안 바뀌지 않으므로 한 번 재서 캐시한다. 실패는 캐시하지 않는다.
@@ -294,7 +300,15 @@ export function createIosDevice(deps: IosDeviceDeps): Device & { readonly platfo
   }
 
   async function describeUi(): Promise<string> {
-    return (await requireAxe().exec(udid, ['describe-ui'])).stdout
+    const axe = requireAxe()
+    try {
+      return (await axe.exec(udid, ['describe-ui'])).stdout
+    } catch (error) {
+      const stderr = isDeviceError(error) ? error.toolError.details?.stderr : undefined
+      if (typeof stderr !== 'string' || !stderr.includes(DESCRIBE_UI_RETRY_STDERR)) throw error
+    }
+    await sleep(DESCRIBE_UI_RETRY_DELAY_MS)
+    return (await axe.exec(udid, ['describe-ui'])).stdout
   }
 
   async function dumpUi(): Promise<UiDump> {

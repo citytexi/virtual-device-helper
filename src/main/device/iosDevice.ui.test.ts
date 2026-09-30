@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { AXE_HINT } from '../ios/axeClient'
+import { deviceError } from '../../shared/types/errors'
 import { execOk, fakeAxe, fakeSimctl } from '../ios/testing'
 import { createIosDevice } from './iosDevice'
 import { parseAxeFrame, parseAxeUi } from './parsers/axeUi'
@@ -79,6 +80,58 @@ describe('IosDevice 노드·화면', () => {
     await expect(device.displayFrame()).resolves.toEqual(parseAxeFrame(describeUi))
     await device.displayFrame()
     expect(axe.calls).toHaveLength(2)
+  })
+})
+
+describe('IosDevice describe-ui 재시도', () => {
+  const TRANSLATION = deviceError('command_failed', 'axe 명령이 실패했다: describe-ui', '첨부된 stderr를 확인해라', {
+    stderr: 'Error: No translation object returned for simulator UDID-1'
+  })
+
+  function retrySetup(results: Array<Error | ReturnType<typeof execOk>>) {
+    const calls: string[][] = []
+    const sleeps: number[] = []
+    const axe = {
+      calls,
+      exec: vi.fn(async (_udid: string, args: string[]) => {
+        calls.push(args)
+        const next = results.shift()!
+        if (next instanceof Error) throw next
+        return next
+      }),
+      stream: vi.fn()
+    }
+    const device = createIosDevice({
+      udid: UDID,
+      simctl: fakeSimctl({}),
+      axe,
+      resizeImage: noopResize,
+      sleep: async (ms) => {
+        sleeps.push(ms)
+      }
+    })
+    return { calls, sleeps, device }
+  }
+
+  it('No translation object 실패는 잠시 뒤 한 번 다시 시도해 성공한다', async () => {
+    const { calls, sleeps, device } = retrySetup([TRANSLATION, execOk(describeUi)])
+    await expect(device.dumpUi()).resolves.toEqual(parseAxeUi(describeUi))
+    expect(calls).toHaveLength(2)
+    expect(sleeps).toEqual([500])
+  })
+
+  it('다시 시도해도 실패하면 두 번째 에러를 던지고 더 시도하지 않는다', async () => {
+    const { calls, device } = retrySetup([TRANSLATION, TRANSLATION, execOk(describeUi)])
+    await expect(device.dumpUi()).rejects.toBe(TRANSLATION)
+    expect(calls).toHaveLength(2)
+  })
+
+  it('다른 stderr는 다시 시도하지 않고 원래 에러를 던진다', async () => {
+    const other = deviceError('command_failed', 'axe 명령이 실패했다', '힌트', { stderr: 'boom' })
+    const { calls, sleeps, device } = retrySetup([other, execOk(describeUi)])
+    await expect(device.dumpUi()).rejects.toBe(other)
+    expect(calls).toHaveLength(1)
+    expect(sleeps).toEqual([])
   })
 })
 

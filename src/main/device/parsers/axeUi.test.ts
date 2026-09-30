@@ -72,6 +72,18 @@ describe('parseAxeUi (describe-ui-settings.json)', () => {
     expect(dump.nodes.some((n) => n.className === 'Group' && !n.text && !n.contentDesc && !n.resourceId && !n.clickable && !n.scrollable)).toBe(false)
   })
 
+  it('숫자·불리언 AXValue와 null 자식이 있어도 던지지 않는다', () => {
+    const tree = fixture()
+    tree[0]!.children!.push(
+      { type: 'Slider', AXLabel: '밝기', AXValue: 0.5, AXUniqueId: 7, frame: { x: 10, y: 100, width: 100, height: 40 } },
+      { type: 'Switch', AXLabel: '와이파이', AXValue: true, frame: { x: 10, y: 200, width: 60, height: 40 } },
+      null as unknown as AxNode
+    )
+    const dump = parseAxeUi(JSON.stringify(tree))
+    expect(dump.nodes.find((n) => n.contentDesc === '밝기')).toMatchObject({ text: '0.5', resourceId: '7' })
+    expect(dump.nodes.find((n) => n.contentDesc === '와이파이')).toMatchObject({ text: 'true' })
+  })
+
   it('루트 자식이 빈 배열이면 nodes는 []다', () => {
     const tree = fixture()
     tree[0]!.children = []

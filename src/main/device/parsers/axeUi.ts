@@ -5,12 +5,12 @@ import { centerOnScreen, emptyToNull, isMeaningful, normalize, type Rect } from 
 /** `axe describe-ui` 노드 하나. 없는 값은 null이고 키 순서는 일정하지 않다. */
 interface AxeNode {
   type?: string | null
-  AXLabel?: string | null
-  AXValue?: string | null
-  AXUniqueId?: string | null
+  AXLabel?: unknown
+  AXValue?: unknown
+  AXUniqueId?: unknown
   enabled?: boolean | null
   frame?: { x?: unknown; y?: unknown; width?: unknown; height?: unknown } | null
-  children?: AxeNode[] | null
+  children?: Array<AxeNode | null> | null
 }
 
 const CLICKABLE_TYPES = new Set(['Button', 'Link', 'Cell', 'Switch', 'TextField', 'SecureTextField', 'TextView'])
@@ -19,6 +19,13 @@ const EDITABLE_TYPES = new Set(['TextField', 'SecureTextField', 'TextView'])
 
 function parseFailure(): Error {
   return deviceError('command_failed', 'describe-ui 출력을 읽지 못했다', '시뮬레이터가 부팅됐는지 확인하고 다시 불러라')
+}
+
+/** 문자열은 그대로, 숫자·불리언(Slider·Switch의 `AXValue` 등)은 문자열로, 나머지는 없는 값으로 읽는다. */
+function asText(value: unknown): string | undefined {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return undefined
 }
 
 /** 숫자 `frame`(point)을 사각형으로 읽는다. `AXFrame` 문자열은 파싱하지 않는다. */
@@ -58,10 +65,10 @@ function collect(node: AxeNode, parentIndex: number | null, screen: Rect, frame:
 
   if (bounds && bounds.right - bounds.left > 0 && bounds.bottom - bounds.top > 0 && centerOnScreen(bounds, screen)) {
     const type = node.type ?? ''
-    const label = emptyToNull(node.AXLabel ?? undefined)
-    const value = emptyToNull(node.AXValue ?? undefined)
+    const label = emptyToNull(asText(node.AXLabel))
+    const value = emptyToNull(asText(node.AXValue))
     const text = type === 'StaticText' ? label : value
-    const resourceId = emptyToNull(node.AXUniqueId ?? undefined)
+    const resourceId = emptyToNull(asText(node.AXUniqueId))
     const clickable = CLICKABLE_TYPES.has(type)
     const scrollable = SCROLLABLE_TYPES.has(type)
 
@@ -84,7 +91,7 @@ function collect(node: AxeNode, parentIndex: number | null, screen: Rect, frame:
     }
   }
 
-  for (const child of node.children ?? []) collect(child, keptIndex, screen, frame, into)
+  for (const child of node.children ?? []) if (child) collect(child, keptIndex, screen, frame, into)
 }
 
 /**
@@ -96,7 +103,7 @@ export function parseAxeUi(json: string): UiDump {
   const frame = toFrame(rect)
   const nodes: UiNode[] = []
   // 루트 Application은 화면 자체라 노드로 올리지 않는다. 자식부터 모은다.
-  for (const child of root.children ?? []) collect(child, null, rect, frame, nodes)
+  for (const child of root.children ?? []) if (child) collect(child, null, rect, frame, nodes)
   return { nodes, frame }
 }
 
