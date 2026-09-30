@@ -41,6 +41,22 @@ function signatureOf(dump: UiDump): string {
   return JSON.stringify(dump.nodes.map((n) => `${n.className}|${n.resourceId ?? ''}|${n.contentDesc ?? ''}|${n.text ?? ''}`))
 }
 
+/**
+ * 앱을 띄운 직후 몇 초 동안은 트리가 바뀐다(설정 앱은 실행 뒤 약 4초에 Toolbar Group이 나타난다).
+ * 연속 두 번의 덤프 지문이 같아질 때까지 기다려 안정된 화면을 돌려준다.
+ */
+async function dumpUiStable(target: Device, timeoutMs = 15_000): Promise<UiDump> {
+  const deadline = Date.now() + timeoutMs
+  let previous = await target.dumpUi()
+  for (;;) {
+    await sleep(500)
+    const current = await target.dumpUi()
+    if (signatureOf(current) === signatureOf(previous)) return current
+    if (Date.now() > deadline) throw new Error(`${timeoutMs}ms 안에 화면이 안정되지 않았다`)
+    previous = current
+  }
+}
+
 const udid = firstBootedUdid()
 const axePath = await locateAxe({ fileExists: existsSync, which: async () => whichAxe() })
 
@@ -57,7 +73,6 @@ describe.skipIf(udid === null || axePath === null)('IosDevice 입력·노드 (�
     // 이전 상태(검색 화면 등)를 지우고 설정 첫 화면에서 시작한다.
     await device.stop(SETTINGS)
     await device.launch(SETTINGS)
-    await sleep(2_000)
   })
 
   afterAll(async () => {
@@ -65,7 +80,8 @@ describe.skipIf(udid === null || axePath === null)('IosDevice 입력·노드 (�
   })
 
   it('설정의 clickable 셀을 탭하면 화면이 바뀌고 home으로 나간다', async () => {
-    const before = await device.dumpUi()
+    // 고정 대기로는 실행 직후의 트리 변화와 탭으로 인한 변화를 가를 수 없다. 안정된 뒤에 잰다.
+    const before = await dumpUiStable(device)
     const frame = await device.displayFrame()
     expect(frame.width).toBeGreaterThan(0)
     expect(frame.height).toBeGreaterThan(0)

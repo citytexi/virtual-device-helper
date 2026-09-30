@@ -288,9 +288,9 @@ ndjson에는 `eventType`이 `activityCreateEvent`인 줄도 섞여 나온다. �
 - 빈 TextField의 `AXValue`에는 placeholder가 들어 있다(설정 앱 검색 필드는 `검색`). 이것을 걸러 내지 않고
   `text`로 그대로 둔다. `nodeRefs.ts`의 `ownFingerprint`가 `editable` 노드의 text를 지문에서 빼므로 입력으로
   값이 바뀌어도 ref는 살아 있다. Android uiautomator도 빈 입력칸의 hint를 `text`로 내므로 두 플랫폼이 같다.
-- `nodeRefs.ts`는 지금 `className`이 `EditText`로 끝나는지로 text를 뺀다. 이것을 `editable`
-  필드로 바꾼다. Android 파서는 `EditText` 계열에 `editable: true`를 채운다.
-  ADR-0011에 변경 메모를 단다.
+- `nodeRefs.ts`의 `ownFingerprint`는 `className`이 `EditText`로 끝나는지 대신 `UiNode.editable`로 text를 뺀다.
+  Android 파서(`uiDump.ts`)는 `EditText` 계열에, iOS 파서(`axeUi.ts#parseAxeUi`)는 TextField 계열에
+  `editable: true`를 채운다. ADR-0011에 이 변경을 적었다.
 
 ### 스트리밍과 화면 입력 (M4-3)
 
@@ -489,6 +489,8 @@ SwiftUI와 UIKit의 차이를 가를 서드파티 앱은 이번에 쓰지 못했
 
 **열린 것.** 설치 성공 경로(`app_install`, `app_reset_and_launch`의 `settleSkipped`)는 시뮬레이터용으로 빌드한
 `.app`이 있는 환경에서 한 번 더 확인해야 한다. 앱 창에서 보는 항목(5·6, 기기 패널 라벨)은 사람이 확인한다.
+
+> 설치 성공 경로와 `app_reset_and_launch`의 결과는 아래 "M4-2 검증 결과"에서 확인했다.
 
 ## M4-2 검증 결과
 
