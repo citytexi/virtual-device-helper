@@ -38,9 +38,9 @@ describe('IosDevice.install', () => {
 })
 
 describe('IosDevice lifecycle', () => {
-  it('stop resolves even when terminate rejects', async () => {
-    const { device } = make({ [`terminate ${UDID} com.x`]: new Error('not running') })
-    await expect(device.stop('com.x')).resolves.toBeUndefined()
+  it('stop rethrows a non-DeviceError', async () => {
+    const { device } = make({ [`terminate ${UDID} com.x`]: new Error('boom') })
+    await expect(device.stop('com.x')).rejects.toThrow('boom')
   })
 
   it('launch with an activity is unsupported for ios', async () => {
@@ -70,7 +70,7 @@ describe('IosDevice lifecycle', () => {
     const { simctl, device } = make(
       {
         [`terminate ${UDID} com.x`]: execOk(),
-        [`get_app_container ${UDID} com.x data`]: execOk('/data/Containers/abc\n')
+        [`get_app_container ${UDID} com.x data`]: execOk('/sim/data/Containers/Data/Application/ABC\n')
       },
       { emptyDirectory }
     )
@@ -78,8 +78,8 @@ describe('IosDevice lifecycle', () => {
     await device.clearData('com.x')
 
     expect(simctl.calls.map((call) => call[0])).toEqual(['terminate', 'get_app_container'])
-    expect(emptyDirectory).toHaveBeenCalledWith('/data/Containers/abc')
-    expect(order).toEqual(['empty:/data/Containers/abc'])
+    expect(emptyDirectory).toHaveBeenCalledWith('/sim/data/Containers/Data/Application/ABC')
+    expect(order).toEqual(['empty:/sim/data/Containers/Data/Application/ABC'])
   })
 
   it('clearData maps get_app_container failure to package_not_found', async () => {
@@ -88,6 +88,36 @@ describe('IosDevice lifecycle', () => {
       [`get_app_container ${UDID} com.x data`]: deviceError('command_failed', 'x', 'y', { stderr: 'No such app' })
     })
     await expect(device.clearData('com.x')).rejects.toMatchObject({ toolError: { kind: 'package_not_found' } })
+  })
+
+  it.each([
+    ['relative path', 'data/Containers/Data/Application/ABC'],
+    ['root', '/'],
+    ['multi-line', '/a/data/Containers/Data/Application/A\n/b'],
+    ['unrelated absolute path', '/Users/me/Documents']
+  ])('clearData refuses a suspicious container path (%s) without emptying', async (_name, stdout) => {
+    const emptyDirectory = vi.fn(async () => {})
+    const { device } = make(
+      { [`terminate ${UDID} com.x`]: execOk(), [`get_app_container ${UDID} com.x data`]: execOk(`${stdout}\n`) },
+      { emptyDirectory }
+    )
+    await expect(device.clearData('com.x')).rejects.toMatchObject({ toolError: { kind: 'command_failed' } })
+    expect(emptyDirectory).not.toHaveBeenCalled()
+  })
+
+  it('clearData rethrows non-command_failed errors from get_app_container', async () => {
+    const { device } = make({
+      [`terminate ${UDID} com.x`]: execOk(),
+      [`get_app_container ${UDID} com.x data`]: deviceError('no_device', 'x', 'y')
+    })
+    await expect(device.clearData('com.x')).rejects.toMatchObject({ toolError: { kind: 'no_device' } })
+  })
+
+  it('stop rethrows ios_tool_not_found but swallows command_failed', async () => {
+    const missing = make({ [`terminate ${UDID} com.x`]: deviceError('ios_tool_not_found', 'x', 'y') })
+    await expect(missing.device.stop('com.x')).rejects.toMatchObject({ toolError: { kind: 'ios_tool_not_found' } })
+    const notRunning = make({ [`terminate ${UDID} com.x`]: deviceError('command_failed', 'x', 'y') })
+    await expect(notRunning.device.stop('com.x')).resolves.toBeUndefined()
   })
 
   it('grantPermission calls simctl privacy', async () => {

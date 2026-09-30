@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
 import { readdir, readFile as fsReadFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { SimctlClient } from '../ios/simctlClient'
 import { deviceError, isDeviceError, unsupported } from '../../shared/types/errors'
@@ -39,6 +39,7 @@ export interface IosDeviceDeps {
 
 const SCREENSHOT_TIMEOUT_MS = 60_000
 const INSTALL_TIMEOUT_MS = 180_000
+const DATA_CONTAINER_MARKER = '/data/Containers/Data/Application/'
 
 /** 셸 없이 plutil을 부른다. 경로는 인자 배열로만 넘긴다. */
 function defaultReadBundleId(infoPlistPath: string): Promise<string> {
@@ -176,7 +177,13 @@ export function createIosDevice(deps: IosDeviceDeps): Device & { readonly platfo
 
   async function stop(pkg: string): Promise<void> {
     // 떠 있지 않은 앱을 종료해도 실패하지만 원하는 상태는 이미 됐으므로 성공으로 끝낸다.
-    await simctl.exec(['terminate', udid, pkg]).catch(() => {})
+    // command_failed(실행 중이 아님)만 삼킨다. 도구 없음·기기 없음 등은 그대로 던진다.
+    try {
+      await simctl.exec(['terminate', udid, pkg])
+    } catch (error) {
+      if (isDeviceError(error) && error.toolError.kind === 'command_failed') return
+      throw error
+    }
   }
 
   async function clearData(pkg: string): Promise<void> {
@@ -185,11 +192,23 @@ export function createIosDevice(deps: IosDeviceDeps): Device & { readonly platfo
     let container: string
     try {
       container = (await simctl.exec(['get_app_container', udid, pkg, 'data'])).stdout.trim()
-    } catch {
-      throw deviceError('package_not_found', `시뮬레이터에 ${pkg}가 설치돼 있지 않다`, 'app_install로 먼저 설치해라', { pkg })
+    } catch (error) {
+      if (isDeviceError(error) && error.toolError.kind === 'command_failed') {
+        throw deviceError('package_not_found', `시뮬레이터에 ${pkg}가 설치돼 있지 않다`, 'app_install로 먼저 설치해라', { pkg })
+      }
+      throw error
     }
-    if (!container) {
-      throw deviceError('command_failed', `${pkg}의 데이터 컨테이너 경로를 얻지 못했다`, '시뮬레이터 상태를 확인해라', { pkg })
+
+    // 이 경로 아래를 재귀 삭제하므로, 앱 데이터 컨테이너가 확실할 때만 비운다.
+    if (
+      container.includes('\n') ||
+      !isAbsolute(container) ||
+      container === '/' ||
+      !container.includes(DATA_CONTAINER_MARKER)
+    ) {
+      throw deviceError('command_failed', `앱 데이터 컨테이너 경로가 예상과 다르다: ${container}`, '시뮬레이터 상태를 확인해라', {
+        path: container
+      })
     }
 
     await emptyDirectory(container)
