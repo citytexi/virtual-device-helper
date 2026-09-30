@@ -14,8 +14,10 @@ export function SdkMissing({ platforms }: SdkMissingProps): JSX.Element {
   const { android, ios } = platforms
 
   return (
-    <main aria-label="Android SDK를 찾지 못했다" className="app-message sdk-missing">
-      <h1>Android SDK를 찾지 못했다</h1>
+    <main aria-label="기기 도구를 찾지 못했다" className="app-message sdk-missing">
+      <h1>기기 도구를 찾지 못했다</h1>
+
+      <h2>Android SDK를 찾지 못했다</h2>
 
       <p>
         이 앱은 Android SDK를 번들하지 않는다. 호스트에 설치된 SDK를 쓴다. Android Studio를 설치하고

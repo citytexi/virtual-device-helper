@@ -99,7 +99,7 @@ describe('App', () => {
 
     await waitFor(() => expect(screen.getByRole('region', { name: '기기' })).toBeDefined())
     expect(screen.getByText('Android SDK를 찾지 못해 AVD는 쓸 수 없다.')).toBeDefined()
-    expect(screen.queryByRole('main', { name: 'Android SDK를 찾지 못했다' })).toBeNull()
+    expect(screen.queryByRole('main', { name: '기기 도구를 찾지 못했다' })).toBeNull()
   })
 
   it('derives the screen target from the single connected device when nothing is explicitly active', async () => {

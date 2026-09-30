@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { locateIosTools } from './locateIosTools'
+import { IOS_TOOLS_TIMEOUT_MS, locateIosTools } from './locateIosTools'
 
 function enoent(): NodeJS.ErrnoException {
   const error = new Error('spawn xcrun ENOENT') as NodeJS.ErrnoException
@@ -50,5 +50,38 @@ describe('locateIosTools', () => {
     expect(result).toEqual({ ok: true, developerDir: '/Applications/Xcode.app/Contents/Developer' })
     expect(execFile).toHaveBeenCalledWith('xcode-select', ['-p'])
     expect(execFile).toHaveBeenCalledWith('xcrun', ['simctl', 'help'])
+  })
+
+  it('xcrun simctl help가 응답하지 않으면 제한 시간 뒤 ok false로 끝난다', async () => {
+    vi.useFakeTimers()
+    try {
+      const execFile = vi.fn((command: string) =>
+        command === 'xcode-select'
+          ? Promise.resolve({ stdout: '/Applications/Xcode.app/Contents/Developer\n' })
+          : new Promise<{ stdout: string }>(() => {})
+      )
+
+      const pending = locateIosTools({ platform: 'darwin', execFile, timeoutMs: 10_000 })
+      await vi.advanceTimersByTimeAsync(10_000)
+
+      await expect(pending).resolves.toEqual({ ok: false, reason: 'xcrun simctl이 응답하지 않는다' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('execFile이 제한 시간으로 프로세스를 죽였으면 응답 없음으로 본다', async () => {
+    const execFile = vi.fn(async (command: string) => {
+      if (command === 'xcode-select') return { stdout: '/Applications/Xcode.app/Contents/Developer\n' }
+      throw Object.assign(new Error('Command failed'), { killed: true, signal: 'SIGKILL' })
+    })
+
+    const result = await locateIosTools({ platform: 'darwin', execFile })
+
+    expect(result).toEqual({ ok: false, reason: 'xcrun simctl이 응답하지 않는다' })
+  })
+
+  it('기본 제한 시간은 10초다', () => {
+    expect(IOS_TOOLS_TIMEOUT_MS).toBe(10_000)
   })
 })

@@ -38,4 +38,11 @@ describe('SdkMissing', () => {
     expect(screen.getByText('xcrun simctl을 실행할 수 없다')).toBeDefined()
     expect(screen.getByText('Xcode를 설치하고 xcode-select -s로 개발자 디렉토리를 정해라')).toBeDefined()
   })
+
+  it('names the screen without favoring one platform', () => {
+    render(<SdkMissing platforms={missing([])} />)
+
+    expect(screen.getByRole('main', { name: '기기 도구를 찾지 못했다' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 1, name: '기기 도구를 찾지 못했다' })).toBeDefined()
+  })
 })
