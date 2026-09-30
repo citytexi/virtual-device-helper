@@ -50,17 +50,27 @@ describe('IosDevice lifecycle', () => {
     })
   })
 
-  it('launch maps a not-installed bundle to package_not_found', async () => {
-    const failure = deviceError('command_failed', 'x', 'y', { stderr: 'The operation couldn’t be completed. found nothing to launch' })
-    const { device } = make({ [`launch ${UDID} com.x`]: failure })
-    await expect(device.launch('com.x')).rejects.toMatchObject({ toolError: { kind: 'package_not_found' } })
+  const CODE4 =
+    'An error was encountered processing the command (domain=FBSOpenApplicationServiceErrorDomain, code=4):\nSimulator device failed to launch com.x.\nUnderlying error (domain=FBSOpenApplicationServiceErrorDomain, code=4):\n\tThe request to open "com.x" failed.'
+
+  it('launch maps not-installed stderr to package_not_found when the app container is missing', async () => {
+    for (const stderr of ['found nothing to launch', CODE4]) {
+      const { device } = make({
+        [`launch ${UDID} com.x`]: deviceError('command_failed', 'x', 'y', { stderr }),
+        [`get_app_container ${UDID} com.x`]: deviceError('command_failed', 'x', 'y', { stderr: 'No such file' })
+      })
+      await expect(device.launch('com.x')).rejects.toMatchObject({ toolError: { kind: 'package_not_found' } })
+    }
   })
 
-  it('launch maps the real simctl not-installed stderr (FBSOpenApplicationServiceErrorDomain code=4)', async () => {
-    const stderr =
-      'An error was encountered processing the command (domain=FBSOpenApplicationServiceErrorDomain, code=4):\nSimulator device failed to launch com.x.\nUnderlying error (domain=FBSOpenApplicationServiceErrorDomain, code=4):\n\tThe request to open "com.x" failed.'
-    const { device } = make({ [`launch ${UDID} com.x`]: deviceError('command_failed', 'x', 'y', { stderr }) })
-    await expect(device.launch('com.x')).rejects.toMatchObject({ toolError: { kind: 'package_not_found' } })
+  it('launch keeps command_failed when code=4 but the app is installed', async () => {
+    const { device } = make({
+      [`launch ${UDID} com.x`]: deviceError('command_failed', 'x', 'y', { stderr: CODE4 }),
+      [`get_app_container ${UDID} com.x`]: execOk('/path/to/com.x.app\n')
+    })
+    await expect(device.launch('com.x')).rejects.toMatchObject({
+      toolError: { kind: 'command_failed', details: { stderr: CODE4 } }
+    })
   })
 
   it('launch passes other failures through', async () => {
