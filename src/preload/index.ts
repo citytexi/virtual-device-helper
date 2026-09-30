@@ -18,7 +18,7 @@ const api: RendererApi = {
   getSnapshot: () => ipcRenderer.invoke(IPC_CHANNELS.getSnapshot) as Promise<AppSnapshot>,
   selectDevice: (serial) =>
     ipcRenderer.invoke(IPC_CHANNELS.selectDevice, serial) as Promise<Outcome<void>>,
-  bootAvd: (name) => ipcRenderer.invoke(IPC_CHANNELS.bootAvd, name) as Promise<Outcome<void>>,
+  bootVirtualDevice: (id) => ipcRenderer.invoke(IPC_CHANNELS.bootVirtualDevice, id) as Promise<Outcome<void>>,
   shutdownDevice: (serial) =>
     ipcRenderer.invoke(IPC_CHANNELS.shutdownDevice, serial) as Promise<Outcome<void>>,
   captureScreenshot: (serial) =>

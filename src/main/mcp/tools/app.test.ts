@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AvdController } from '../../device/avdController'
+import type { VirtualDeviceCatalog } from '../../device/virtualDeviceCatalog'
 import type { DeviceRegistry } from '../../device/registry'
 import type { Device } from '../../../shared/types/device'
-import { deviceError } from '../../../shared/types/errors'
+import { deviceError, unsupported } from '../../../shared/types/errors'
 import { createToolHarness } from '../testHarness'
 
 function harnessFor(device: Partial<Device>) {
@@ -19,20 +19,20 @@ function harnessFor(device: Partial<Device>) {
     on: () => () => {}
   } as unknown as DeviceRegistry
 
-  const avd = {
+  const catalog = {
     list: async () => [],
     boot: async () => 'emulator-5554',
     shutdown: async () => {}
-  } as AvdController
+  } as VirtualDeviceCatalog
 
-  return createToolHarness({ registry, avd })
+  return createToolHarness({ registry, catalog })
 }
 
 describe('app_install', () => {
   it('returns the package name of the installed apk', async () => {
     const harness = await harnessFor({ install: async () => 'com.example.app' })
 
-    await expect(harness.call('app_install', { apkPath: '/tmp/app.apk' })).resolves.toEqual({
+    await expect(harness.call('app_install', { appPath: '/tmp/app.apk' })).resolves.toEqual({
       pkg: 'com.example.app'
     })
 
@@ -43,22 +43,22 @@ describe('app_install', () => {
     const install = vi.fn(async () => 'com.example.app')
     const harness = await harnessFor({ install })
 
-    await harness.call('app_install', { apkPath: '/tmp/app.apk', reinstall: true })
+    await harness.call('app_install', { appPath: '/tmp/app.apk', reinstall: true })
 
     expect(install).toHaveBeenCalledWith('/tmp/app.apk', { reinstall: true })
 
     await harness.close()
   })
 
-  it('reports apk_path_invalid as a structured error', async () => {
+  it('reports app_path_invalid as a structured error', async () => {
     const harness = await harnessFor({
       install: async () => {
-        throw deviceError('apk_path_invalid', '파일이 없다', '경로를 확인해라')
+        throw deviceError('app_path_invalid', '파일이 없다', '경로를 확인해라')
       }
     })
 
-    const error = await harness.callExpectingError('app_install', { apkPath: '/tmp/missing.apk' })
-    expect(error.kind).toBe('apk_path_invalid')
+    const error = await harness.callExpectingError('app_install', { appPath: '/tmp/missing.apk' })
+    expect(error.kind).toBe('app_path_invalid')
 
     await harness.close()
   })
@@ -67,7 +67,7 @@ describe('app_install', () => {
     const harness = await harnessFor({ install: async () => null })
 
     await expect(
-      harness.call('app_install', { apkPath: '/tmp/app.apk', reinstall: true })
+      harness.call('app_install', { appPath: '/tmp/app.apk', reinstall: true })
     ).resolves.toEqual({ pkg: null })
 
     await harness.close()
@@ -136,11 +136,11 @@ describe('app_launch', () => {
         run: (_serial: string, task: () => Promise<unknown>) => task(),
         on: () => () => {}
       } as unknown as DeviceRegistry,
-      avd: {
+      catalog: {
         list: async () => [],
         boot: async () => 'emulator-5554',
         shutdown: async () => {}
-      } as AvdController
+      } as VirtualDeviceCatalog
     })
 
     await harness.callExpectingError('app_launch', { pkg: 'com.example.app' })
@@ -195,6 +195,42 @@ describe('app lifecycle tools', () => {
     })
 
     expect(grantPermission).toHaveBeenCalledWith('com.example.app', 'android.permission.CAMERA')
+
+    await harness.close()
+  })
+})
+
+describe('app_reset_and_launch', () => {
+  const lifecycle = { stop: async () => {}, clearData: async () => {}, launch: async () => {} }
+
+  it('skips settling when dumpUi is unsupported', async () => {
+    const harness = await harnessFor({
+      ...lifecycle,
+      dumpUi: async () => {
+        throw unsupported('ios', 'UI 덤프', 'M4-2에서 지원한다')
+      }
+    })
+
+    await expect(harness.call('app_reset_and_launch', { pkg: 'com.example.App' })).resolves.toEqual({
+      pkg: 'com.example.App',
+      settled: false,
+      nodeCount: 0,
+      settleSkipped: 'unsupported'
+    })
+
+    await harness.close()
+  })
+
+  it('still fails on other dumpUi errors', async () => {
+    const harness = await harnessFor({
+      ...lifecycle,
+      dumpUi: async () => {
+        throw deviceError('command_failed', 'UI 덤프 실패', '다시 불러라')
+      }
+    })
+
+    const error = await harness.callExpectingError('app_reset_and_launch', { pkg: 'com.example.App' })
+    expect(error.kind).toBe('command_failed')
 
     await harness.close()
   })

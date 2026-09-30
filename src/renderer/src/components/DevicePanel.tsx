@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { JSX } from 'react'
 import type { AppSnapshot, Outcome, TrackingFailure } from '../../../shared/types/ipc'
 import type { ToolError } from '../../../shared/types/errors'
+import type { Platform } from '../../../shared/types/device'
 import { targetSerial } from '../state/useAppState'
 
 export interface DevicePanelProps {
@@ -26,6 +27,20 @@ function TrackingFailureNotice({ failure }: { failure: TrackingFailure }): JSX.E
     </p>
   )
 }
+
+/**
+ * 한 플랫폼만 준비됐을 때 빠진 쪽을 한 줄로 알린다. 둘 다 빠진 경우는 App이 SdkMissing으로
+ * 화면을 바꾸므로 여기 오지 않는다. 기기의 platform이 아니라 조립 상태만 본다.
+ */
+function PlatformNotice({ platforms }: { platforms: AppSnapshot['platforms'] }): JSX.Element | null {
+  const { android, ios } = platforms
+  if (!android.ok && ios.ok) return <p className="notice notice-info">Android SDK를 찾지 못해 AVD는 쓸 수 없다.</p>
+  if (android.ok && !ios.ok) return <p className="notice notice-info">{ios.reason} — iOS 시뮬레이터는 쓸 수 없다.</p>
+  return null
+}
+
+/** 표시 전용 라벨. 이 값으로 동작을 나누지 않는다. */
+const PLATFORM_LABEL: Record<Platform, string> = { android: 'Android', ios: 'iOS' }
 
 export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
   const [busy, setBusy] = useState<string | null>(null)
@@ -54,12 +69,13 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
     <TrackingFailureNotice failure={snapshot.trackingFailure} />
   ) : null
 
-  if (snapshot.avds.length === 0) {
+  if (snapshot.virtualDevices.length === 0) {
     return (
       <section aria-label="기기" className="device-panel">
         <h2 className="pane-title">기기</h2>
+        <PlatformNotice platforms={snapshot.platforms} />
         {trackingNotice}
-        <p className="empty">AVD가 없다. Android Studio의 Device Manager에서 하나 만들고 앱을 다시 켜라.</p>
+        <p className="empty">가상 기기가 없다. Android Studio에서 AVD를 만들거나 Xcode에서 시뮬레이터를 추가하고 앱을 다시 켜라.</p>
       </section>
     )
   }
@@ -70,6 +86,7 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
     <section aria-label="기기" className="device-panel">
       <h2 className="pane-title">기기</h2>
 
+      <PlatformNotice platforms={snapshot.platforms} />
       {trackingNotice}
       {busy === 'boot' ? <p className="notice notice-info">부팅 중…</p> : null}
       {failure ? (
@@ -79,12 +96,12 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
       ) : null}
 
       <ul className="device-list">
-        {snapshot.avds.map((avd) => {
+        {snapshot.virtualDevices.map((avd) => {
           const isActive = avd.serial !== null && avd.serial === target
 
           return (
             <li
-              key={avd.name}
+              key={avd.id}
               className="device-row"
               aria-current={isActive ? true : undefined}
               data-running={String(avd.running)}
@@ -101,6 +118,8 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
               >
                 {avd.name}
               </button>
+
+              <span className="badge">{PLATFORM_LABEL[avd.platform]}</span>
 
               {isActive ? <span className="badge">(대상)</span> : null}
 
@@ -121,7 +140,7 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
                   type="button"
                   className="btn device-action"
                   aria-label={`${avd.name} 부팅`}
-                  onClick={() => void run('boot', () => window.api.bootAvd(avd.name))}
+                  onClick={() => void run('boot', () => window.api.bootVirtualDevice(avd.id))}
                   disabled={busy !== null}
                 >
                   부팅

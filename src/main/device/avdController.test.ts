@@ -44,8 +44,8 @@ describe('AvdController.list', () => {
     })
 
     await expect(controller.list()).resolves.toEqual([
-      { name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' },
-      { name: 'Pixel_Tablet', running: false, serial: null }
+      { platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null },
+      { platform: 'android', id: 'Pixel_Tablet', name: 'Pixel_Tablet', running: false, serial: null, osVersion: null }
     ])
   })
 
@@ -64,7 +64,7 @@ describe('AvdController.list', () => {
     })
 
     await expect(controller.list()).resolves.toEqual([
-      { name: 'Pixel_7_API_34', running: false, serial: null }
+      { platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: false, serial: null, osVersion: null }
     ])
   })
 })
@@ -321,8 +321,8 @@ describe('AvdController default listAvdNames', () => {
     })
 
     await expect(controller.list()).resolves.toEqual([
-      { name: 'Pixel_7_API_34', running: false, serial: null },
-      { name: 'Pixel_Tablet', running: false, serial: null }
+      { platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: false, serial: null, osVersion: null },
+      { platform: 'android', id: 'Pixel_Tablet', name: 'Pixel_Tablet', running: false, serial: null, osVersion: null }
     ])
   })
 

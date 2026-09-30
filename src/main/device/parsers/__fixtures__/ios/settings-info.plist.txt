@@ -1,0 +1,158 @@
+{
+  "BuildMachineOSBuild" => "23A344017"
+  "CFBundleDevelopmentRegion" => "English"
+  "CFBundleDisplayName" => "Settings"
+  "CFBundleExecutable" => "Preferences"
+  "CFBundleIcons" => {
+    "CFBundlePrimaryIcon" => {
+      "CFBundleIconFiles" => [
+        0 => "SettingsApp60x60"
+      ]
+      "CFBundleIconName" => "SettingsApp"
+    }
+  }
+  "CFBundleIcons~ipad" => {
+    "CFBundlePrimaryIcon" => {
+      "CFBundleIconFiles" => [
+        0 => "SettingsApp60x60"
+        1 => "SettingsApp76x76"
+      ]
+      "CFBundleIconName" => "SettingsApp"
+    }
+  }
+  "CFBundleIdentifier" => "com.apple.Preferences"
+  "CFBundleInfoDictionaryVersion" => "6.0"
+  "CFBundleName" => "Settings"
+  "CFBundlePackageType" => "APPL"
+  "CFBundleShortVersionString" => "1"
+  "CFBundleSignature" => "????"
+  "CFBundleSupportedPlatforms" => [
+    0 => "iPhoneSimulator"
+  ]
+  "CFBundleURLTypes" => [
+    0 => {
+      "CFBundleURLIsPrivate" => true
+      "CFBundleURLName" => "Settings Location URL"
+      "CFBundleURLSchemes" => [
+        0 => "prefs"
+      ]
+    }
+    1 => {
+      "CFBundleURLName" => "OAuth Redirect URL"
+      "CFBundleURLSchemes" => [
+        0 => "com.apple.preferences"
+      ]
+    }
+    2 => {
+      "CFBundleURLName" => "Prebuddy Settings"
+      "CFBundleURLSchemes" => [
+        0 => "prefs-prebuddy"
+      ]
+    }
+    3 => {
+      "CFBundleURLName" => "Automatic Updates Settings"
+      "CFBundleURLSchemes" => [
+        0 => "os-automatic-updates"
+      ]
+    }
+    4 => {
+      "CFBundleURLName" => "Beta Update Settings"
+      "CFBundleURLSchemes" => [
+        0 => "os-beta-updates"
+      ]
+    }
+    5 => {
+      "CFBundleURLName" => "TV Provider Settings"
+      "CFBundleURLSchemes" => [
+        0 => "prefs-tvprovider"
+      ]
+    }
+    6 => {
+      "CFBundleTypeRole" => "Editor"
+      "CFBundleURLName" => "Third Party App Settings"
+      "CFBundleURLSchemes" => [
+        0 => "app-prefs"
+      ]
+    }
+    7 => {
+      "CFBundleTypeRole" => "Editor"
+      "CFBundleURLName" => "Finance Script Data Update"
+      "CFBundleURLSchemes" => [
+        0 => "prefs-finance-script"
+      ]
+    }
+    8 => {
+      "CFBundleTypeRole" => "Editor"
+      "CFBundleURLName" => "Cellular Plan Install"
+      "CFBundleURLSchemes" => [
+        0 => "esim"
+      ]
+    }
+    9 => {
+      "CFBundleURLIsPrivate" => true
+      "CFBundleURLName" => "Settings Navigation"
+      "CFBundleURLSchemes" => [
+        0 => "settings-navigation"
+      ]
+    }
+  ]
+  "CFBundleVersion" => "1353.5.5"
+  "CoreSpotlightContinuation" => true
+  "DTCompiler" => "com.apple.compilers.llvm.clang.1_0"
+  "DTPlatformBuild" => ""
+  "DTPlatformName" => "iphonesimulator"
+  "DTPlatformVersion" => "26.5"
+  "DTSDKBuild" => "23F64"
+  "DTSDKName" => "iphonesimulator26.5.internal"
+  "DTXcode" => "2630"
+  "DTXcodeBuild" => "17E6107"
+  "LSRequiresIPhoneOS" => true
+  "MinimumOSVersion" => "26.5"
+  "NSIdentityUsageDescription" => "To complete your application, Apple Financing requires identity verification."
+  "NSRegulatoryPrivacyDisclosure" => {
+  }
+  "SBMatchingApplicationGenres" => [
+    0 => "Utilities"
+  ]
+  "SBPreventsDefaultLaunchImageSplitting" => true
+  "SBWantsExclusiveForeground" => true
+  "UIApplicationSceneManifest" => {
+    "UIApplicationSupportsMultipleScenes" => false
+  }
+  "UIDeviceFamily" => [
+    0 => 1
+    1 => 2
+  ]
+  "UILaunchScreen" => {
+    "UIColorName" => "LaunchBackgroundColor"
+  }
+  "UIStatusBarTintParameters" => {
+    "UINavigationBar" => {
+      "Style" => "UIBarStyleDefault"
+    }
+  }
+  "UISupportedInterfaceOrientations~ipad" => [
+    0 => "UIInterfaceOrientationPortrait"
+    1 => "UIInterfaceOrientationPortraitUpsideDown"
+    2 => "UIInterfaceOrientationLandscapeLeft"
+    3 => "UIInterfaceOrientationLandscapeRight"
+  ]
+  "UISupportedInterfaceOrientations~iphone" => [
+    0 => "UIInterfaceOrientationPortrait"
+  ]
+  "UNUserNotificationCenter" => {
+    "UNDaemonShouldReceiveBackgroundResponses" => true
+    "UNDefaultSettings" => {
+      "UNSettingAlerts" => true
+      "UNSettingBadges" => true
+      "UNSettingCarPlay" => false
+      "UNSettingLockScreen" => true
+      "UNSettingNotificationCenter" => true
+      "UNSettingSounds" => true
+    }
+    "UNHideSettings" => true
+    "UNSuppressUserAuthorizationPrompt" => true
+  }
+  "UTExportedTypeDeclarations" => [
+  ]
+}

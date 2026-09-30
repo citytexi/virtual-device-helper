@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AvdController } from '../../device/avdController'
+import type { VirtualDeviceCatalog } from '../../device/virtualDeviceCatalog'
 import type { DeviceRegistry } from '../../device/registry'
 import type { Device, DeviceInfo } from '../../../shared/types/device'
 import { deviceError } from '../../../shared/types/errors'
@@ -7,8 +7,9 @@ import { createToolHarness } from '../testHarness'
 
 const info: DeviceInfo = {
   serial: 'emulator-5554',
+  platform: 'android',
   model: 'Pixel 7',
-  apiLevel: 34,
+  osVersion: '14 (API 34)',
   width: 1080,
   height: 2400
 }
@@ -16,6 +17,7 @@ const info: DeviceInfo = {
 function fakeDevice(overrides: Partial<Device> = {}): Device {
   return {
     serial: 'emulator-5554',
+    platform: 'android',
     info: async () => info,
     ...overrides
   } as Device
@@ -27,6 +29,7 @@ function fakeRegistry(overrides: Partial<DeviceRegistry> = {}): DeviceRegistry {
     stop: vi.fn(),
     serials: () => ['emulator-5554'],
     resolve: () => fakeDevice(),
+    waitFor: async () => fakeDevice(),
     setActive: vi.fn(),
     clearActive: vi.fn(),
     getActive: () => 'emulator-5554',
@@ -36,21 +39,25 @@ function fakeRegistry(overrides: Partial<DeviceRegistry> = {}): DeviceRegistry {
   } as DeviceRegistry
 }
 
-function fakeAvd(overrides: Partial<AvdController> = {}): AvdController {
+function fakeCatalog(overrides: Partial<VirtualDeviceCatalog> = {}): VirtualDeviceCatalog {
   return {
-    list: async () => [{ name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' }],
+    list: async () => [
+      { platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null }
+    ],
     boot: async () => 'emulator-5554',
     shutdown: vi.fn(async () => {}),
     ...overrides
-  } as AvdController
+  } as VirtualDeviceCatalog
 }
 
 describe('device_list', () => {
   it('returns AVDs with their running state and the active serial', async () => {
-    const harness = await createToolHarness({ registry: fakeRegistry(), avd: fakeAvd() })
+    const harness = await createToolHarness({ registry: fakeRegistry(), catalog: fakeCatalog() })
 
     await expect(harness.call('device_list')).resolves.toEqual({
-      avds: [{ name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' }],
+      virtualDevices: [
+        { platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null }
+      ],
       connected: ['emulator-5554'],
       active: 'emulator-5554'
     })
@@ -64,11 +71,45 @@ describe('device_boot', () => {
     const boot = vi.fn(async () => 'emulator-5554')
     const harness = await createToolHarness({
       registry: fakeRegistry(),
-      avd: fakeAvd({ boot })
+      catalog: fakeCatalog({ boot })
     })
 
-    await expect(harness.call('device_boot', { avd: 'Pixel_7_API_34' })).resolves.toEqual(info)
+    await expect(harness.call('device_boot', { id: 'Pixel_7_API_34' })).resolves.toEqual(info)
     expect(boot).toHaveBeenCalledWith('Pixel_7_API_34')
+
+    await harness.close()
+  })
+
+  it('waits for the booted serial to register instead of resolving it right away', async () => {
+    // simctl 폴링이 아직 못 본 기기를 resolve하면 no_device가 난다. waitFor로 기다려야 한다.
+    const resolve = vi.fn(() => {
+      throw deviceError('no_device', '그런 기기가 없다: UDID-1', 'device_list로 확인해라')
+    })
+    const waitFor = vi.fn(async (serial: string) => fakeDevice({ serial }))
+    const harness = await createToolHarness({
+      registry: fakeRegistry({ resolve, waitFor }),
+      catalog: fakeCatalog({ boot: async () => 'UDID-1' })
+    })
+
+    await expect(harness.call('device_boot', { id: 'UDID-1' })).resolves.toEqual(info)
+    expect(waitFor).toHaveBeenCalledWith('UDID-1', expect.any(Number))
+    expect(resolve).not.toHaveBeenCalled()
+
+    await harness.close()
+  })
+
+  it('reports device_unresponsive when the booted device never registers', async () => {
+    const harness = await createToolHarness({
+      registry: fakeRegistry({
+        waitFor: async () => {
+          throw deviceError('device_unresponsive', '부팅한 기기가 나타나지 않았다', 'device_list로 확인해라')
+        }
+      }),
+      catalog: fakeCatalog({ boot: async () => 'UDID-1' })
+    })
+
+    const error = await harness.callExpectingError('device_boot', { id: 'UDID-1' })
+    expect(error.kind).toBe('device_unresponsive')
 
     await harness.close()
   })
@@ -76,14 +117,14 @@ describe('device_boot', () => {
   it('reports a structured error when the AVD name is unknown', async () => {
     const harness = await createToolHarness({
       registry: fakeRegistry(),
-      avd: fakeAvd({
+      catalog: fakeCatalog({
         boot: async () => {
           throw deviceError('command_failed', '그런 AVD가 없다: Nope', 'device_list로 확인해라')
         }
       })
     })
 
-    const error = await harness.callExpectingError('device_boot', { avd: 'Nope' })
+    const error = await harness.callExpectingError('device_boot', { id: 'Nope' })
     expect(error.kind).toBe('command_failed')
 
     await harness.close()
@@ -95,12 +136,12 @@ describe('device_shutdown', () => {
     const shutdown = vi.fn(async () => {})
     const harness = await createToolHarness({
       registry: fakeRegistry(),
-      avd: fakeAvd({ shutdown })
+      catalog: fakeCatalog({ shutdown })
     })
 
     await harness.call('device_shutdown')
 
-    expect(shutdown).toHaveBeenCalledWith('emulator-5554')
+    expect(shutdown).toHaveBeenCalledWith('emulator-5554', 'android')
 
     await harness.close()
   })
@@ -114,7 +155,7 @@ describe('device_shutdown', () => {
           throw deviceError('no_device', '연결된 기기가 없다', 'device_boot로 부팅해라')
         }
       }),
-      avd: fakeAvd()
+      catalog: fakeCatalog()
     })
 
     const error = await harness.callExpectingError('device_shutdown')
@@ -129,7 +170,7 @@ describe('device_select', () => {
     const setActive = vi.fn()
     const harness = await createToolHarness({
       registry: fakeRegistry({ setActive }),
-      avd: fakeAvd()
+      catalog: fakeCatalog()
     })
 
     await expect(harness.call('device_select', { serial: 'emulator-5554' })).resolves.toEqual({
@@ -149,7 +190,7 @@ describe('device_select', () => {
           })
         }
       }),
-      avd: fakeAvd()
+      catalog: fakeCatalog()
     })
 
     const error = await harness.callExpectingError('device_select', { serial: 'emulator-9999' })
@@ -161,7 +202,7 @@ describe('device_select', () => {
 
 describe('device_info', () => {
   it('returns model, api level and screen size', async () => {
-    const harness = await createToolHarness({ registry: fakeRegistry(), avd: fakeAvd() })
+    const harness = await createToolHarness({ registry: fakeRegistry(), catalog: fakeCatalog() })
 
     await expect(harness.call('device_info')).resolves.toEqual(info)
 
@@ -169,7 +210,7 @@ describe('device_info', () => {
   })
 
   it('records the resolved serial', async () => {
-    const harness = await createToolHarness({ registry: fakeRegistry(), avd: fakeAvd() })
+    const harness = await createToolHarness({ registry: fakeRegistry(), catalog: fakeCatalog() })
 
     await harness.call('device_info')
 
@@ -187,7 +228,7 @@ describe('device_info', () => {
           })
         }
       }),
-      avd: fakeAvd()
+      catalog: fakeCatalog()
     })
 
     const error = (await harness.callExpectingError('device_info')) as {

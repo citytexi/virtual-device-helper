@@ -1,18 +1,27 @@
 export type KeyName = 'back' | 'home' | 'enter' | 'tab'
 
+export type Platform = 'android' | 'ios'
+
 export interface DeviceInfo {
   serial: string
+  platform: Platform
   model: string
-  apiLevel: number
+  /** 사람이 읽는 OS 버전. Android "14 (API 34)", iOS "26.0". */
+  osVersion: string
   width: number
   height: number
 }
 
-/** AVD 하나. 실행 중이면 serial이 붙는다. */
-export interface AvdEntry {
+/** 가상 기기 하나(AVD 또는 시뮬레이터). 실행 중이면 serial이 붙는다. */
+export interface VirtualDeviceEntry {
+  platform: Platform
+  /** 부팅 대상을 가리키는 값. AVD는 이름, 시뮬레이터는 UDID다. 시뮬레이터 이름은 런타임마다 겹친다. */
+  id: string
+  /** 사람이 읽는 이름. AVD 이름 또는 시뮬레이터 이름. */
   name: string
   running: boolean
   serial: string | null
+  osVersion: string | null
 }
 
 /** 정규화된 사각형. 0..1, 소수 4자리로 반올림한다. */
@@ -50,6 +59,8 @@ export interface UiNode {
   enabled: boolean
   focused: boolean
   scrollable: boolean
+  /** 입력하면 text가 바뀌는 노드. 지문에서 text를 뺄지 이 필드로 정한다. */
+  editable: boolean
 }
 
 export interface UiDump {
@@ -103,17 +114,21 @@ export interface LogOpts {
 }
 
 /**
- * 타깃 디바이스 하나. M1의 구현체는 AndroidDevice 하나뿐이다.
+ * 타깃 디바이스 하나. 구현체는 AndroidDevice와 IosDevice다.
  * AVD 부팅·종료는 기기가 없는 상태에서 하는 일이라 여기 들어가지 않는다.
  */
 export interface Device {
+  /** Android는 adb serial, iOS는 시뮬레이터 UDID. */
   readonly serial: string
+  /** 표시와 기록에만 쓴다. 위층이 이 값으로 분기하지 않는다. */
+  readonly platform: Platform
   info(): Promise<DeviceInfo>
   /**
+   * .apk 파일 또는 .app 디렉토리를 설치하고 패키지명 또는 bundle id를 돌려준다.
    * 설치된 패키지명. 재설치라 패키지 목록이 그대로여서 이름을 특정할 수 없으면 null이다 —
    * 빈 문자열로 말하면 호출부가 그것을 유효한 패키지명으로 착각한다.
    */
-  install(apkPath: string, opts?: InstallOpts): Promise<string | null>
+  install(appPath: string, opts?: InstallOpts): Promise<string | null>
   uninstall(pkg: string): Promise<void>
   launch(pkg: string, activity?: string): Promise<void>
   stop(pkg: string): Promise<void>

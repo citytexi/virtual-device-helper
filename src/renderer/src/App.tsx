@@ -25,8 +25,10 @@ export function App(): JSX.Element {
     return <main className="app-message">불러오는 중…</main>
   }
 
-  if (!snapshot.sdk.ok) {
-    return <SdkMissing searched={snapshot.sdk.searched} />
+  // 두 플랫폼이 모두 준비되지 않았을 때만 화면 전체를 안내로 바꾼다. 하나만 빠졌으면
+  // 기기 패널이 그 위에 한 줄 안내를 띄운다.
+  if (!snapshot.platforms.android.ok && !snapshot.platforms.ios.ok) {
+    return <SdkMissing platforms={snapshot.platforms} />
   }
 
   return (

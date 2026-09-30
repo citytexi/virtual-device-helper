@@ -43,7 +43,7 @@ Orca의 emulator 기능(`orca emulator ax`)은 접근성 트리를 노드 단위
 - 서버는 기기 인스턴스별로 최근 스냅샷 몇 개를 들고 있다. ref는 대상 기기의 스냅샷에서만 찾는다.
   그래서 다른 기기의 ref와 재연결 전 ref는 풀리지 않는다.
 - 노드 지문은 `className`, `resourceId`, `contentDesc`, `text`와, 남은 조상들의 `className`·`resourceId`
-  체인이다. `EditText` 계열은 입력하면 바뀌는 `text`를 지문에서 뺀다.
+  체인이다. `UiNode.editable`이 참인 노드는 입력하면 바뀌는 `text`를 지문에서 뺀다.
 - ref를 받는 툴은 동작 직전에 다시 덤프한다. 새 덤프에서 같은 지문을 찾는다.
 - 같은 지문이 여럿이면 두 조건이 모두 맞을 때만 받아들인다. 옛 덤프와 새 덤프에서 그 지문의 개수가 같아야
   하고, 옛 순번으로 고른 노드가 옛 bounds에 가장 가까운 노드와 같아야 한다.

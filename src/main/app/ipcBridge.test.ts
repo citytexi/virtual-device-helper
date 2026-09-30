@@ -13,7 +13,7 @@ function harness() {
   }
 
   const state = {
-    snapshot: vi.fn(async () => ({ sdk: { ok: true, sdkRoot: '/opt/sdk' } })),
+    snapshot: vi.fn(async () => ({ platforms: { android: { ok: true, location: '/opt/sdk' } } })),
     recordToolCall: vi.fn(),
     onEvent: vi.fn((listener: (event: unknown) => void) => {
       listeners.push(listener)
@@ -26,7 +26,7 @@ function harness() {
 
   const actions: BridgeActions = {
     selectDevice: vi.fn(),
-    bootAvd: vi.fn(async () => {}),
+    bootVirtualDevice: vi.fn(async () => {}),
     shutdownDevice: vi.fn(async () => {}),
     captureScreenshot: vi.fn(async () => ({ base64: 'QUJD', width: 1, height: 1 })),
     startStream: vi.fn(async () => {}),
@@ -50,7 +50,7 @@ describe('registerIpcBridge', () => {
       [
         IPC_CHANNELS.getSnapshot,
         IPC_CHANNELS.selectDevice,
-        IPC_CHANNELS.bootAvd,
+        IPC_CHANNELS.bootVirtualDevice,
         IPC_CHANNELS.shutdownDevice,
         IPC_CHANNELS.captureScreenshot,
         IPC_CHANNELS.startStream,
@@ -71,11 +71,11 @@ describe('registerIpcBridge', () => {
 
   it('returns a serialisable error payload instead of throwing across the boundary', async () => {
     const h = harness()
-    ;(h.actions.bootAvd as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+    ;(h.actions.bootVirtualDevice as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
       deviceError('command_failed', '그런 AVD가 없다', 'device_list로 확인해라')
     )
 
-    const result = await h.handlers.get(IPC_CHANNELS.bootAvd)?.({}, 'Nope')
+    const result = await h.handlers.get(IPC_CHANNELS.bootVirtualDevice)?.({}, 'Nope')
 
     expect(result).toEqual({
       ok: false,
@@ -105,9 +105,9 @@ describe('registerIpcBridge', () => {
 
   it('stringifies a thrown non-Error value into the generic payload', async () => {
     const h = harness()
-    ;(h.actions.bootAvd as ReturnType<typeof vi.fn>).mockRejectedValueOnce('문자열 실패')
+    ;(h.actions.bootVirtualDevice as ReturnType<typeof vi.fn>).mockRejectedValueOnce('문자열 실패')
 
-    const result = await h.handlers.get(IPC_CHANNELS.bootAvd)?.({}, 'Pixel_7_API_34')
+    const result = await h.handlers.get(IPC_CHANNELS.bootVirtualDevice)?.({}, 'Pixel_7_API_34')
 
     expect(result).toEqual({
       ok: false,
@@ -176,7 +176,7 @@ describe('registerIpcBridge', () => {
 describe('registerIpcBridge argument checks', () => {
   const cases = [
     ['selectDevice', IPC_CHANNELS.selectDevice],
-    ['bootAvd', IPC_CHANNELS.bootAvd],
+    ['bootVirtualDevice', IPC_CHANNELS.bootVirtualDevice],
     ['shutdownDevice', IPC_CHANNELS.shutdownDevice],
     ['captureScreenshot', IPC_CHANNELS.captureScreenshot]
   ] as const

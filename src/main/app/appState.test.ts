@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AvdController } from '../device/avdController'
+import type { VirtualDeviceCatalog } from '../device/virtualDeviceCatalog'
 import type { DeviceRegistry, RegistryEvent } from '../device/registry'
 import type { McpServerHandle } from '../mcp/httpServer'
 import { deviceError } from '../../shared/types/errors'
-import type { MainEvent } from '../../shared/types/ipc'
+import type { AppSnapshot, MainEvent } from '../../shared/types/ipc'
 import { createAppState } from './appState'
 
 function parts() {
@@ -24,11 +24,11 @@ function parts() {
     })
   } as unknown as DeviceRegistry
 
-  const avd = {
-    list: vi.fn(async () => [{ name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' }]),
+  const catalog = {
+    list: vi.fn(async () => [{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null }]),
     boot: vi.fn(async () => 'emulator-5554'),
     shutdown: vi.fn(async () => {})
-  } as unknown as AvdController
+  } as unknown as VirtualDeviceCatalog
 
   const server: McpServerHandle = {
     url: 'http://127.0.0.1:9321/mcp',
@@ -37,48 +37,72 @@ function parts() {
     close: vi.fn(async () => {})
   }
 
-  return { registry, avd, server, fire: (event: RegistryEvent) => registryListener?.(event) }
+  return { registry, catalog, server, fire: (event: RegistryEvent) => registryListener?.(event) }
+}
+
+const ANDROID_READY: AppSnapshot['platforms'] = {
+  android: { ok: true, location: '/opt/sdk' },
+  ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [] }
+}
+const NONE_READY: AppSnapshot['platforms'] = {
+  android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/sdk/platform-tools/adb'] },
+  ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [] }
 }
 
 describe('createAppState snapshot', () => {
-  it('reports the sdk status it was given', async () => {
+  it('reports the platform status it was given', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: false, searched: ['/opt/sdk/platform-tools/adb'] },
+      platforms: NONE_READY,
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: null
     })
 
     const snapshot = await state.snapshot()
 
-    expect(snapshot.sdk).toEqual({ ok: false, searched: ['/opt/sdk/platform-tools/adb'] })
+    expect(snapshot.platforms).toEqual(NONE_READY)
+    expect(snapshot.virtualDevices).toEqual([])
     expect(snapshot.server).toBeNull()
   })
 
-  it('includes avds, devices, active serial and the server endpoint', async () => {
+  it('includes virtualDevices, devices, active serial and the server endpoint', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
     const snapshot = await state.snapshot()
 
-    expect(snapshot.avds).toEqual([{ name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' }])
+    expect(snapshot.virtualDevices).toEqual([{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null }])
     expect(snapshot.devices).toEqual(['emulator-5554'])
     expect(snapshot.activeSerial).toBe('emulator-5554')
     expect(snapshot.server).toEqual({ url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' })
   })
 
+  it('lists virtual devices when only iOS is ready', async () => {
+    const p = parts()
+    const state = createAppState({
+      platforms: { android: NONE_READY.android, ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer' } },
+      registry: p.registry,
+      catalog: p.catalog,
+      server: p.server
+    })
+
+    const snapshot = await state.snapshot()
+
+    expect(snapshot.virtualDevices).toHaveLength(1)
+  })
+
   it('keeps at most 1000 timeline entries', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -104,9 +128,9 @@ describe('createAppState snapshot', () => {
   it('keeps entries in record order even when a later tool call started earlier', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -131,9 +155,9 @@ describe('createAppState events', () => {
   it('forwards registry events to subscribers', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -148,9 +172,9 @@ describe('createAppState events', () => {
   it('emits a timeline event for a tool call and puts it in the snapshot', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -188,9 +212,9 @@ describe('createAppState events', () => {
   it('carries the error kind of a failed tool call', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -213,9 +237,9 @@ describe('createAppState events', () => {
   it('records registry connect, disconnect and active change as device entries', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -246,9 +270,9 @@ describe('createAppState events', () => {
   it('records device events given by the managers', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -265,9 +289,9 @@ describe('createAppState events', () => {
   it('emits server_changed and updates the snapshot when the endpoint opens', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: null
     })
 
@@ -287,12 +311,12 @@ describe('createAppState events', () => {
     })
   })
 
-  it('emits avds_changed after a device connects so the list refreshes', async () => {
+  it('emits virtual_devices_changed after a device connects so the list refreshes', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -300,7 +324,7 @@ describe('createAppState events', () => {
     state.onEvent((event) => seen.push(event))
 
     p.fire({ type: 'device_connected', serial: 'emulator-5554' })
-    await vi.waitFor(() => expect(seen.some((event) => event.type === 'avds_changed')).toBe(true))
+    await vi.waitFor(() => expect(seen.some((event) => event.type === 'virtual_devices_changed')).toBe(true))
   })
 })
 
@@ -308,9 +332,9 @@ describe('createAppState tracking failures', () => {
   it('has no tracking failure in the snapshot until one happens', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -322,9 +346,9 @@ describe('createAppState tracking failures', () => {
   it('flattens the DeviceError into a plain ToolError so it survives IPC', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -353,9 +377,9 @@ describe('createAppState tracking failures', () => {
   it('keeps a null error when the tracker exited without one', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -367,12 +391,12 @@ describe('createAppState tracking failures', () => {
     })
   })
 
-  it('does not refresh the avd list for a tracking failure', async () => {
+  it('does not refresh the catalog list for a tracking failure', async () => {
     const p = parts()
     const state = createAppState({
-      sdk: { ok: true, sdkRoot: '/opt/sdk' },
+      platforms: ANDROID_READY,
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -382,24 +406,24 @@ describe('createAppState tracking failures', () => {
     p.fire({ type: 'tracking_failed', failure: { error: null, exitCode: 1 } })
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    expect(p.avd.list).not.toHaveBeenCalled()
+    expect(p.catalog.list).not.toHaveBeenCalled()
     expect(seen.map((event) => event.type)).toEqual(['tracking_failed'])
   })
 })
 
-describe('createAppState avd refresh failures', () => {
-  it('swallows a failing avd list after a device event instead of leaking a rejection', async () => {
+describe('createAppState catalog refresh failures', () => {
+  it('swallows a failing catalog list after a device event instead of leaking a rejection', async () => {
     const p = parts()
-    ;(p.avd.list as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('emulator가 없다'))
+    ;(p.catalog.list as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('emulator가 없다'))
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
     const unhandled = vi.fn()
     process.on('unhandledRejection', unhandled)
 
     try {
       const state = createAppState({
-        sdk: { ok: true, sdkRoot: '/opt/sdk' },
+        platforms: ANDROID_READY,
         registry: p.registry,
-        avd: p.avd,
+        catalog: p.catalog,
         server: p.server
       })
       const seen: Array<{ type: string }> = []
@@ -418,26 +442,26 @@ describe('createAppState avd refresh failures', () => {
   })
 })
 
-describe('createAppState snapshot when the avd list fails', () => {
-  it('resolves with an empty avd list and keeps the other fields', async () => {
+describe('createAppState snapshot when the catalog list fails', () => {
+  it('resolves with an empty catalog list and keeps the other fields', async () => {
     const p = parts()
-    ;(p.avd.list as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('emulator -list-avds가 실패했다'))
+    ;(p.catalog.list as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('emulator -list-avds가 실패했다'))
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     try {
       const state = createAppState({
-        sdk: { ok: true, sdkRoot: '/opt/sdk' },
+        platforms: ANDROID_READY,
         registry: p.registry,
-        avd: p.avd,
+        catalog: p.catalog,
         server: p.server
       })
 
       const snapshot = await state.snapshot()
 
       expect(snapshot).toEqual({
-        sdk: { ok: true, sdkRoot: '/opt/sdk' },
+        platforms: ANDROID_READY,
         server: { url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' },
-        avds: [],
+        virtualDevices: [],
         devices: ['emulator-5554'],
         activeSerial: 'emulator-5554',
         timeline: [],

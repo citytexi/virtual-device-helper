@@ -36,7 +36,7 @@ describe('preload API surface', () => {
 
     expect(Object.keys(api).sort()).toEqual(
       [
-        'bootAvd',
+        'bootVirtualDevice',
         'captureScreenshot',
         'closeLogs',
         'getSnapshot',
@@ -61,7 +61,7 @@ describe('preload API surface', () => {
   it.each([
     ['getSnapshot', IPC_CHANNELS.getSnapshot, []],
     ['selectDevice', IPC_CHANNELS.selectDevice, ['emulator-5554']],
-    ['bootAvd', IPC_CHANNELS.bootAvd, ['Pixel_7_API_34']],
+    ['bootVirtualDevice', IPC_CHANNELS.bootVirtualDevice, ['Pixel_7_API_34']],
     ['shutdownDevice', IPC_CHANNELS.shutdownDevice, ['emulator-5554']],
     ['captureScreenshot', IPC_CHANNELS.captureScreenshot, ['emulator-5554']],
     ['startStream', IPC_CHANNELS.startStream, ['emulator-5554']],

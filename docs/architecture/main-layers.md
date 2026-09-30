@@ -2,14 +2,14 @@
 id: main-layers
 title: main 프로세스 층 구조
 status: living                  # living | superseded | deprecated
-verified: 2026-09-29
-scope: [main, mcp, android, streaming]
+verified: 2026-09-30
+scope: [main, mcp, android, ios, streaming]
 hosts: []                       # windows | macos — 호스트 OS마다 구조가 갈릴 때만 채운다
 related_adr: [ADR-0005, ADR-0001, ADR-0010, ADR-0013]
-related_spec: [m1-device-core-mcp-server, m2-live-streaming, m3-node-control-logs-events]
+related_spec: [m1-device-core-mcp-server, m2-live-streaming, m3-node-control-logs-events, m4-ios-simulator]
 related_architecture:
 related_plan:
-related_code: [adbClient.ts#createAdbClient, androidDevice.ts#createAndroidDevice, registry.ts#createDeviceRegistry, registerTools.ts#registerTools, httpServer.ts#startMcpHttpServer, ipcBridge.ts#registerIpcBridge, appState.ts#createAppState, streamManager.ts#createStreamManager, logManager.ts#createLogManager, bootstrap.ts#bootstrapApp, layering.test.ts]
+related_code: [processClient.ts#createProcessClient, adbClient.ts#createAdbClient, simctlClient.ts#createSimctlClient, androidDevice.ts#createAndroidDevice, iosDevice.ts#createIosDevice, trackSimulators.ts#trackSimulators, platformLogDeps.ts#createPlatformLogDeps, registry.ts#createDeviceRegistry, registerTools.ts#registerTools, httpServer.ts#startMcpHttpServer, ipcBridge.ts#registerIpcBridge, appState.ts#createAppState, streamManager.ts#createStreamManager, logManager.ts#createLogManager, bootstrap.ts#bootstrapApp, layering.test.ts]
 tags: [architecture, main, layers]
 ---
 
@@ -28,15 +28,17 @@ main 프로세스는 아래에서 위로 쌓인다. 타깃 디바이스를 가�
 
 | 층 | 디렉토리 · 진입 심볼 | 책임 | 아는 것 |
 |---|---|---|---|
-| adb 경계 | `src/main/adb/` · `adbClient.ts#createAdbClient` | adb 바이너리 실행, `exec`(일회성)과 `stream`(장시간) | adb 문법 |
-| 기기 구현 | `src/main/device/` · `androidDevice.ts#createAndroidDevice` | adb 출력에 의미를 붙여 `Device`를 구현한다. 출력 파싱은 `device/parsers/`에 둔다 | Android 도메인 |
-| 기기 관리 | `src/main/device/` · `registry.ts#createDeviceRegistry` | 연결된 기기와 활성 기기, 기기별 직렬 실행(`run`) | `Device` 인터페이스 |
+| 프로세스 경계 | `src/main/process/` · `processClient.ts#createProcessClient` | 외부 바이너리 실행의 공통부(`exec`, `stream`, stderr 꼬리, 제한 시간). 도구마다 실패 분류만 주입한다 | 프로세스 실행 |
+| adb 경계 | `src/main/adb/` · `adbClient.ts#createAdbClient` | adb 바이너리 실행, `exec`(일회성)과 `stream`(장시간). `processClient` 위에 선다 | adb 문법 |
+| simctl 경계 | `src/main/ios/` · `simctlClient.ts#createSimctlClient` | `xcrun simctl` 실행과 iOS 도구 실패 분류. `processClient` 위에 선다 | simctl 문법 |
+| 기기 구현 | `src/main/device/` · `androidDevice.ts#createAndroidDevice`, `iosDevice.ts#createIosDevice` | adb / simctl 출력에 의미를 붙여 `Device`를 구현한다. 출력 파싱은 `device/parsers/`에 둔다. iOS는 아직 지원하지 않는 동작을 `unsupported`로 거절한다 | Android / iOS 도메인 |
+| 기기 관리 | `src/main/device/` · `registry.ts#createDeviceRegistry` | 연결된 기기와 활성 기기, 기기별 직렬 실행(`run`), 부팅 직후 등록 대기(`waitFor`). 기기 추적은 adb 쪽 `trackDevices`와 simctl 폴링 `ios/trackSimulators.ts#trackSimulators`가 같은 `onChange`로 합류한다 | `Device` 인터페이스 |
 | MCP 툴 | `src/main/mcp/` · `registerTools.ts#registerTools`, `runTool.ts#runTool` | 툴 정의, 응답 크기 제어, 호출 기록 | MCP 규격 |
 | MCP 전송 | `src/main/mcp/` · `httpServer.ts#startMcpHttpServer` | Streamable HTTP, 세션, 인증. 근거는 [ADR-0001](../adr/0001-mcp-transport-http-in-app.md) | HTTP |
 | 앱 상태 · IPC | `src/main/app/` · `appState.ts#createAppState`, `ipcBridge.ts#registerIpcBridge` | renderer로 상태·이벤트 전달, renderer 요청 처리 | Electron IPC |
 
 **위층은 바로 아래층만 부른다.** MCP 툴 층은 `adbClient`나 `androidDevice`를 직접 import하지 않는다.
-`src/main/mcp/layering.test.ts`가 이 규칙을 import 검사로 지킨다. M4에서 iOS 구현이 들어와도 MCP 툴 층이
+`src/main/mcp/layering.test.ts`가 이 규칙을 import 검사로 지킨다. iOS 구현(`iosDevice.ts`)이 들어와도 MCP 툴 층이
 바뀌지 않게 하려는 장치다.
 
 앱 상태 층은 스냅샷과 나란히 `TimelineEntry` 링을 들고 있다. 툴 호출과 기기·스트림·로그 이벤트를 기록한
@@ -60,11 +62,17 @@ main의 링과 renderer `reduce`가 같은 값으로 오래된 항목부터 버�
 
 파이프라인 매니저는 기기 관리 층의 이벤트로 수명을 정한다. preload는 범용 포트 통로를 만들지 않는다.
 
+**로그는 플랫폼 라우터를 거친다.** `logManager`는 tail·pid 조회 의존성을 하나만 받는다.
+`logs/platformLogDeps.ts#createPlatformLogDeps`가 기기의 `platform`을 보고 Android(`logTail.ts`, `adbLogDeps.ts`)와
+iOS(`iosLogTail.ts`의 `log stream` tail, `iosLogDeps.ts`)로 나눈다. 준비되지 않은 플랫폼의 기기는 `unsupported`다.
+화면 스트림도 같은 방식으로 `createPlatformStreamSession`이 라우팅하고, iOS는 M4-3 전까지 `unsupported`로 거절한다.
+
 ## 조립
 
-`src/main/index.ts`가 실제 구현체를 만들어 `bootstrap.ts#bootstrapApp`에 주입한다. `bootstrapApp`은 SDK를
-찾고, 기기 관리 층·앱 상태·파이프라인 매니저·MCP 서버를 순서대로 연결한다. SDK를 못 찾으면 기기 관리 층 없이
-SDK 안내 상태로 뜬다.
+`src/main/index.ts`가 실제 구현체를 만들어 `bootstrap.ts#bootstrapApp`에 주입한다. `bootstrapApp`은 Android SDK와
+iOS 도구(`ios/locateIosTools.ts#locateIosTools`)를 각각 찾고, 준비된 플랫폼만 조립해 기기 관리 층·앱 상태·
+파이프라인 매니저·MCP 서버를 순서대로 연결한다. 한 플랫폼만 준비돼도 MCP 서버를 연다. 둘 다 못 찾을
+때만 기기 관리 층 없이 안내 상태로 뜬다. 안내에는 플랫폼별 상태(`platforms`)가 담긴다.
 
 주입 구조라서 테스트는 `adbClient`만 가짜로 바꾸면 그 위층 전부를 실기기 없이 덮는다. 실기기가 필요한
 테스트는 `*.integration.test.ts`로 이름을 나눈다.

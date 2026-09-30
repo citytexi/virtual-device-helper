@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AvdController } from '../device/avdController'
+import type { VirtualDeviceCatalog } from '../device/virtualDeviceCatalog'
 import type { DeviceRegistry } from '../device/registry'
 import type { McpServerHandle } from '../mcp/httpServer'
 import { deviceError } from '../../shared/types/errors'
@@ -8,8 +8,12 @@ import { bootstrapApp, rendererSender, type BootstrapDeps } from './bootstrap'
 
 type Handler = (event: unknown, ...args: unknown[]) => unknown
 
+const missing: BootstrapDeps['located'] = { ok: false, searched: ['/opt/sdk/platform-tools/adb'] }
+const iosMissing: BootstrapDeps['iosTools'] = { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다' }
+const iosReady: BootstrapDeps['iosTools'] = { ok: true, developerDir: '/Applications/Xcode.app/Contents/Developer' }
+
 function fakeStack() {
-  const device = { serial: 'emulator-5554', screenshot: vi.fn(async () => ({ base64: 'QUJD', width: 1, height: 1 })) }
+  const device = { serial: 'emulator-5554', platform: 'android', screenshot: vi.fn(async () => ({ base64: 'QUJD', width: 1, height: 1 })) }
   const registry = {
     start: vi.fn(),
     stop: vi.fn(),
@@ -21,12 +25,12 @@ function fakeStack() {
     run: vi.fn((_serial: string, task: () => Promise<unknown>) => task()),
     on: vi.fn(() => () => {})
   } as unknown as DeviceRegistry
-  const avd = {
+  const catalog = {
     list: vi.fn(async () => []),
     boot: vi.fn(async () => 'emulator-5554'),
     shutdown: vi.fn(async () => {})
-  } as unknown as AvdController
-  return { registry, avd, device }
+  } as unknown as VirtualDeviceCatalog
+  return { registry, catalog, device }
 }
 
 function harness(overrides: Partial<BootstrapDeps> = {}) {
@@ -69,9 +73,10 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
       ok: true,
       paths: { sdkRoot: '/opt/sdk', adb: '/opt/sdk/platform-tools/adb', emulator: '/opt/sdk/emulator/emulator', source: 'ANDROID_HOME' }
     },
+    iosTools: iosMissing,
     ipcMain: ipcMain as never,
     send: vi.fn(),
-    createDeviceStack: vi.fn(() => ({ registry: stack.registry, avd: stack.avd })),
+    createDeviceStack: vi.fn(() => ({ registry: stack.registry, catalog: stack.catalog })),
     createStreamManager: vi.fn(() => stream),
     createLogManager: vi.fn(() => logs),
     startServer: vi.fn(async () => server),
@@ -96,19 +101,21 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
   }
 }
 
-const missing: BootstrapDeps['located'] = { ok: false, searched: ['/opt/sdk/platform-tools/adb'] }
 
-describe('bootstrapApp without an SDK', () => {
-  it('still registers the bridge and serves a snapshot with the sdk guidance data', async () => {
+describe('bootstrapApp without any platform', () => {
+  it('still registers the bridge and serves a snapshot with both platforms guidance data', async () => {
     const h = harness({ located: missing })
 
     await bootstrapApp(h.deps)
     const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
 
     expect(snapshot).toEqual({
-      sdk: { ok: false, searched: ['/opt/sdk/platform-tools/adb'] },
+      platforms: {
+        android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/sdk/platform-tools/adb'] },
+        ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [] }
+      },
       server: null,
-      avds: [],
+      virtualDevices: [],
       devices: [],
       activeSerial: null,
       timeline: [],
@@ -133,7 +140,7 @@ describe('bootstrapApp without an SDK', () => {
 
     for (const channel of [
       IPC_CHANNELS.selectDevice,
-      IPC_CHANNELS.bootAvd,
+      IPC_CHANNELS.bootVirtualDevice,
       IPC_CHANNELS.shutdownDevice,
       IPC_CHANNELS.captureScreenshot,
       IPC_CHANNELS.openLogs,
@@ -296,13 +303,14 @@ describe('bootstrapApp with an SDK', () => {
     const app = await bootstrapApp(h.deps)
     const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
 
-    expect(h.deps.createDeviceStack).toHaveBeenCalledWith(expect.objectContaining({ sdkRoot: '/opt/sdk' }))
+    expect(h.deps.createDeviceStack).toHaveBeenCalledWith(expect.objectContaining({ sdkRoot: '/opt/sdk' }), false)
     expect(h.stack.registry.start).toHaveBeenCalled()
     // 상태가 먼저 구독해야 처음 붙어 있던 기기의 device_connected를 놓치지 않는다.
     const onOrder = vi.mocked(h.stack.registry.on).mock.invocationCallOrder[0]!
     const startOrder = vi.mocked(h.stack.registry.start).mock.invocationCallOrder[0]!
     expect(onOrder).toBeLessThan(startOrder)
-    expect(snapshot.sdk).toEqual({ ok: true, sdkRoot: '/opt/sdk' })
+    expect(snapshot.platforms.android).toEqual({ ok: true, location: '/opt/sdk' })
+    expect(snapshot.platforms.ios).toEqual({ ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [] })
     expect(snapshot.server).toEqual({ url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' })
     expect(app.server).toBe(h.server)
   })
@@ -325,7 +333,7 @@ describe('bootstrapApp with an SDK', () => {
 
     expect(snapshot.timeline.filter((entry) => entry.kind === 'tool_call').map((entry) => entry.id)).toEqual(['a'])
     expect(context.registry).toBe(h.stack.registry)
-    expect(context.avd).toBe(h.stack.avd)
+    expect(context.catalog).toBe(h.stack.catalog)
   })
 
   it('keeps going without a server when the server fails to start', async () => {
@@ -344,18 +352,18 @@ describe('bootstrapApp with an SDK', () => {
     }
   })
 
-  it('routes the actions to the registry and avd controller', async () => {
+  it('routes the actions to the registry and catalog', async () => {
     const h = harness()
 
     await bootstrapApp(h.deps)
     await h.invoke(IPC_CHANNELS.selectDevice, 'emulator-5554')
-    await h.invoke(IPC_CHANNELS.bootAvd, 'Pixel_7_API_34')
+    await h.invoke(IPC_CHANNELS.bootVirtualDevice, 'Pixel_7_API_34')
     await h.invoke(IPC_CHANNELS.shutdownDevice, 'emulator-5554')
     const shot = await h.invoke<Outcome<unknown>>(IPC_CHANNELS.captureScreenshot, 'emulator-5554')
 
     expect(h.stack.registry.setActive).toHaveBeenCalledWith('emulator-5554')
-    expect(h.stack.avd.boot).toHaveBeenCalledWith('Pixel_7_API_34')
-    expect(h.stack.avd.shutdown).toHaveBeenCalledWith('emulator-5554')
+    expect(h.stack.catalog.boot).toHaveBeenCalledWith('Pixel_7_API_34')
+    expect(h.stack.catalog.shutdown).toHaveBeenCalledWith('emulator-5554', 'android')
     expect(h.stack.registry.run).toHaveBeenCalledWith('emulator-5554', expect.any(Function))
     expect(shot).toEqual({ ok: true, value: { base64: 'QUJD', width: 1, height: 1 } })
   })
@@ -430,6 +438,48 @@ describe('bootstrapApp with an SDK', () => {
 
     expect(result.ok).toBe(false)
     expect(h.deps.createStreamManager).not.toHaveBeenCalled()
+  })
+})
+
+describe('bootstrapApp with only iOS', () => {
+  it('opens the MCP server and reports android missing, ios ready', async () => {
+    const h = harness({ located: missing, iosTools: iosReady })
+
+    const app = await bootstrapApp(h.deps)
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(h.deps.startServer).toHaveBeenCalled()
+    expect(app.server).toBe(h.server)
+    expect(snapshot.platforms.android).toEqual({
+      ok: false,
+      reason: 'Android SDK를 찾지 못했다',
+      searched: ['/opt/sdk/platform-tools/adb']
+    })
+    expect(snapshot.platforms.ios).toEqual({ ok: true, location: '/Applications/Xcode.app/Contents/Developer' })
+  })
+
+  it('builds the stack, stream and log managers without Android paths', async () => {
+    const h = harness({ located: missing, iosTools: iosReady })
+
+    await bootstrapApp(h.deps)
+
+    expect(h.deps.createDeviceStack).toHaveBeenCalledWith(null, true)
+    expect(vi.mocked(h.deps.createStreamManager).mock.calls[0]![1]).toBeNull()
+    expect(vi.mocked(h.deps.createLogManager).mock.calls[0]![1]).toBeNull()
+    expect(h.stack.registry.start).toHaveBeenCalled()
+  })
+})
+
+describe('bootstrapApp with both platforms', () => {
+  it('passes the Android paths and the iOS flag to the device stack', async () => {
+    const h = harness({ iosTools: iosReady })
+
+    await bootstrapApp(h.deps)
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(h.deps.createDeviceStack).toHaveBeenCalledWith(expect.objectContaining({ sdkRoot: '/opt/sdk' }), true)
+    expect(snapshot.platforms.android.ok).toBe(true)
+    expect(snapshot.platforms.ios.ok).toBe(true)
   })
 })
 

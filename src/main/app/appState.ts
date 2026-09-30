@@ -1,23 +1,23 @@
 import { randomUUID } from 'node:crypto'
-import type { AvdController } from '../device/avdController'
+import type { VirtualDeviceCatalog } from '../device/virtualDeviceCatalog'
 import type { DeviceRegistry, RegistryEvent } from '../device/registry'
 import type { McpServerHandle } from '../mcp/httpServer'
-import type { AvdEntry } from '../../shared/types/device'
+import type { VirtualDeviceEntry } from '../../shared/types/device'
 import { TIMELINE_LIMIT } from '../../shared/limits'
 import type {
   AppSnapshot,
   DeviceTimelineEvent,
   MainEvent,
-  SdkStatus,
+  PlatformStatuses,
   TimelineEntry,
   ToolCallRecord,
   TrackingFailure
 } from '../../shared/types/ipc'
 
 export interface AppStateDeps {
-  sdk: SdkStatus
+  platforms: PlatformStatuses
   registry: DeviceRegistry
-  avd: AvdController
+  catalog: VirtualDeviceCatalog
   server: McpServerHandle | null
   /** 타임라인 상한. 기본값은 TIMELINE_LIMIT. */
   timelineLimit?: number
@@ -92,30 +92,31 @@ export function createAppState(deps: AppStateDeps): AppState {
   const listeners = new Set<(event: MainEvent) => void>()
   let server: McpServerHandle | null = deps.server
   let trackingFailure: TrackingFailure | null = null
+  const anyReady = deps.platforms.android.ok || deps.platforms.ios.ok
 
   function emit(event: MainEvent): void {
     for (const listener of listeners) listener(event)
   }
 
-  async function emitAvds(): Promise<void> {
+  async function emitVirtualDevices(): Promise<void> {
     try {
-      emit({ type: 'avds_changed', avds: await deps.avd.list() })
+      emit({ type: 'virtual_devices_changed', virtualDevices: await deps.catalog.list() })
     } catch (thrown) {
       // 목록 갱신 하나가 실패했다고 main 프로세스에 unhandled rejection을 남기지 않는다.
       // 다음 기기 이벤트나 스냅샷 요청 때 다시 읽는다.
-      console.error('AVD 목록을 다시 읽지 못했다', thrown)
+      console.error('가상 기기 목록을 다시 읽지 못했다', thrown)
     }
   }
 
   /**
-   * 스냅샷은 renderer가 첫 화면을 그리는 유일한 재료다. AVD 목록 하나를 못 읽었다고
+   * 스냅샷은 renderer가 첫 화면을 그리는 유일한 재료다. 가상 기기 목록 하나를 못 읽었다고
    * 스냅샷 전체를 실패시키면 기기·서버 정보까지 함께 사라진다. 빈 목록으로 대신한다.
    */
-  async function listAvdsOrEmpty(): Promise<AvdEntry[]> {
+  async function listVirtualDevicesOrEmpty(): Promise<VirtualDeviceEntry[]> {
     try {
-      return await deps.avd.list()
+      return await deps.catalog.list()
     } catch (thrown) {
-      console.error('스냅샷용 AVD 목록을 읽지 못했다', thrown)
+      console.error('스냅샷용 가상 기기 목록을 읽지 못했다', thrown)
       return []
     }
   }
@@ -137,8 +138,8 @@ export function createAppState(deps: AppStateDeps): AppState {
     emit(mainEvent)
     const device = deviceEventOf(event)
     if (device) recordDeviceEvent(device.serial, device.event)
-    // 기기가 붙거나 떨어지면 AVD의 running 표시가 달라진다.
-    if (event.type === 'device_connected' || event.type === 'device_disconnected') void emitAvds()
+    // 기기가 붙거나 떨어지면 가상 기기의 running 표시가 달라진다.
+    if (event.type === 'device_connected' || event.type === 'device_disconnected') void emitVirtualDevices()
   })
 
   function endpoint(): AppSnapshot['server'] {
@@ -148,9 +149,9 @@ export function createAppState(deps: AppStateDeps): AppState {
   return {
     async snapshot() {
       return {
-        sdk: deps.sdk,
+        platforms: deps.platforms,
         server: endpoint(),
-        avds: deps.sdk.ok ? await listAvdsOrEmpty() : [],
+        virtualDevices: anyReady ? await listVirtualDevicesOrEmpty() : [],
         devices: deps.registry.serials(),
         activeSerial: deps.registry.getActive(),
         timeline: [...timeline],

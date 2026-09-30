@@ -37,11 +37,11 @@ function parseRef(ref: string): { generation: number; index: number } | null {
 
 /**
  * 노드 하나의 "자기 자신" 지문 부분: className·resourceId·contentDesc·text.
- * className이 EditText로 끝나면 text를 뺀다 — 입력하면 바뀌는 값이고, 빈 필드는
+ * `editable`인 노드는 text를 뺀다 — 입력하면 바뀌는 값이고, 빈 필드는
  * hint를 text로 내기도 해서 지문에 넣으면 타이핑만으로 ref가 죽는다.
  */
 function ownFingerprint(node: UiNode): string {
-  const includeText = !node.className.endsWith('EditText')
+  const includeText = !node.editable
   const text = includeText ? (node.text ?? '') : ''
   return `${node.className}|${node.resourceId ?? ''}|${node.contentDesc ?? ''}|${text}`
 }
