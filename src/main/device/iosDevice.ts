@@ -248,30 +248,78 @@ export function createIosDevice(deps: IosDeviceDeps): Device & { readonly platfo
       : formatLogShowStart(logWatermark ?? nowMs - DEFAULT_LOG_WINDOW_MS)
 
     // filter는 셸을 거치지 않고 --predicate 한 인자로 간다. 이스케이프는 logFilterPredicate가 한다.
+    // pids는 정수만 predicate에 넣어 log show가 내보내는 양 자체를 줄인다. 아래 JS 필터가 최종 판정이다.
+    const pidList = (opts.pids ?? []).filter((pid) => Number.isInteger(pid) && pid >= 0)
+    const filterPredicate = opts.filter ? logFilterPredicate(opts.filter) : null
+    const pidPredicate = pidList.length > 0 ? `processID IN {${pidList.join(', ')}}` : null
+    const predicate = filterPredicate && pidPredicate ? `(${filterPredicate}) AND ${pidPredicate}` : (filterPredicate ?? pidPredicate)
     const args = ['spawn', udid, 'log', 'show', '--style', 'ndjson', '--start', start]
-    if (opts.filter) args.push('--predicate', logFilterPredicate(opts.filter))
+    if (predicate) args.push('--predicate', predicate)
 
-    const stdout = (await simctl.exec(args, { timeoutMs: LOG_SHOW_TIMEOUT_MS })).stdout
     // --start는 초 단위라 워터마크 직전 1초 안의 줄이 딸려 온다. since가 없을 때는 epochMs로 정확히 걸러
     // clearLogs 이전 줄이 다시 나오지 않게 한다(Android `logcat -c`와 같은 의미).
     const cutoff = opts.since ? null : logWatermark
-    let lines: LogLine[] = []
-    for (const raw of stdout.split('\n')) {
-      const parsed = raw ? parseIosLogLine(raw) : null
-      if (parsed && (cutoff === null || parsed.epochMs >= cutoff)) {
-        const { epochMs: _epochMs, ...line } = parsed
-        lines.push(line)
-      }
-    }
-
     // pid 필터는 줄 수 상한보다 먼저 건다(Android readLogs와 같다).
-    if (opts.pids) {
-      const pids = new Set(opts.pids)
-      lines = lines.filter((line) => pids.has(line.pid))
-    }
+    const pids = opts.pids ? new Set(opts.pids) : null
 
-    if (lines.length <= limit) return { lines, truncated: false, droppedCount: 0 }
-    return { lines: lines.slice(lines.length - limit), truncated: true, droppedCount: lines.length - limit }
+    // 조용한 시뮬레이터도 5분 창에 수십만 줄이 나온다. 전체를 exec로 모으지 않고 줄 단위로 읽으며
+    // 마지막 limit줄만 고리 버퍼에 남긴다.
+    return new Promise<LogReadResult>((resolve, reject) => {
+      const ring: LogLine[] = new Array(limit)
+      let head = 0
+      let size = 0
+      let dropped = 0
+      let settled = false
+
+      const stream = simctl.stream(args)
+      const timer = setTimeout(() => {
+        if (settled) return
+        settled = true
+        stream.close()
+        reject(
+          deviceError('device_unresponsive', `simctl 명령이 ${LOG_SHOW_TIMEOUT_MS}ms 안에 끝나지 않았다: ${args.join(' ')}`, '시뮬레이터 상태를 확인하고 필요하면 device_shutdown 후 다시 부팅해라', {
+            args,
+            timeoutMs: LOG_SHOW_TIMEOUT_MS
+          })
+        )
+      }, LOG_SHOW_TIMEOUT_MS)
+
+      stream.onLine((raw) => {
+        if (settled || !raw) return
+        const parsed = parseIosLogLine(raw)
+        if (!parsed || (cutoff !== null && parsed.epochMs < cutoff)) return
+        const { epochMs: _epochMs, ...line } = parsed
+        if (pids && !pids.has(line.pid)) return
+        if (limit === 0) {
+          dropped += 1
+          return
+        }
+        if (size < limit) {
+          ring[(head + size) % limit] = line
+          size += 1
+          return
+        }
+        ring[head] = line
+        head = (head + 1) % limit
+        dropped += 1
+      })
+
+      stream.onError((error) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        reject(error)
+      })
+
+      stream.onClose(() => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        const lines: LogLine[] = []
+        for (let i = 0; i < size; i += 1) lines.push(ring[(head + i) % limit]!)
+        resolve({ lines, truncated: dropped > 0, droppedCount: dropped })
+      })
+    })
   }
 
   async function clearLogs(): Promise<void> {
