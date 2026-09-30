@@ -61,7 +61,7 @@ describe('DevicePanel platform notices', () => {
       <DevicePanel
         snapshot={snapshot({
           platforms: {
-            android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/a/adb'] },
+            android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/a/adb'], hint: null },
             ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: [] }
           }
         })}
@@ -77,7 +77,7 @@ describe('DevicePanel platform notices', () => {
         snapshot={snapshot({
           platforms: {
             android: { ok: true, location: '/opt/sdk', notes: [] },
-            ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [] }
+            ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [], hint: null }
           }
         })}
       />
@@ -92,7 +92,7 @@ describe('DevicePanel platform notices', () => {
         snapshot={snapshot({
           virtualDevices: [],
           platforms: {
-            android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: [] },
+            android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: [], hint: null },
             ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: [] }
           }
         })}

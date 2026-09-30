@@ -10,7 +10,11 @@ const execFileAsync = promisify(execFile)
  */
 export const IOS_TOOLS_TIMEOUT_MS = 10_000
 
-export type IosToolsResult = { ok: true; developerDir: string } | { ok: false; reason: string }
+/**
+ * ok:false의 hostSupported는 이 호스트 OS가 iOS 시뮬레이터를 돌릴 수 있는지다. false(macOS 아님)이면
+ * 사용자가 Xcode를 설치해 해결할 수 없다. 안내 문구는 이 값을 보고 main이 정한다.
+ */
+export type IosToolsResult = { ok: true; developerDir: string } | { ok: false; reason: string; hostSupported: boolean }
 
 export interface LocateIosToolsDeps {
   platform: NodeJS.Platform
@@ -55,21 +59,21 @@ async function withTimeout<T>(task: Promise<T>, ms: number): Promise<T> {
  * tracking_failed를 내는 대신 조립 단계에서 iOS를 빼기 위해서다.
  */
 export async function locateIosTools(deps: LocateIosToolsDeps): Promise<IosToolsResult> {
-  if (deps.platform !== 'darwin') return { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다' }
+  if (deps.platform !== 'darwin') return { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', hostSupported: false }
   const timeoutMs = deps.timeoutMs ?? IOS_TOOLS_TIMEOUT_MS
 
   let developerDir: string
   try {
     developerDir = (await withTimeout(deps.execFile('xcode-select', ['-p']), timeoutMs)).stdout.trim()
   } catch {
-    return { ok: false, reason: 'Xcode 개발자 디렉토리를 찾지 못했다' }
+    return { ok: false, reason: 'Xcode 개발자 디렉토리를 찾지 못했다', hostSupported: true }
   }
-  if (developerDir === '') return { ok: false, reason: 'Xcode 개발자 디렉토리를 찾지 못했다' }
+  if (developerDir === '') return { ok: false, reason: 'Xcode 개발자 디렉토리를 찾지 못했다', hostSupported: true }
 
   try {
     await withTimeout(deps.execFile('xcrun', ['simctl', 'help']), timeoutMs)
   } catch (thrown) {
-    return { ok: false, reason: isTimeout(thrown) ? 'xcrun simctl이 응답하지 않는다' : 'xcrun simctl을 실행할 수 없다' }
+    return { ok: false, reason: isTimeout(thrown) ? 'xcrun simctl이 응답하지 않는다' : 'xcrun simctl을 실행할 수 없다', hostSupported: true }
   }
   return { ok: true, developerDir }
 }

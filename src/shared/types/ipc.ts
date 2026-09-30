@@ -85,10 +85,12 @@ export const IPC_CHANNELS = {
 /**
  * 플랫폼 하나가 준비됐는지. Android는 location이 SDK 경로, searched가 찾아본 경로다.
  * iOS는 location이 Xcode 개발자 디렉토리이고 searched는 비어 있다.
+ * ok:false의 hint는 사용자가 할 일을 main이 정해 내려 주는 문구다. 할 일이 없으면(예: 이 호스트에서는
+ * 설치할 수 없는 도구) null이고, renderer는 호스트 OS를 보고 따로 안내를 만들지 않는다.
  */
 export type PlatformStatus =
   | { ok: true; location: string; /** 준비는 됐지만 알려 둘 것. 없으면 빈 배열이다. */ notes: string[] }
-  | { ok: false; reason: string; searched: string[] }
+  | { ok: false; reason: string; searched: string[]; hint: string | null }
 
 export interface PlatformStatuses {
   android: PlatformStatus

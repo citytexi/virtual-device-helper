@@ -77,6 +77,8 @@ const STREAM_EVENTS = {
   stopped: 'stream_stopped'
 } as const satisfies Record<StreamLifecycle, DeviceTimelineEvent>
 
+const XCODE_HINT = 'Xcode를 설치하고 xcode-select -s로 개발자 디렉토리를 정해라'
+
 const AXE_MISSING_NOTE = 'AXe가 없어 iOS 입력·노드·실시간 화면을 쓸 수 없다. brew install cameroncooke/axe/axe로 설치하고 앱을 다시 켜라'
 
 function sdkMissingError() {
@@ -93,8 +95,11 @@ function platformStatuses(located: LocateSdkResult, iosTools: IosToolsResult, ax
   return {
     android: located.ok
       ? { ok: true, location: located.paths.sdkRoot, notes: [] }
-      : { ok: false, reason: 'Android SDK를 찾지 못했다', searched: located.searched },
-    ios: iosTools.ok ? { ok: true, location: iosTools.developerDir, notes: iosNotes } : { ok: false, reason: iosTools.reason, searched: [] }
+      : { ok: false, reason: 'Android SDK를 찾지 못했다', searched: located.searched, hint: null },
+    // 호스트가 macOS가 아니면 Xcode를 깔 수 없으니 안내를 내리지 않는다. 판단은 여기서 하고 renderer는 그리기만 한다.
+    ios: iosTools.ok
+      ? { ok: true, location: iosTools.developerDir, notes: iosNotes }
+      : { ok: false, reason: iosTools.reason, searched: [], hint: iosTools.hostSupported ? XCODE_HINT : null }
   }
 }
 

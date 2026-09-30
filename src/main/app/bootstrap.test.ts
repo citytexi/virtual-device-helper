@@ -9,7 +9,8 @@ import { bootstrapApp, rendererSender, type BootstrapDeps } from './bootstrap'
 type Handler = (event: unknown, ...args: unknown[]) => unknown
 
 const missing: BootstrapDeps['located'] = { ok: false, searched: ['/opt/sdk/platform-tools/adb'] }
-const iosMissing: BootstrapDeps['iosTools'] = { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다' }
+const iosMissing: BootstrapDeps['iosTools'] = { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', hostSupported: false }
+const iosNoXcode: BootstrapDeps['iosTools'] = { ok: false, reason: 'Xcode 개발자 디렉토리를 찾지 못했다', hostSupported: true }
 const iosReady: BootstrapDeps['iosTools'] = { ok: true, developerDir: '/Applications/Xcode.app/Contents/Developer' }
 
 function fakeStack() {
@@ -112,8 +113,8 @@ describe('bootstrapApp without any platform', () => {
 
     expect(snapshot).toEqual({
       platforms: {
-        android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/sdk/platform-tools/adb'] },
-        ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [] }
+        android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/sdk/platform-tools/adb'], hint: null },
+        ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [], hint: null }
       },
       server: null,
       virtualDevices: [],
@@ -311,7 +312,7 @@ describe('bootstrapApp with an SDK', () => {
     const startOrder = vi.mocked(h.stack.registry.start).mock.invocationCallOrder[0]!
     expect(onOrder).toBeLessThan(startOrder)
     expect(snapshot.platforms.android).toEqual({ ok: true, location: '/opt/sdk', notes: [] })
-    expect(snapshot.platforms.ios).toEqual({ ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [] })
+    expect(snapshot.platforms.ios).toEqual({ ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [], hint: null })
     expect(snapshot.server).toEqual({ url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' })
     expect(app.server).toBe(h.server)
   })
@@ -442,6 +443,31 @@ describe('bootstrapApp with an SDK', () => {
   })
 })
 
+describe('bootstrapApp iOS hint', () => {
+  it('gives no hint when the host is not macOS', async () => {
+    const h = harness({ located: missing, iosTools: iosMissing })
+
+    await bootstrapApp(h.deps)
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(snapshot.platforms.ios).toEqual({ ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [], hint: null })
+  })
+
+  it('tells a Mac without Xcode to install it', async () => {
+    const h = harness({ located: missing, iosTools: iosNoXcode })
+
+    await bootstrapApp(h.deps)
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(snapshot.platforms.ios).toEqual({
+      ok: false,
+      reason: 'Xcode 개발자 디렉토리를 찾지 못했다',
+      searched: [],
+      hint: 'Xcode를 설치하고 xcode-select -s로 개발자 디렉토리를 정해라'
+    })
+  })
+})
+
 describe('bootstrapApp with only iOS', () => {
   it('opens the MCP server and reports android missing, ios ready', async () => {
     const h = harness({ located: missing, iosTools: iosReady })
@@ -454,7 +480,8 @@ describe('bootstrapApp with only iOS', () => {
     expect(snapshot.platforms.android).toEqual({
       ok: false,
       reason: 'Android SDK를 찾지 못했다',
-      searched: ['/opt/sdk/platform-tools/adb']
+      searched: ['/opt/sdk/platform-tools/adb'],
+      hint: null
     })
     expect(snapshot.platforms.ios).toEqual({ ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: [] })
   })

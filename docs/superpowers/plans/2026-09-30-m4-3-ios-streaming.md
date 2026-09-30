@@ -59,6 +59,12 @@ M4-1 Task 1의 fixture `stream-video-jpeg.bin`(JPEG 파트). `stream-video.bin`�
 - 커밋 메시지는 한국어 Conventional Commits이고, 끝에 다음 줄을 붙인다:
   `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`
 
+## M4-2에서 넘어온 과제
+
+M4-2 작업 중 미룬 것 중 이 계획이 맡는 것이다. 해당 task에 붙여 처리한다.
+
+- 기기 추적 실패 안내(`trackingFailure`)가 한 칸이라 iOS 폴링만 죽어도 어느 쪽인지 말하지 않는다. 플랫폼별로 나눠 어느 플랫폼의 추적이 죽었는지 말하게 한다. renderer의 안내 표시를 만지는 Task 5에 붙이는 것이 자연스럽다. → Task 5.
+
 ## Review Focus
 
 - **청크 경계에 걸린 JPEG**: `FFD8`/`FFD9`가 두 stdout 청크에 걸쳐 쪼개져 와도 프레임 하나로

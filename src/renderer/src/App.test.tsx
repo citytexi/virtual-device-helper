@@ -73,8 +73,8 @@ describe('App', () => {
     mockApi({
       ...ready,
       platforms: {
-        android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/a/adb'] },
-        ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [] }
+        android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/a/adb'], hint: null },
+        ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [], hint: null }
       },
       server: null,
       virtualDevices: []
@@ -90,7 +90,7 @@ describe('App', () => {
     mockApi({
       ...ready,
       platforms: {
-        android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/a/adb'] },
+        android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/a/adb'], hint: null },
         ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: [] }
       }
     })
