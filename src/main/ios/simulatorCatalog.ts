@@ -41,7 +41,7 @@ export function createSimulatorCatalog({ simctl }: SimulatorCatalogDeps): Virtua
       }
       // 이미 떠 있는 기기에 boot를 다시 부르면 simctl이 상태 오류로 답해 원인이 흐려진다.
       if (found.state === 'Booted') {
-        throw deviceError('command_failed', `${found.name}은 이미 실행 중이다`, '그 기기를 그대로 쓰려면 device_select로 고르고, 다시 부팅하려면 device_shutdown 후 시도해라', {
+        throw deviceError('command_failed', `이미 실행 중이다: ${found.name}`, '그 기기를 그대로 쓰려면 device_select로 고르고, 다시 부팅하려면 device_shutdown 후 시도해라', {
           udid,
           serial: udid
         })

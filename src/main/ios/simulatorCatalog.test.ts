@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const listJson = readFileSync(join(__dirname, '../device/parsers/__fixtures__/ios/simctl-list-devices.json'), 'utf8')
-const parsed = JSON.parse(listJson) as { devices: Record<string, Array<{ udid: string; state: string }>> }
+const parsed = JSON.parse(listJson) as { devices: Record<string, Array<{ udid: string; state: string; name: string }>> }
 const all = Object.values(parsed.devices).flat()
 const booted = all.find((device) => device.state === 'Booted')!
 const shutdown = all.find((device) => device.state === 'Shutdown')!
@@ -40,7 +40,7 @@ describe('simulatorCatalog', () => {
     const simctl = fakeSimctl({ 'list devices -j': execOk(listJson) })
 
     await expect(createSimulatorCatalog({ simctl }).boot(booted.udid)).rejects.toMatchObject({
-      toolError: { kind: 'command_failed' }
+      toolError: { kind: 'command_failed', message: `이미 실행 중이다: ${booted.name}` }
     })
     expect(simctl.calls).toEqual([['list', 'devices', '-j']])
   })
