@@ -50,6 +50,21 @@ describe('IosDevice.readLogs', () => {
     expect(simctl.calls[0]).toContain(localStart(NOW))
   })
 
+  it('drops lines logged before the watermark within the same second', async () => {
+    // 픽스처의 14:40:14.608 두 줄 다음, .610704 줄 직전(+0900)에 clearLogs를 한다.
+    const watermark = Date.UTC(2026, 8, 30, 5, 40, 14, 610)
+    let clock = watermark
+    const { device, simctl } = setup(watermark)
+    const all = await device.readLogs({ limit: 200, since: '01-01 00:00:00.000' })
+    const dev = createIosDevice({ udid: UDID, simctl, resizeImage: noopResize, now: () => clock })
+    await dev.clearLogs()
+    clock = watermark + 60_000
+    const result = await dev.readLogs({ limit: 200 })
+    expect(result.lines[0]!.timestamp).toBe('09-30 14:40:14.610')
+    expect(result.lines).toEqual(all.lines.filter((line) => line.timestamp >= '09-30 14:40:14.610'))
+    expect(result.lines.length).toBeLessThan(all.lines.length)
+  })
+
   it('prefers since over the watermark', async () => {
     const { simctl, device } = setup(NOW)
     await device.clearLogs()

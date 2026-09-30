@@ -243,10 +243,13 @@ export function createIosDevice(deps: IosDeviceDeps): Device & { readonly platfo
     if (opts.filter) args.push('--predicate', logFilterPredicate(opts.filter))
 
     const stdout = (await simctl.exec(args, { timeoutMs: LOG_SHOW_TIMEOUT_MS })).stdout
+    // --start는 초 단위라 워터마크 직전 1초 안의 줄이 딸려 온다. since가 없을 때는 epochMs로 정확히 걸러
+    // clearLogs 이전 줄이 다시 나오지 않게 한다(Android `logcat -c`와 같은 의미).
+    const cutoff = opts.since ? null : logWatermark
     let lines: LogLine[] = []
     for (const raw of stdout.split('\n')) {
       const parsed = raw ? parseIosLogLine(raw) : null
-      if (parsed) {
+      if (parsed && (cutoff === null || parsed.epochMs >= cutoff)) {
         const { epochMs: _epochMs, ...line } = parsed
         lines.push(line)
       }
