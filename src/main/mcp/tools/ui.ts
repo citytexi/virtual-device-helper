@@ -187,10 +187,10 @@ export function registerUiTools(server: McpServer, context: ToolContext): void {
     'ui_text',
     {
       description:
-        'ref를 주면 그 입력칸을 눌러 포커스를 준 뒤 입력한다. 생략하면 지금 포커스된 입력 필드에 바로 넣는다. ASCII만 보낼 수 있다.',
+        'ref를 주면 그 입력칸을 눌러 포커스를 준 뒤 입력한다. 생략하면 지금 포커스된 입력 필드에 바로 넣는다. Android는 ASCII만 보낼 수 있고, iOS는 문자 제한이 없다(클립보드 붙여넣기). 보낼 수 없는 문자면 에러와 hint가 온다.',
       inputSchema: {
         ref: z.string().optional().describe('ui_find가 돌려준, 포커스를 줄 입력 필드의 ref'),
-        text: z.string().describe('입력할 텍스트 (ASCII)'),
+        text: z.string().describe('입력할 텍스트 (Android는 ASCII만, iOS는 제한 없음)'),
         serial
       }
     },

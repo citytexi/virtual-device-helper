@@ -64,6 +64,8 @@ M4-1 Task 1의 fixture `stream-video-jpeg.bin`(JPEG 파트). `stream-video.bin`�
 M4-2 작업 중 미룬 것 중 이 계획이 맡는 것이다. 해당 task에 붙여 처리한다.
 
 - 기기 추적 실패 안내(`trackingFailure`)가 한 칸이라 iOS 폴링만 죽어도 어느 쪽인지 말하지 않는다. 플랫폼별로 나눠 어느 플랫폼의 추적이 죽었는지 말하게 한다. renderer의 안내 표시를 만지는 Task 5에 붙이는 것이 자연스럽다. → Task 5.
+- `inputText`가 시뮬레이터 클립보드를 덮어쓴다(M4-2 스펙 "입력 매핑"). 입력 전 `simctl pbpaste`로 읽어 두었다가 붙여 넣은 뒤 `pbcopy`로 되돌리는 복원을 검토한다. Simulator.app pasteboard 동기화로 호스트 클립보드까지 덮이는지도 그때 측정한다.
+- SDK/AXe 없음 안내를 Android도 iOS처럼 main이 hint로 정해 내려 주게 대칭화한다. 지금은 `SdkMissing`·`DevicePanel`의 Android 안내 문구가 renderer에 고정돼 있다.
 
 ## Review Focus
 

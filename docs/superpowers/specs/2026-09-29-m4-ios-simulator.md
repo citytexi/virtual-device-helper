@@ -265,6 +265,10 @@ ndjson에는 `eventType`이 `activityCreateEvent`인 줄도 섞여 나온다. �
 | `pressKey('enter')` / `pressKey('tab')` | `key 40` / `key 43` (HID keycode) |
 | `pressKey('back')` | `unsupported` |
 
+- `inputText`는 입력할 때마다 시뮬레이터 pasteboard를 덮어쓴다. Simulator.app의 pasteboard 동기화가 켜져 있으면
+  호스트 클립보드까지 덮일 수 있다(측정하지 않았다). 이전 클립보드를 되돌리지 않는다 — 복원(`pbpaste`/`pbcopy`)은
+  이 범위 밖이고 M4-3 계획의 과제로 넘겼다.
+
 **노드: `describe-ui` → `UiNode`**
 
 | AX 속성 | `UiNode` |

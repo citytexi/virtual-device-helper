@@ -84,6 +84,8 @@ describe('promptTemplates', () => {
       expect(template.body).toContain('## 플랫폼 차이')
       expect(template.body).toContain('accessibilityIdentifier')
       expect(template.body).not.toContain('아직 안 된다')
+      expect(template.body).toContain('시뮬레이터 클립보드를 덮어쓴다')
+      expect(template.body).toContain('placeholder')
     }
   })
 

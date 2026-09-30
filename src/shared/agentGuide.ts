@@ -60,6 +60,9 @@ const PLATFORM_SECTION = [
   '- iOS 좌표와 노드 크기는 픽셀이 아니라 point 단위다. `ui_find`가 준 ref와 0..1 좌표를 쓰면 단위를 신경 쓸 필요 없다.',
   '- iOS 노드에서 `resourceId`는 `accessibilityIdentifier`이고, `focused`는 늘 false다. 포커스 여부로 판단하지 마라.',
   '- 권한 이름은 iOS에서 `photos`·`camera`·`location` 같은 `simctl privacy` 서비스 이름이다.',
+  '- `ui_text`는 Android에서 ASCII만 보낼 수 있고, iOS는 문자 제한이 없다. 보낼 수 없는 문자면 에러와 hint가 온다.',
+  '- iOS 텍스트 입력은 시뮬레이터 클립보드를 덮어쓴다(붙여넣기로 넣기 때문이다).',
+  '- 비어 있는 입력칸의 `text`는 placeholder일 수 있다(두 플랫폼 모두). 입력된 값으로 착각하지 마라.',
   '- `pkg`는 Android에서는 패키지명, iOS에서는 bundle id다.'
 ].join('\n')
 
