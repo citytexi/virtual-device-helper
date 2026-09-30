@@ -58,6 +58,15 @@ tags: [plan, ios, axe, node]
 - 커밋 메시지는 한국어 Conventional Commits이고, 끝에 다음 줄을 붙인다:
   `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`
 
+## M4-1에서 넘어온 과제
+
+M4-1 최종 리뷰에서 미룬 것 중 이 계획이 맡는 것이다. 해당 task에 붙여 처리한다.
+
+- `src/shared/agentGuide.ts`의 `APP_SECTION`·도입부가 아직 Android 중심("APK 경로", "Android 앱")이다. iOS 입력이 실제로 되는 이번에 두 플랫폼 문구로 고치고, "플랫폼 차이" 절이 프롬프트 본문에 들어가는지 테스트한다. → Task 3.
+- `catalog.boot(id)`이 목록 조회에 실패한 소스를 삼켜 "그런 가상 기기가 없다"로 안내한다. `details`에 실패한 플랫폼을 싣는다. → Task 4 전에 작은 커밋.
+- 기기 추적 실패 안내(`trackingFailure`)가 한 칸이라 iOS 폴링만 죽어도 어느 쪽인지 말하지 않는다. 플랫폼별로 나눌지 정한다. → Task 4 전에 작은 커밋 또는 다음 계획으로 명시적으로 미룬다.
+- Windows에서 두 플랫폼이 모두 없을 때 `SdkMissing`이 Xcode 설치 안내를 보여 준다. main이 hint를 내려 주는 방식으로 고친다. → 같은 작은 커밋.
+
 ## Review Focus
 
 - **패키징된 앱의 PATH**: Finder로 띄운 앱은 `/opt/homebrew/bin`이 `PATH`에 없다. 그래도 axe를
@@ -133,7 +142,7 @@ tags: [plan, ios, axe, node]
 - 매핑은 스펙 "입력 매핑" 표 그대로:
   - `tap(x, y)`: `['tap', '-x', <round>, '-y', <round>]`
   - `swipe(x1, y1, x2, y2, durationMs)`: `['swipe', '--start-x', …, '--end-y', …, '--duration', <durationMs/1000>]`
-  - `inputText(text)`: `['type', '--stdin']`, `input: text`. 스파이크 3번이 "비 ASCII 입력 불가"면: 비 ASCII가 섞인 텍스트는 `simctl pbcopy <udid>`(`input: text`) 뒤 `axe key-combo`로 ⌘V(스파이크에서 확인한 인자). 스파이크가 "가능"이면 이 갈래를 만들지 않는다.
+  - `inputText(text)`: 스파이크 3번 결과 `axe type`은 ASCII 전용이고, 시뮬레이터 키보드가 한글이면 ASCII도 `hello` → `ㅗ디ㅣㅐ`로 깨진다. 그래서 모든 텍스트를 `simctl pbcopy <udid>`(`input: text`) 뒤 `axe key-combo`로 ⌘V(스파이크에서 확인한 인자)로 넣는다. `type --stdin` 갈래는 만들지 않는다. 테스트: ASCII·한글·이모지 모두 pbcopy 경로로 간다.
   - `pressKey`: `home` → `['button', 'home']`, `enter` → `['key', '40']`, `tab` → `['key', '43']`, `back` → `unsupported`.
   - `dumpUi()`: `['describe-ui']` → `parseAxeUi`.
   - `displayFrame()`: `['describe-ui']` → `parseAxeFrame`. 캐시하지 않는다(회전).

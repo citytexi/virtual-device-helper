@@ -36,7 +36,7 @@ WebCodecs 경로와 새 `jpegRenderer`를 고른다. 화면 입력은 `axeContro
 [ADR-0016](../../adr/0016-stream-codec-per-session.md).
 
 **선행 조건:** [M4-2](2026-09-30-m4-2-ios-input-nodes.md) 완료(`axeClient`, `locateAxe`, `IosDevice.displayFrame`).
-M4-1 Task 1의 fixture `stream-video.bin`.
+M4-1 Task 1의 fixture `stream-video-jpeg.bin`(JPEG 파트). `stream-video.bin`은 기본 인자(scale 1.0, quality 80)로 받은 것이라 파트가 PNG다 — 분할기 입력으로 쓰지 않는다.
 
 ## Global Constraints
 
@@ -121,7 +121,7 @@ M4-1 Task 1의 fixture `stream-video.bin`.
   - `createMjpegSplitter(onFrame: (jpeg: Uint8Array) => void, opts?: { maxFrameBytes?: number }): { push(chunk: Buffer): void }` — SOI(`FF D8`)부터 EOI(`FF D9`)까지를 한 장으로 낸다. SOI 앞 바이트(multipart 경계·헤더)는 버린다. `maxFrameBytes`(기본 8MiB)를 넘도록 EOI가 안 오면 그 장을 버리고 다음 SOI를 찾는다.
   - `jpegSize(jpeg: Uint8Array): { width: number; height: number } | null` — SOF0/SOF1/SOF2 마커의 크기. 없으면 null.
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다** (`stream-video.bin`) — fixture 전체를 한 번에 push하면 프레임이 하나 이상, 각 프레임이 `FFD8`로 시작해 `FFD9`로 끝난다 / 같은 fixture를 1바이트씩 push해도 같은 프레임들 / 첫 프레임의 `jpegSize`가 양수 / 잘린 JPEG에서 `jpegSize`가 null / `maxFrameBytes: 16`이면 큰 프레임은 버려지고 다음 프레임은 나온다.
+- [ ] **Step 1: 실패하는 테스트를 쓴다** (`stream-video-jpeg.bin`) — 스트림은 HTTP 응답 헤더와 `multipart/x-mixed-replace; boundary=--mjpegstream` 파트 헤더가 섞여 온다. 분할기는 헤더 바이트를 건너뛰고 SOI~EOI만 낸다. fixture 전체를 한 번에 push하면 프레임이 하나 이상, 각 프레임이 `FFD8`로 시작해 `FFD9`로 끝난다 / 같은 fixture를 1바이트씩 push해도 같은 프레임들 / 첫 프레임의 `jpegSize`가 양수 / 잘린 JPEG에서 `jpegSize`가 null / `maxFrameBytes: 16`이면 큰 프레임은 버려지고 다음 프레임은 나온다.
 - [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/stream/mjpegSplitter.test.ts src/main/stream/jpegSize.test.ts` / Expected: FAIL.
 - [ ] **Step 3: 구현한다.**
 - [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
