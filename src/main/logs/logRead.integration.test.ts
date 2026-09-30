@@ -97,7 +97,7 @@ beforeAll(async () => {
       trackDevices(
         adb,
         (changed, connected) => {
-          if (changed === serial) onChange(changed, connected)
+          if (changed === serial) onChange(changed, connected, 'android')
         },
         onFailure
       ),

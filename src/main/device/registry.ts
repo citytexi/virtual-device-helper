@@ -1,4 +1,4 @@
-import type { Device } from '../../shared/types/device'
+import type { Device, Platform } from '../../shared/types/device'
 import { deviceError } from '../../shared/types/errors'
 import type { TrackFailure } from '../adb/trackDevices'
 
@@ -20,10 +20,10 @@ export interface DeviceRegistryDeps {
    * 실패를 삼키면 원인이 사라지고 "기기가 안 보인다"는 증상만 남는다.
    */
   track: (
-    onChange: (serial: string, connected: boolean) => void,
+    onChange: (serial: string, connected: boolean, platform: Platform) => void,
     onFailure: (failure: TrackFailure) => void
   ) => () => void
-  createDevice: (serial: string) => Device
+  createDevice: (serial: string, platform: Platform) => Device
 }
 
 export interface DeviceRegistry {
@@ -66,10 +66,10 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
     emit({ type: 'active_changed', serial })
   }
 
-  function onChange(serial: string, connected: boolean): void {
+  function onChange(serial: string, connected: boolean, platform: Platform): void {
     if (connected) {
       if (devices.has(serial)) return
-      devices.set(serial, deps.createDevice(serial))
+      devices.set(serial, deps.createDevice(serial, platform))
       emit({ type: 'device_connected', serial })
       return
     }

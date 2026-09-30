@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Device } from '../../shared/types/device'
+import type { Device, Platform } from '../../shared/types/device'
 import type { TrackFailure } from '../adb/trackDevices'
 import { createDeviceRegistry, type RegistryEvent } from './registry'
 
 function makeRegistry() {
-  let notify: ((serial: string, connected: boolean) => void) | undefined
+  let notify: ((serial: string, connected: boolean, platform: Platform) => void) | undefined
   let notifyFailure: ((failure: TrackFailure) => void) | undefined
   let stopped = false
+  const created: Array<[string, Platform]> = []
 
   const registry = createDeviceRegistry({
     track: (onChange, onFailure) => {
@@ -16,19 +17,36 @@ function makeRegistry() {
         stopped = true
       }
     },
-    createDevice: (serial) => ({ serial }) as Device
+    createDevice: (serial, platform) => {
+      created.push([serial, platform])
+      return { serial, platform } as Device
+    }
   })
 
   return {
     registry,
-    connect: (serial: string) => notify?.(serial, true),
-    disconnect: (serial: string) => notify?.(serial, false),
+    created,
+    connect: (serial: string, platform: Platform = 'android') => notify?.(serial, true, platform),
+    disconnect: (serial: string, platform: Platform = 'android') => notify?.(serial, false, platform),
     fail: (failure: TrackFailure) => notifyFailure?.(failure),
     stopped: () => stopped
   }
 }
 
 describe('DeviceRegistry membership', () => {
+  it('passes the platform reported by track to createDevice', () => {
+    const harness = makeRegistry()
+    harness.registry.start()
+
+    harness.connect('emulator-5554', 'android')
+    harness.connect('UDID-1', 'ios')
+
+    expect(harness.created).toEqual([
+      ['emulator-5554', 'android'],
+      ['UDID-1', 'ios']
+    ])
+  })
+
   it('lists a device once it connects', () => {
     const harness = makeRegistry()
     harness.registry.start()
