@@ -388,3 +388,86 @@ describe('DeviceRegistry tracking failure', () => {
     expect(harness.registry.serials()).toEqual(['emulator-5554'])
   })
 })
+
+// 부팅 직후 기기는 추적(특히 simctl 폴링)이 아직 못 봤을 수 있다. waitFor는 그 틈을 기다린다.
+describe('DeviceRegistry.waitFor', () => {
+  it('resolves immediately with a device that is already known', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = makeRegistry()
+      harness.registry.start()
+      harness.connect('UDID-1', 'ios')
+
+      await expect(harness.registry.waitFor('UDID-1', 5000)).resolves.toMatchObject({ serial: 'UDID-1' })
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('resolves once the serial connects later', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = makeRegistry()
+      harness.registry.start()
+
+      const waiting = harness.registry.waitFor('UDID-1', 5000)
+      harness.connect('OTHER', 'ios')
+      await vi.advanceTimersByTimeAsync(1000)
+      harness.connect('UDID-1', 'ios')
+
+      await expect(waiting).resolves.toMatchObject({ serial: 'UDID-1', platform: 'ios' })
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('rejects with device_unresponsive when the serial never connects in time', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = makeRegistry()
+      harness.registry.start()
+
+      const waiting = harness.registry.waitFor('UDID-1', 5000)
+      const settled = waiting.catch((error: unknown) => error)
+      await vi.advanceTimersByTimeAsync(5000)
+
+      const error = (await settled) as { toolError: { kind: string; details: unknown } }
+      expect(error.toolError.kind).toBe('device_unresponsive')
+      expect(error.toolError.details).toEqual({ serial: 'UDID-1', timeoutMs: 5000 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('removes its listener and timer on every path', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = makeRegistry()
+      harness.registry.start()
+      const unsubscribes: Array<ReturnType<typeof vi.fn>> = []
+      const originalOn = harness.registry.on.bind(harness.registry)
+      vi.spyOn(harness.registry, 'on').mockImplementation((listener) => {
+        const unsubscribe = vi.fn(originalOn(listener))
+        unsubscribes.push(unsubscribe)
+        return unsubscribe
+      })
+
+      // 나중에 연결
+      const connected = harness.registry.waitFor('UDID-1', 5000)
+      harness.connect('UDID-1', 'ios')
+      await connected
+      // 시간 초과
+      const timedOut = harness.registry.waitFor('UDID-2', 5000).catch(() => undefined)
+      await vi.advanceTimersByTimeAsync(5000)
+      await timedOut
+
+      expect(unsubscribes).toHaveLength(2)
+      for (const unsubscribe of unsubscribes) expect(unsubscribe).toHaveBeenCalledTimes(1)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

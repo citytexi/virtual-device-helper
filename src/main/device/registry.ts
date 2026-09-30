@@ -13,6 +13,12 @@ export type RegistryEvent =
    */
   | { type: 'tracking_failed'; failure: TrackFailure }
 
+/**
+ * 부팅이 끝난 기기가 연결 목록에 나타나기를 기다리는 상한. adb는 track-devices가 바로 밀어 주지만
+ * simctl은 폴링(2초)이라 한 주기 늦게 보일 수 있다. 5초에 폴링 한 주기를 여유로 더한다.
+ */
+export const DEVICE_REGISTRATION_TIMEOUT_MS = 7_000
+
 export interface DeviceRegistryDeps {
   /**
    * 연결·해제와 추적 실패를 알려 주는 구독. 반환값은 구독 해제 함수다.
@@ -31,6 +37,11 @@ export interface DeviceRegistry {
   stop(): void
   serials(): string[]
   resolve(serial?: string): Device
+  /**
+   * serial이 연결 목록에 있으면 바로, 없으면 device_connected가 올 때까지 기다려 기기를 준다.
+   * timeoutMs 안에 오지 않으면 device_unresponsive로 끝난다. 어느 경로든 구독과 타이머를 거둔다.
+   */
+  waitFor(serial: string, timeoutMs: number): Promise<Device>
   setActive(serial: string): void
   clearActive(): void
   /**
@@ -91,7 +102,7 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
     emit({ type: 'tracking_failed', failure })
   }
 
-  return {
+  const registry: DeviceRegistry = {
     start() {
       if (stopTracking) return
       stopTracking = deps.track(onChange, onFailure)
@@ -137,6 +148,34 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
       })
     },
 
+    waitFor(serial, timeoutMs) {
+      const known = devices.get(serial)
+      if (known) return Promise.resolve(known)
+
+      return new Promise<Device>((resolve, reject) => {
+        // registry.on을 거쳐 구독한다. 테스트가 구독 해제를 관찰할 수 있게 한다.
+        const unsubscribe = registry.on((event) => {
+          if (event.type !== 'device_connected' || event.serial !== serial) return
+          const device = devices.get(serial)
+          if (!device) return
+          clearTimeout(timer)
+          unsubscribe()
+          resolve(device)
+        })
+        const timer = setTimeout(() => {
+          unsubscribe()
+          reject(
+            deviceError(
+              'device_unresponsive',
+              `부팅한 기기가 ${timeoutMs}ms 안에 연결 목록에 나타나지 않았다: ${serial}`,
+              'device_list로 상태를 확인하고 잠시 뒤 다시 시도해라',
+              { serial, timeoutMs }
+            )
+          )
+        }, timeoutMs)
+      })
+    },
+
     setActive(serial) {
       if (!devices.has(serial)) {
         throw deviceError('no_device', `그런 기기가 없다: ${serial}`, 'device_list로 현재 연결된 기기를 확인해라', {
@@ -170,4 +209,5 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
       return () => listeners.delete(listener)
     }
   }
+  return registry
 }

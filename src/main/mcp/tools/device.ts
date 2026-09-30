@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Device } from '../../../shared/types/device'
+import { DEVICE_REGISTRATION_TIMEOUT_MS } from '../../device/registry'
 import { runTool } from '../runTool'
 import type { ToolContext } from '../toolContext'
 
@@ -42,7 +43,8 @@ export function registerDeviceTools(server: McpServer, context: ToolContext): vo
         { id },
         async () => {
           const serial = await context.catalog.boot(id)
-          const device = context.registry.resolve(serial)
+          // 부팅이 끝나도 추적(폴링)이 아직 못 봤을 수 있어 바로 resolve하지 않고 등록을 기다린다.
+          const device = await context.registry.waitFor(serial, DEVICE_REGISTRATION_TIMEOUT_MS)
           target = device
           return device.info()
         },

@@ -29,6 +29,7 @@ function fakeRegistry(overrides: Partial<DeviceRegistry> = {}): DeviceRegistry {
     stop: vi.fn(),
     serials: () => ['emulator-5554'],
     resolve: () => fakeDevice(),
+    waitFor: async () => fakeDevice(),
     setActive: vi.fn(),
     clearActive: vi.fn(),
     getActive: () => 'emulator-5554',
@@ -75,6 +76,40 @@ describe('device_boot', () => {
 
     await expect(harness.call('device_boot', { id: 'Pixel_7_API_34' })).resolves.toEqual(info)
     expect(boot).toHaveBeenCalledWith('Pixel_7_API_34')
+
+    await harness.close()
+  })
+
+  it('waits for the booted serial to register instead of resolving it right away', async () => {
+    // simctl 폴링이 아직 못 본 기기를 resolve하면 no_device가 난다. waitFor로 기다려야 한다.
+    const resolve = vi.fn(() => {
+      throw deviceError('no_device', '그런 기기가 없다: UDID-1', 'device_list로 확인해라')
+    })
+    const waitFor = vi.fn(async (serial: string) => fakeDevice({ serial }))
+    const harness = await createToolHarness({
+      registry: fakeRegistry({ resolve, waitFor }),
+      catalog: fakeCatalog({ boot: async () => 'UDID-1' })
+    })
+
+    await expect(harness.call('device_boot', { id: 'UDID-1' })).resolves.toEqual(info)
+    expect(waitFor).toHaveBeenCalledWith('UDID-1', expect.any(Number))
+    expect(resolve).not.toHaveBeenCalled()
+
+    await harness.close()
+  })
+
+  it('reports device_unresponsive when the booted device never registers', async () => {
+    const harness = await createToolHarness({
+      registry: fakeRegistry({
+        waitFor: async () => {
+          throw deviceError('device_unresponsive', '부팅한 기기가 나타나지 않았다', 'device_list로 확인해라')
+        }
+      }),
+      catalog: fakeCatalog({ boot: async () => 'UDID-1' })
+    })
+
+    const error = await harness.callExpectingError('device_boot', { id: 'UDID-1' })
+    expect(error.kind).toBe('device_unresponsive')
 
     await harness.close()
   })
