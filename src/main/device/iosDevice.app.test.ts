@@ -122,6 +122,22 @@ describe('IosDevice lifecycle', () => {
     expect(emptyDirectory).not.toHaveBeenCalled()
   })
 
+  it('clearData reports unsupported for a system app that has no data container', async () => {
+    const emptyDirectory = vi.fn(async () => {})
+    const { device } = make(
+      { [`terminate ${UDID} com.apple.Preferences`]: execOk(), [`get_app_container ${UDID} com.apple.Preferences data`]: execOk('(null)\n') },
+      { emptyDirectory }
+    )
+    await expect(device.clearData('com.apple.Preferences')).rejects.toMatchObject({
+      toolError: {
+        kind: 'unsupported',
+        message: 'iOS에서는 시스템 앱 데이터 지우기를 할 수 없다: 데이터 컨테이너가 없다',
+        details: { platform: 'ios', action: '시스템 앱 데이터 지우기' }
+      }
+    })
+    expect(emptyDirectory).not.toHaveBeenCalled()
+  })
+
   it('clearData rethrows non-command_failed errors from get_app_container', async () => {
     const { device } = make({
       [`terminate ${UDID} com.x`]: execOk(),

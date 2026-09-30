@@ -216,6 +216,9 @@ export function createIosDevice(deps: IosDeviceDeps): Device & { readonly platfo
       throw error
     }
 
+    // 시스템 앱(설정 등)은 데이터 컨테이너가 없어 simctl이 성공 코드와 함께 (null)을 준다.
+    if (container === '(null)') throw unsupported('ios', '시스템 앱 데이터 지우기', '데이터 컨테이너가 없다')
+
     // 이 경로 아래를 재귀 삭제하므로, 앱 데이터 컨테이너가 확실할 때만 비운다.
     if (
       container.includes('\n') ||
