@@ -8,6 +8,7 @@ import { createAvdController } from './device/avdController'
 import { createVirtualDeviceCatalog, type VirtualDeviceSource } from './device/virtualDeviceCatalog'
 import { createDeviceRegistry } from './device/registry'
 import { electronResizeImage } from './device/resizeImage'
+import { createIosDevice } from './device/iosDevice'
 import { createSimctlClient } from './ios/simctlClient'
 import { createSimulatorCatalog } from './ios/simulatorCatalog'
 import { trackSimulators } from './ios/trackSimulators'
@@ -21,8 +22,6 @@ import { connectLoopback, createScrcpySession } from './stream/scrcpySession'
 import { createStreamManager } from './stream/streamManager'
 import { bootstrapApp, rendererSender, type BootstrappedApp } from './app/bootstrap'
 import { createPortChannel } from './app/portChannel'
-import { unsupported } from '../shared/types/errors'
-import type { Device } from '../shared/types/device'
 import { IPC_CHANNELS } from '../shared/types/ipc'
 import type { LogDown } from '../shared/types/logs'
 import type { StreamDown } from '../shared/types/stream'
@@ -83,35 +82,6 @@ function postPortToRenderer(channel: string, meta: unknown, remote: unknown): vo
   }
 }
 
-/**
- * IosDevice가 붙기 전(Task 6에서 교체)의 자리표시다. registry가 연결 때 createDevice를 부르므로
- * throw하면 부팅된 시뮬레이터 하나에 연결 처리가 깨진다. 그래서 목록에는 보이되
- * 모든 동작이 unsupported로 거절되는 기기를 준다.
- */
-function placeholderIosDevice(serial: string): Device {
-  const reject = (method: string) => () => Promise.reject(unsupported('ios', method, 'M4-1 Task 6에서 구현한다'))
-  return {
-    serial,
-    platform: 'ios',
-    info: reject('info'),
-    install: reject('install'),
-    uninstall: reject('uninstall'),
-    launch: reject('launch'),
-    stop: reject('stop'),
-    clearData: reject('clearData'),
-    grantPermission: reject('grantPermission'),
-    tap: reject('tap'),
-    swipe: reject('swipe'),
-    inputText: reject('inputText'),
-    pressKey: reject('pressKey'),
-    dumpUi: reject('dumpUi'),
-    displayFrame: reject('displayFrame'),
-    screenshot: reject('screenshot'),
-    readLogs: reject('readLogs'),
-    clearLogs: reject('clearLogs')
-  }
-}
-
 app
   .whenReady()
   .then(async () => {
@@ -135,7 +105,9 @@ app
             }
           },
           createDevice: (serial, platform) =>
-            platform === 'ios' ? placeholderIosDevice(serial) : createAndroidDevice({ serial, adb, resizeImage: electronResizeImage })
+            platform === 'ios' && simctl
+              ? createIosDevice({ udid: serial, simctl, resizeImage: electronResizeImage })
+              : createAndroidDevice({ serial, adb, resizeImage: electronResizeImage })
         })
         const avd = createAvdController({ adb, emulatorPath: paths.emulator, spawn })
         const sources: VirtualDeviceSource[] = [avd]

@@ -21,6 +21,18 @@ import type { ResizeImage } from './resizeImage'
 /** 스크린샷 기본 축소 기준. 원본이 필요한 쪽은 사람이고, 사람은 앱 화면으로 본다. */
 export const DEFAULT_MAX_LONG_EDGE = 720
 
+/** 스크린샷 scale이 (0, 1] 안인지 검사한다. Android·iOS가 같은 규칙을 쓴다. */
+export function assertValidScreenshotScale(scale: number | undefined): void {
+  if (scale !== undefined && (scale <= 0 || scale > 1)) {
+    throw deviceError('command_failed', `scale은 0보다 크고 1 이하여야 한다: ${scale}`, '0.1에서 1.0 사이 값을 써라')
+  }
+}
+
+/** scale을 원본의 긴 변에 곱해 축소 기준 길이를 구한다. */
+export function scaledLongEdge(size: { width: number; height: number }, scale: number): number {
+  return Math.round(Math.max(size.width, size.height) * scale)
+}
+
 const SCREENSHOT_TIMEOUT_MS = 60_000
 const DUMP_PATH = '/sdcard/window_dump.xml'
 
@@ -226,16 +238,14 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
   }
 
   async function screenshot(opts: ScreenshotOpts = {}): Promise<ScreenshotResult> {
-    if (opts.scale !== undefined && (opts.scale <= 0 || opts.scale > 1)) {
-      throw deviceError('command_failed', `scale은 0보다 크고 1 이하여야 한다: ${opts.scale}`, '0.1에서 1.0 사이 값을 써라')
-    }
+    assertValidScreenshotScale(opts.scale)
 
     // scale이 없으면 기기 해상도를 알 필요가 없다. 기본 경로에서 wm size 왕복을
     // 한 번 아낀다.
     let maxLongEdge = DEFAULT_MAX_LONG_EDGE
     if (opts.scale !== undefined) {
       const size = await naturalSize()
-      maxLongEdge = Math.round(Math.max(size.width, size.height) * opts.scale)
+      maxLongEdge = scaledLongEdge(size, opts.scale)
     }
 
     const captured = await adb.exec(serial, ['exec-out', 'screencap', '-p'], {

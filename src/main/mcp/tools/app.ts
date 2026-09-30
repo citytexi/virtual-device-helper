@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { isDeviceError } from '../../../shared/types/errors'
 import type { Device } from '../../../shared/types/device'
 import { runTool } from '../runTool'
 import type { ToolContext } from '../toolContext'
@@ -232,14 +233,21 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
             await device.clearData(args.pkg)
             await device.launch(args.pkg)
 
-            const settle = await waitForSettle(
-              () => device.dumpUi().then((dump) => dump.nodes),
-              SETTLE_DEFAULT_TIMEOUT_MS,
-              (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-              () => Date.now()
-            )
-
-            return { pkg: args.pkg, ...settle }
+            try {
+              const settle = await waitForSettle(
+                () => device.dumpUi().then((dump) => dump.nodes),
+                SETTLE_DEFAULT_TIMEOUT_MS,
+                (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+                () => Date.now()
+              )
+              return { pkg: args.pkg, ...settle }
+            } catch (error) {
+              // 화면 안정 확인을 할 수 없는 기기는 실패로 보지 않는다. 플랫폼이 아니라 에러 kind로 판단한다.
+              if (isDeviceError(error) && error.toolError.kind === 'unsupported') {
+                return { pkg: args.pkg, settled: false, nodeCount: 0, settleSkipped: 'unsupported' }
+              }
+              throw error
+            }
           })
         },
         { serial: () => target?.serial }

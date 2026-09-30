@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { VirtualDeviceCatalog } from '../../device/virtualDeviceCatalog'
 import type { DeviceRegistry } from '../../device/registry'
 import type { Device } from '../../../shared/types/device'
-import { deviceError } from '../../../shared/types/errors'
+import { deviceError, unsupported } from '../../../shared/types/errors'
 import { createToolHarness } from '../testHarness'
 
 function harnessFor(device: Partial<Device>) {
@@ -195,6 +195,42 @@ describe('app lifecycle tools', () => {
     })
 
     expect(grantPermission).toHaveBeenCalledWith('com.example.app', 'android.permission.CAMERA')
+
+    await harness.close()
+  })
+})
+
+describe('app_reset_and_launch', () => {
+  const lifecycle = { stop: async () => {}, clearData: async () => {}, launch: async () => {} }
+
+  it('skips settling when dumpUi is unsupported', async () => {
+    const harness = await harnessFor({
+      ...lifecycle,
+      dumpUi: async () => {
+        throw unsupported('ios', 'UI 덤프', 'M4-2에서 지원한다')
+      }
+    })
+
+    await expect(harness.call('app_reset_and_launch', { pkg: 'com.example.App' })).resolves.toEqual({
+      pkg: 'com.example.App',
+      settled: false,
+      nodeCount: 0,
+      settleSkipped: 'unsupported'
+    })
+
+    await harness.close()
+  })
+
+  it('still fails on other dumpUi errors', async () => {
+    const harness = await harnessFor({
+      ...lifecycle,
+      dumpUi: async () => {
+        throw deviceError('command_failed', 'UI 덤프 실패', '다시 불러라')
+      }
+    })
+
+    const error = await harness.callExpectingError('app_reset_and_launch', { pkg: 'com.example.App' })
+    expect(error.kind).toBe('command_failed')
 
     await harness.close()
   })
