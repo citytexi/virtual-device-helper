@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AvdController } from '../../device/avdController'
+import type { VirtualDeviceCatalog } from '../../device/virtualDeviceCatalog'
 import type { DeviceRegistry } from '../../device/registry'
 import type { Device } from '../../../shared/types/device'
 import { deviceError } from '../../../shared/types/errors'
@@ -19,13 +19,13 @@ function harnessFor(device: Partial<Device>) {
     on: () => () => {}
   } as unknown as DeviceRegistry
 
-  const avd = {
+  const catalog = {
     list: async () => [],
     boot: async () => 'emulator-5554',
     shutdown: async () => {}
-  } as AvdController
+  } as VirtualDeviceCatalog
 
-  return createToolHarness({ registry, avd })
+  return createToolHarness({ registry, catalog })
 }
 
 describe('app_install', () => {
@@ -136,11 +136,11 @@ describe('app_launch', () => {
         run: (_serial: string, task: () => Promise<unknown>) => task(),
         on: () => () => {}
       } as unknown as DeviceRegistry,
-      avd: {
+      catalog: {
         list: async () => [],
         boot: async () => 'emulator-5554',
         shutdown: async () => {}
-      } as AvdController
+      } as VirtualDeviceCatalog
     })
 
     await harness.callExpectingError('app_launch', { pkg: 'com.example.app' })

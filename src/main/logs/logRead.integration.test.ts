@@ -5,7 +5,7 @@ import { createAdbClient, type AdbClient } from '../adb/adbClient'
 import { trackDevices } from '../adb/trackDevices'
 import { createAndroidDevice } from '../device/androidDevice'
 import { createDeviceRegistry, type DeviceRegistry } from '../device/registry'
-import type { AvdController } from '../device/avdController'
+import type { VirtualDeviceCatalog } from '../device/virtualDeviceCatalog'
 import { createToolHarness, type ToolHarness } from '../mcp/testHarness'
 import type { LogDown, LogEntry } from '../../shared/types/logs'
 import { createPidof, createSeedPids } from './adbLogDeps'
@@ -123,8 +123,8 @@ beforeAll(async () => {
     if (event.type === 'device_disconnected') logs.handleDisconnect(event.serial)
   })
 
-  const avd = { list: async () => [], boot: async () => serial, shutdown: async () => {} } as AvdController
-  harness = await createToolHarness({ registry, avd, pidHistory: (target, pkg) => logs.pidHistory(target, pkg) })
+  const catalog = { list: async () => [], boot: async () => serial, shutdown: async () => {} } as VirtualDeviceCatalog
+  harness = await createToolHarness({ registry, catalog, pidHistory: (target, pkg) => logs.pidHistory(target, pkg) })
 
   registry.start()
   if (!(await waitFor(() => registry.serials().includes(serial), 10_000))) {

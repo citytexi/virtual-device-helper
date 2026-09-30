@@ -10,7 +10,7 @@ function mockApi(snapshot: AppSnapshot): void {
     onEvent: () => () => {},
     captureScreenshot: vi.fn(async () => ({ ok: true, value: { base64: 'QUJD', width: 1, height: 1 } })),
     selectDevice: vi.fn(),
-    bootAvd: vi.fn(),
+    bootVirtualDevice: vi.fn(),
     shutdownDevice: vi.fn(),
     startStream: vi.fn(async () => ({ ok: true, value: undefined })),
     stopStream: vi.fn(async () => ({ ok: true, value: undefined })),
@@ -27,7 +27,7 @@ function mockApiRejecting(reason: string): void {
     onEvent: () => () => {},
     captureScreenshot: vi.fn(),
     selectDevice: vi.fn(),
-    bootAvd: vi.fn(),
+    bootVirtualDevice: vi.fn(),
     shutdownDevice: vi.fn(),
     startStream: vi.fn(async () => ({ ok: true, value: undefined })),
     stopStream: vi.fn(async () => ({ ok: true, value: undefined })),
@@ -39,7 +39,7 @@ function mockApiRejecting(reason: string): void {
 const ready: AppSnapshot = {
   sdk: { ok: true, sdkRoot: '/opt/sdk' },
   server: { url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' },
-  avds: [{ name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' }],
+  virtualDevices: [{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null }],
   devices: ['emulator-5554'],
   activeSerial: 'emulator-5554',
   timeline: [],
@@ -67,7 +67,7 @@ describe('App', () => {
   })
 
   it('replaces the whole screen with the SDK guidance when no SDK was found', async () => {
-    mockApi({ ...ready, sdk: { ok: false, searched: ['/opt/a/adb'] }, server: null, avds: [] })
+    mockApi({ ...ready, sdk: { ok: false, searched: ['/opt/a/adb'] }, server: null, virtualDevices: [] })
 
     render(<App />)
 
@@ -83,7 +83,7 @@ describe('App', () => {
       ...ready,
       activeSerial: null,
       devices: ['emulator-5554'],
-      avds: [{ name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' }]
+      virtualDevices: [{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null }]
     })
 
     render(<App />)

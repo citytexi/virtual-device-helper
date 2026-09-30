@@ -16,12 +16,12 @@ export function registerDeviceTools(server: McpServer, context: ToolContext): vo
     'device_list',
     {
       description:
-        '사용할 수 있는 AVD 목록과 실행 중인 기기, 현재 활성 기기를 돌려준다. 다른 툴을 쓰기 전에 먼저 부른다.',
+        '사용할 수 있는 가상 기기(AVD·시뮬레이터) 목록과 실행 중인 기기, 현재 활성 기기를 돌려준다. 다른 툴을 쓰기 전에 먼저 부른다.',
       inputSchema: {}
     },
     async () =>
       runTool(context, 'device_list', {}, async () => ({
-        avds: await context.avd.list(),
+        virtualDevices: await context.catalog.list(),
         connected: context.registry.serials(),
         active: context.registry.getActive()
       }))
@@ -31,17 +31,17 @@ export function registerDeviceTools(server: McpServer, context: ToolContext): vo
     'device_boot',
     {
       description:
-        'AVD를 부팅하고 부팅이 끝날 때까지 기다린 뒤 기기 정보를 돌려준다. 이름은 device_list로 확인한다.',
-      inputSchema: { avd: z.string().describe('부팅할 AVD 이름') }
+        '가상 기기를 부팅하고 부팅이 끝날 때까지 기다린 뒤 기기 정보를 돌려준다. id는 device_list의 virtualDevices[].id로 확인한다.',
+      inputSchema: { id: z.string().describe('부팅할 가상 기기의 id. device_list의 virtualDevices[].id') }
     },
-    async ({ avd }) => {
+    async ({ id }) => {
       let target: Device | null = null
       return runTool(
         context,
         'device_boot',
-        { avd },
+        { id },
         async () => {
-          const serial = await context.avd.boot(avd)
+          const serial = await context.catalog.boot(id)
           const device = context.registry.resolve(serial)
           target = device
           return device.info()
@@ -59,7 +59,7 @@ export function registerDeviceTools(server: McpServer, context: ToolContext): vo
     },
     async ({ serial }) => {
       let target: Device | null = null
-      // 여기서만 context.registry.run(...) 직렬화 큐를 의도적으로 건너뛰고 context.avd.shutdown을
+      // 여기서만 context.registry.run(...) 직렬화 큐를 의도적으로 건너뛰고 context.catalog.shutdown을
       // 바로 부른다. device_shutdown은 device_unresponsive 에러의 복구 경로이기 때문이다.
       // 큐에 줄을 세우면 이미 막혀 있는 명령 뒤에서 종료 명령까지 같은 타임아웃만큼 늦어져
       // 복구 자체가 안 된다. "빠진 직렬화"로 보고 큐에 넣지 마라.
@@ -70,7 +70,7 @@ export function registerDeviceTools(server: McpServer, context: ToolContext): vo
         async () => {
           const device = context.registry.resolve(serial)
           target = device
-          await context.avd.shutdown(device.serial)
+          await context.catalog.shutdown(device.serial, device.platform)
           return { serial: device.serial, shutdown: true }
         },
         { serial: () => target?.serial }

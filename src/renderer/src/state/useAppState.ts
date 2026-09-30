@@ -23,8 +23,8 @@ function reduce(snapshot: AppSnapshot, event: MainEvent): AppSnapshot {
       return { ...snapshot, devices: snapshot.devices.filter((serial) => serial !== event.serial) }
     case 'active_changed':
       return { ...snapshot, activeSerial: event.serial }
-    case 'avds_changed':
-      return { ...snapshot, avds: event.avds }
+    case 'virtual_devices_changed':
+      return { ...snapshot, virtualDevices: event.virtualDevices }
     case 'timeline': {
       const timeline = appendEntry(snapshot.timeline, event.entry)
       return timeline === snapshot.timeline ? snapshot : { ...snapshot, timeline }

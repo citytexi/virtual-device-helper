@@ -1,4 +1,4 @@
-import type { AvdEntry, ScreenshotResult } from './device'
+import type { ScreenshotResult, VirtualDeviceEntry } from './device'
 import type { ToolError, ToolErrorKind } from './errors'
 
 /**
@@ -68,7 +68,7 @@ export type TimelineEntry =
 export const IPC_CHANNELS = {
   getSnapshot: 'app:get-snapshot',
   selectDevice: 'app:select-device',
-  bootAvd: 'app:boot-avd',
+  bootVirtualDevice: 'app:boot-virtual-device',
   shutdownDevice: 'app:shutdown-device',
   captureScreenshot: 'app:capture-screenshot',
   startStream: 'app:start-stream',
@@ -110,7 +110,7 @@ export interface TrackingFailure {
 export interface AppSnapshot {
   sdk: SdkStatus
   server: ServerStatus | null
-  avds: AvdEntry[]
+  virtualDevices: VirtualDeviceEntry[]
   devices: string[]
   activeSerial: string | null
   timeline: TimelineEntry[]
@@ -121,7 +121,7 @@ export type MainEvent =
   | { type: 'device_connected'; serial: string }
   | { type: 'device_disconnected'; serial: string }
   | { type: 'active_changed'; serial: string | null }
-  | { type: 'avds_changed'; avds: AvdEntry[] }
+  | { type: 'virtual_devices_changed'; virtualDevices: VirtualDeviceEntry[] }
   | { type: 'timeline'; entry: TimelineEntry }
   | { type: 'server_changed'; server: ServerStatus | null }
   | { type: 'tracking_failed'; failure: TrackingFailure }
@@ -130,7 +130,7 @@ export type MainEvent =
 export interface RendererApi {
   getSnapshot(): Promise<AppSnapshot>
   selectDevice(serial: string): Promise<Outcome<void>>
-  bootAvd(name: string): Promise<Outcome<void>>
+  bootVirtualDevice(id: string): Promise<Outcome<void>>
   shutdownDevice(serial: string): Promise<Outcome<void>>
   captureScreenshot(serial: string): Promise<Outcome<ScreenshotResult>>
   /** 이 기기로 스트림을 연다. 이전 스트림은 main이 닫는다. 포트는 IPC_CHANNELS.streamPort로 따로 온다. */

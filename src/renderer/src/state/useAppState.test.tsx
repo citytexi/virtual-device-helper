@@ -7,7 +7,7 @@ import { targetSerial, useAppState } from './useAppState'
 const baseSnapshot: AppSnapshot = {
   sdk: { ok: true, sdkRoot: '/opt/sdk' },
   server: { url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' },
-  avds: [{ name: 'Pixel_7_API_34', running: false, serial: null }],
+  virtualDevices: [{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: false, serial: null, osVersion: null }],
   devices: [],
   activeSerial: null,
   timeline: [],
@@ -128,18 +128,18 @@ describe('useAppState', () => {
     expect(timeline.at(-1)?.id).toBe('new')
   })
 
-  it('replaces the avd list when it changes', async () => {
+  it('replaces the catalog list when it changes', async () => {
     const { result } = renderHook(() => useAppState())
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     act(() =>
       listener?.({
-        type: 'avds_changed',
-        avds: [{ name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' }]
+        type: 'virtual_devices_changed',
+        virtualDevices: [{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null }]
       })
     )
 
-    expect(result.current.snapshot?.avds[0]?.running).toBe(true)
+    expect(result.current.snapshot?.virtualDevices[0]?.running).toBe(true)
   })
 
   it('records a tracking failure when a tracking_failed event arrives', async () => {

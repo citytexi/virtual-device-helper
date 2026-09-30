@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { JSX } from 'react'
 import type { AppSnapshot, Outcome, TrackingFailure } from '../../../shared/types/ipc'
 import type { ToolError } from '../../../shared/types/errors'
+import type { Platform } from '../../../shared/types/device'
 import { targetSerial } from '../state/useAppState'
 
 export interface DevicePanelProps {
@@ -26,6 +27,9 @@ function TrackingFailureNotice({ failure }: { failure: TrackingFailure }): JSX.E
     </p>
   )
 }
+
+/** 표시 전용 라벨. 이 값으로 동작을 나누지 않는다. */
+const PLATFORM_LABEL: Record<Platform, string> = { android: 'Android', ios: 'iOS' }
 
 export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
   const [busy, setBusy] = useState<string | null>(null)
@@ -54,12 +58,12 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
     <TrackingFailureNotice failure={snapshot.trackingFailure} />
   ) : null
 
-  if (snapshot.avds.length === 0) {
+  if (snapshot.virtualDevices.length === 0) {
     return (
       <section aria-label="기기" className="device-panel">
         <h2 className="pane-title">기기</h2>
         {trackingNotice}
-        <p className="empty">AVD가 없다. Android Studio의 Device Manager에서 하나 만들고 앱을 다시 켜라.</p>
+        <p className="empty">가상 기기가 없다. Android Studio에서 AVD를 만들거나 Xcode에서 시뮬레이터를 추가하고 앱을 다시 켜라.</p>
       </section>
     )
   }
@@ -79,12 +83,12 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
       ) : null}
 
       <ul className="device-list">
-        {snapshot.avds.map((avd) => {
+        {snapshot.virtualDevices.map((avd) => {
           const isActive = avd.serial !== null && avd.serial === target
 
           return (
             <li
-              key={avd.name}
+              key={avd.id}
               className="device-row"
               aria-current={isActive ? true : undefined}
               data-running={String(avd.running)}
@@ -101,6 +105,8 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
               >
                 {avd.name}
               </button>
+
+              <span className="badge">{PLATFORM_LABEL[avd.platform]}</span>
 
               {isActive ? <span className="badge">(대상)</span> : null}
 
@@ -121,7 +127,7 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
                   type="button"
                   className="btn device-action"
                   aria-label={`${avd.name} 부팅`}
-                  onClick={() => void run('boot', () => window.api.bootAvd(avd.name))}
+                  onClick={() => void run('boot', () => window.api.bootVirtualDevice(avd.id))}
                   disabled={busy !== null}
                 >
                   부팅

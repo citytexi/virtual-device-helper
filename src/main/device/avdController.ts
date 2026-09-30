@@ -2,7 +2,8 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { AdbClient, SpawnFn } from '../adb/adbClient'
 import { deviceError } from '../../shared/types/errors'
-import type { AvdEntry } from '../../shared/types/device'
+import type { VirtualDeviceEntry } from '../../shared/types/device'
+import type { VirtualDeviceSource } from './virtualDeviceCatalog'
 import { parseDevices } from './parsers/devices'
 
 const execFileAsync = promisify(execFile)
@@ -25,8 +26,9 @@ export interface AvdControllerDeps {
   now?: () => number
 }
 
-export interface AvdController {
-  list(): Promise<AvdEntry[]>
+export interface AvdController extends VirtualDeviceSource {
+  readonly platform: 'android'
+  list(): Promise<VirtualDeviceEntry[]>
   /** 부팅 완료까지 기다리고 새로 뜬 기기의 serial을 돌려준다. */
   boot(name: string, timeoutMs?: number): Promise<string>
   shutdown(serial: string): Promise<void>
@@ -87,12 +89,19 @@ export function createAvdController(deps: AvdControllerDeps): AvdController {
     return mapping
   }
 
-  async function list(): Promise<AvdEntry[]> {
+  async function list(): Promise<VirtualDeviceEntry[]> {
     const [names, running] = await Promise.all([listAvdNames(), runningAvdBySerial()])
 
     return names.map((name) => {
       const found = [...running.entries()].find(([, avdName]) => avdName === name)
-      return { name, running: found !== undefined, serial: found?.[0] ?? null }
+      return {
+        platform: 'android',
+        id: name,
+        name,
+        running: found !== undefined,
+        serial: found?.[0] ?? null,
+        osVersion: null
+      }
     })
   }
 
@@ -161,5 +170,5 @@ export function createAvdController(deps: AvdControllerDeps): AvdController {
     await adb.exec(serial, ['emu', 'kill'])
   }
 
-  return { list, boot, shutdown }
+  return { platform: 'android', list, boot, shutdown }
 }

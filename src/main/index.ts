@@ -5,6 +5,7 @@ import { createAdbClient } from './adb/adbClient'
 import { trackDevices } from './adb/trackDevices'
 import { createAndroidDevice } from './device/androidDevice'
 import { createAvdController } from './device/avdController'
+import { createVirtualDeviceCatalog } from './device/virtualDeviceCatalog'
 import { createDeviceRegistry } from './device/registry'
 import { electronResizeImage } from './device/resizeImage'
 import { createLogManager } from './logs/logManager'
@@ -91,7 +92,7 @@ app
           createDevice: (serial) => createAndroidDevice({ serial, adb, resizeImage: electronResizeImage })
         })
         const avd = createAvdController({ adb, emulatorPath: paths.emulator, spawn })
-        return { registry, avd }
+        return { registry, catalog: createVirtualDeviceCatalog([avd]) }
       },
       createStreamManager: (registry, paths, hooks) => {
         const adb = createAdbClient(paths.adb)

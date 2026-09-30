@@ -6,7 +6,7 @@ import type { AppState } from './appState'
 
 export interface BridgeActions {
   selectDevice(serial: string): void
-  bootAvd(name: string): Promise<void>
+  bootVirtualDevice(id: string): Promise<void>
   shutdownDevice(serial: string): Promise<void>
   captureScreenshot(serial: string): Promise<ScreenshotResult>
   startStream(serial: string): Promise<void>
@@ -65,7 +65,7 @@ export function registerIpcBridge(
 ): void {
   ipcMain.handle(IPC_CHANNELS.getSnapshot, () => state.snapshot())
   ipcMain.handle(IPC_CHANNELS.selectDevice, withText('serial', (serial) => actions.selectDevice(serial)))
-  ipcMain.handle(IPC_CHANNELS.bootAvd, withText('AVD 이름', (name) => actions.bootAvd(name)))
+  ipcMain.handle(IPC_CHANNELS.bootVirtualDevice, withText('가상 기기 id', (id) => actions.bootVirtualDevice(id)))
   ipcMain.handle(IPC_CHANNELS.shutdownDevice, withText('serial', (serial) => actions.shutdownDevice(serial)))
   ipcMain.handle(IPC_CHANNELS.captureScreenshot, withText('serial', (serial) => actions.captureScreenshot(serial)))
   ipcMain.handle(IPC_CHANNELS.startStream, withText('serial', (serial) => actions.startStream(serial)))

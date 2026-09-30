@@ -1,5 +1,5 @@
 import type { IpcMain } from 'electron'
-import type { AvdController } from '../device/avdController'
+import type { VirtualDeviceCatalog } from '../device/virtualDeviceCatalog'
 import { createDeviceRegistry, type DeviceRegistry } from '../device/registry'
 import type { LogManager } from '../logs/logManager'
 import type { TailState } from '../../shared/types/logs'
@@ -13,7 +13,7 @@ import { registerIpcBridge, type BridgeActions, type SendToRenderer } from './ip
 
 export interface DeviceStack {
   registry: DeviceRegistry
-  avd: AvdController
+  catalog: VirtualDeviceCatalog
 }
 
 /** 스트림 매니저가 상태 변화를 앱 상태로 알리는 통로. 팩토리가 매니저 deps로 그대로 넘긴다. */
@@ -87,7 +87,7 @@ function assembleWithoutSdk(searched: string[]): { state: AppState; actions: Bri
       throw sdkMissingError()
     }
   })
-  const avd: AvdController = {
+  const catalog: VirtualDeviceCatalog = {
     list: async () => [],
     boot: async () => {
       throw sdkMissingError()
@@ -96,7 +96,7 @@ function assembleWithoutSdk(searched: string[]): { state: AppState; actions: Bri
       throw sdkMissingError()
     }
   }
-  const state = createAppState({ sdk: { ok: false, searched }, registry, avd, server: null })
+  const state = createAppState({ sdk: { ok: false, searched }, registry, catalog, server: null })
   const reject = async (): Promise<never> => {
     throw sdkMissingError()
   }
@@ -104,7 +104,7 @@ function assembleWithoutSdk(searched: string[]): { state: AppState; actions: Bri
     selectDevice: () => {
       throw sdkMissingError()
     },
-    bootAvd: reject,
+    bootVirtualDevice: reject,
     shutdownDevice: reject,
     captureScreenshot: reject,
     startStream: reject,
@@ -133,11 +133,11 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
     return { state, server: null, stop: async () => {} }
   }
 
-  const { registry, avd } = deps.createDeviceStack(located.paths)
+  const { registry, catalog } = deps.createDeviceStack(located.paths)
   const state = createAppState({
     sdk: { ok: true, sdkRoot: located.paths.sdkRoot },
     registry,
-    avd,
+    catalog,
     server: null
   })
 
@@ -171,7 +171,7 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
     server = await deps.startServer({
       context: {
         registry,
-        avd,
+        catalog,
         pidHistory: (serial, pkg) => logs.pidHistory(serial, pkg),
         onToolCall: (record) => state.recordToolCall(record)
       }
@@ -188,10 +188,11 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
     state,
     {
       selectDevice: (serial) => registry.setActive(serial),
-      bootAvd: async (name) => {
-        await avd.boot(name)
+      bootVirtualDevice: async (id) => {
+        await catalog.boot(id)
       },
-      shutdownDevice: (serial) => avd.shutdown(serial),
+      // IPC는 serial만 준다. 소스 라우팅에 쓸 platform은 registry가 아는 기기에서 꺼낸다.
+      shutdownDevice: (serial) => catalog.shutdown(serial, registry.resolve(serial).platform),
       captureScreenshot: (serial) => {
         const device = registry.resolve(serial)
         return registry.run(device.serial, () => device.screenshot())

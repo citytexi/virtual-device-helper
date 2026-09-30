@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AvdController } from '../device/avdController'
+import type { VirtualDeviceCatalog } from '../device/virtualDeviceCatalog'
 import type { DeviceRegistry } from '../device/registry'
 import type { McpServerHandle } from '../mcp/httpServer'
 import { deviceError } from '../../shared/types/errors'
@@ -9,7 +9,7 @@ import { bootstrapApp, rendererSender, type BootstrapDeps } from './bootstrap'
 type Handler = (event: unknown, ...args: unknown[]) => unknown
 
 function fakeStack() {
-  const device = { serial: 'emulator-5554', screenshot: vi.fn(async () => ({ base64: 'QUJD', width: 1, height: 1 })) }
+  const device = { serial: 'emulator-5554', platform: 'android', screenshot: vi.fn(async () => ({ base64: 'QUJD', width: 1, height: 1 })) }
   const registry = {
     start: vi.fn(),
     stop: vi.fn(),
@@ -21,12 +21,12 @@ function fakeStack() {
     run: vi.fn((_serial: string, task: () => Promise<unknown>) => task()),
     on: vi.fn(() => () => {})
   } as unknown as DeviceRegistry
-  const avd = {
+  const catalog = {
     list: vi.fn(async () => []),
     boot: vi.fn(async () => 'emulator-5554'),
     shutdown: vi.fn(async () => {})
-  } as unknown as AvdController
-  return { registry, avd, device }
+  } as unknown as VirtualDeviceCatalog
+  return { registry, catalog, device }
 }
 
 function harness(overrides: Partial<BootstrapDeps> = {}) {
@@ -71,7 +71,7 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
     },
     ipcMain: ipcMain as never,
     send: vi.fn(),
-    createDeviceStack: vi.fn(() => ({ registry: stack.registry, avd: stack.avd })),
+    createDeviceStack: vi.fn(() => ({ registry: stack.registry, catalog: stack.catalog })),
     createStreamManager: vi.fn(() => stream),
     createLogManager: vi.fn(() => logs),
     startServer: vi.fn(async () => server),
@@ -108,7 +108,7 @@ describe('bootstrapApp without an SDK', () => {
     expect(snapshot).toEqual({
       sdk: { ok: false, searched: ['/opt/sdk/platform-tools/adb'] },
       server: null,
-      avds: [],
+      virtualDevices: [],
       devices: [],
       activeSerial: null,
       timeline: [],
@@ -133,7 +133,7 @@ describe('bootstrapApp without an SDK', () => {
 
     for (const channel of [
       IPC_CHANNELS.selectDevice,
-      IPC_CHANNELS.bootAvd,
+      IPC_CHANNELS.bootVirtualDevice,
       IPC_CHANNELS.shutdownDevice,
       IPC_CHANNELS.captureScreenshot,
       IPC_CHANNELS.openLogs,
@@ -325,7 +325,7 @@ describe('bootstrapApp with an SDK', () => {
 
     expect(snapshot.timeline.filter((entry) => entry.kind === 'tool_call').map((entry) => entry.id)).toEqual(['a'])
     expect(context.registry).toBe(h.stack.registry)
-    expect(context.avd).toBe(h.stack.avd)
+    expect(context.catalog).toBe(h.stack.catalog)
   })
 
   it('keeps going without a server when the server fails to start', async () => {
@@ -344,18 +344,18 @@ describe('bootstrapApp with an SDK', () => {
     }
   })
 
-  it('routes the actions to the registry and avd controller', async () => {
+  it('routes the actions to the registry and catalog', async () => {
     const h = harness()
 
     await bootstrapApp(h.deps)
     await h.invoke(IPC_CHANNELS.selectDevice, 'emulator-5554')
-    await h.invoke(IPC_CHANNELS.bootAvd, 'Pixel_7_API_34')
+    await h.invoke(IPC_CHANNELS.bootVirtualDevice, 'Pixel_7_API_34')
     await h.invoke(IPC_CHANNELS.shutdownDevice, 'emulator-5554')
     const shot = await h.invoke<Outcome<unknown>>(IPC_CHANNELS.captureScreenshot, 'emulator-5554')
 
     expect(h.stack.registry.setActive).toHaveBeenCalledWith('emulator-5554')
-    expect(h.stack.avd.boot).toHaveBeenCalledWith('Pixel_7_API_34')
-    expect(h.stack.avd.shutdown).toHaveBeenCalledWith('emulator-5554')
+    expect(h.stack.catalog.boot).toHaveBeenCalledWith('Pixel_7_API_34')
+    expect(h.stack.catalog.shutdown).toHaveBeenCalledWith('emulator-5554', 'android')
     expect(h.stack.registry.run).toHaveBeenCalledWith('emulator-5554', expect.any(Function))
     expect(shot).toEqual({ ok: true, value: { base64: 'QUJD', width: 1, height: 1 } })
   })

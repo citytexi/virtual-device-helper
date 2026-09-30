@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AvdController } from '../device/avdController'
+import type { VirtualDeviceCatalog } from '../device/virtualDeviceCatalog'
 import type { DeviceRegistry, RegistryEvent } from '../device/registry'
 import type { McpServerHandle } from '../mcp/httpServer'
 import { deviceError } from '../../shared/types/errors'
@@ -24,11 +24,11 @@ function parts() {
     })
   } as unknown as DeviceRegistry
 
-  const avd = {
-    list: vi.fn(async () => [{ name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' }]),
+  const catalog = {
+    list: vi.fn(async () => [{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null }]),
     boot: vi.fn(async () => 'emulator-5554'),
     shutdown: vi.fn(async () => {})
-  } as unknown as AvdController
+  } as unknown as VirtualDeviceCatalog
 
   const server: McpServerHandle = {
     url: 'http://127.0.0.1:9321/mcp',
@@ -37,7 +37,7 @@ function parts() {
     close: vi.fn(async () => {})
   }
 
-  return { registry, avd, server, fire: (event: RegistryEvent) => registryListener?.(event) }
+  return { registry, catalog, server, fire: (event: RegistryEvent) => registryListener?.(event) }
 }
 
 describe('createAppState snapshot', () => {
@@ -46,7 +46,7 @@ describe('createAppState snapshot', () => {
     const state = createAppState({
       sdk: { ok: false, searched: ['/opt/sdk/platform-tools/adb'] },
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: null
     })
 
@@ -56,18 +56,18 @@ describe('createAppState snapshot', () => {
     expect(snapshot.server).toBeNull()
   })
 
-  it('includes avds, devices, active serial and the server endpoint', async () => {
+  it('includes virtualDevices, devices, active serial and the server endpoint', async () => {
     const p = parts()
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
     const snapshot = await state.snapshot()
 
-    expect(snapshot.avds).toEqual([{ name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' }])
+    expect(snapshot.virtualDevices).toEqual([{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null }])
     expect(snapshot.devices).toEqual(['emulator-5554'])
     expect(snapshot.activeSerial).toBe('emulator-5554')
     expect(snapshot.server).toEqual({ url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' })
@@ -78,7 +78,7 @@ describe('createAppState snapshot', () => {
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -106,7 +106,7 @@ describe('createAppState snapshot', () => {
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -133,7 +133,7 @@ describe('createAppState events', () => {
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -150,7 +150,7 @@ describe('createAppState events', () => {
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -190,7 +190,7 @@ describe('createAppState events', () => {
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -215,7 +215,7 @@ describe('createAppState events', () => {
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -248,7 +248,7 @@ describe('createAppState events', () => {
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -267,7 +267,7 @@ describe('createAppState events', () => {
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: null
     })
 
@@ -287,12 +287,12 @@ describe('createAppState events', () => {
     })
   })
 
-  it('emits avds_changed after a device connects so the list refreshes', async () => {
+  it('emits virtual_devices_changed after a device connects so the list refreshes', async () => {
     const p = parts()
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -300,7 +300,7 @@ describe('createAppState events', () => {
     state.onEvent((event) => seen.push(event))
 
     p.fire({ type: 'device_connected', serial: 'emulator-5554' })
-    await vi.waitFor(() => expect(seen.some((event) => event.type === 'avds_changed')).toBe(true))
+    await vi.waitFor(() => expect(seen.some((event) => event.type === 'virtual_devices_changed')).toBe(true))
   })
 })
 
@@ -310,7 +310,7 @@ describe('createAppState tracking failures', () => {
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -324,7 +324,7 @@ describe('createAppState tracking failures', () => {
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -355,7 +355,7 @@ describe('createAppState tracking failures', () => {
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -367,12 +367,12 @@ describe('createAppState tracking failures', () => {
     })
   })
 
-  it('does not refresh the avd list for a tracking failure', async () => {
+  it('does not refresh the catalog list for a tracking failure', async () => {
     const p = parts()
     const state = createAppState({
       sdk: { ok: true, sdkRoot: '/opt/sdk' },
       registry: p.registry,
-      avd: p.avd,
+      catalog: p.catalog,
       server: p.server
     })
 
@@ -382,15 +382,15 @@ describe('createAppState tracking failures', () => {
     p.fire({ type: 'tracking_failed', failure: { error: null, exitCode: 1 } })
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    expect(p.avd.list).not.toHaveBeenCalled()
+    expect(p.catalog.list).not.toHaveBeenCalled()
     expect(seen.map((event) => event.type)).toEqual(['tracking_failed'])
   })
 })
 
-describe('createAppState avd refresh failures', () => {
-  it('swallows a failing avd list after a device event instead of leaking a rejection', async () => {
+describe('createAppState catalog refresh failures', () => {
+  it('swallows a failing catalog list after a device event instead of leaking a rejection', async () => {
     const p = parts()
-    ;(p.avd.list as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('emulator가 없다'))
+    ;(p.catalog.list as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('emulator가 없다'))
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
     const unhandled = vi.fn()
     process.on('unhandledRejection', unhandled)
@@ -399,7 +399,7 @@ describe('createAppState avd refresh failures', () => {
       const state = createAppState({
         sdk: { ok: true, sdkRoot: '/opt/sdk' },
         registry: p.registry,
-        avd: p.avd,
+        catalog: p.catalog,
         server: p.server
       })
       const seen: Array<{ type: string }> = []
@@ -418,17 +418,17 @@ describe('createAppState avd refresh failures', () => {
   })
 })
 
-describe('createAppState snapshot when the avd list fails', () => {
-  it('resolves with an empty avd list and keeps the other fields', async () => {
+describe('createAppState snapshot when the catalog list fails', () => {
+  it('resolves with an empty catalog list and keeps the other fields', async () => {
     const p = parts()
-    ;(p.avd.list as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('emulator -list-avds가 실패했다'))
+    ;(p.catalog.list as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('emulator -list-avds가 실패했다'))
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     try {
       const state = createAppState({
         sdk: { ok: true, sdkRoot: '/opt/sdk' },
         registry: p.registry,
-        avd: p.avd,
+        catalog: p.catalog,
         server: p.server
       })
 
@@ -437,7 +437,7 @@ describe('createAppState snapshot when the avd list fails', () => {
       expect(snapshot).toEqual({
         sdk: { ok: true, sdkRoot: '/opt/sdk' },
         server: { url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' },
-        avds: [],
+        virtualDevices: [],
         devices: ['emulator-5554'],
         activeSerial: 'emulator-5554',
         timeline: [],

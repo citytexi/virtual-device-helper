@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import type { AvdController } from '../../device/avdController'
+import type { VirtualDeviceCatalog } from '../../device/virtualDeviceCatalog'
 import type { DeviceRegistry } from '../../device/registry'
 import type { Device, LogLine } from '../../../shared/types/device'
 import { parseLogcat } from '../../device/parsers/logcat'
@@ -28,13 +28,13 @@ function harnessFor(device: Partial<Device>, context: Partial<Pick<ToolContext, 
     on: () => () => {}
   } as unknown as DeviceRegistry
 
-  const avd = {
+  const catalog = {
     list: async () => [],
     boot: async () => 'emulator-5554',
     shutdown: async () => {}
-  } as AvdController
+  } as VirtualDeviceCatalog
 
-  return createToolHarness({ registry, avd, ...context })
+  return createToolHarness({ registry, catalog, ...context })
 }
 
 const line: LogLine = {

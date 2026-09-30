@@ -6,16 +6,16 @@ import type { AppSnapshot, Outcome, RendererApi } from '../../../shared/types/ip
 import { DevicePanel } from './DevicePanel'
 
 const selectDevice = vi.fn(async (): Promise<Outcome<void>> => ({ ok: true, value: undefined }))
-const bootAvd = vi.fn(async (): Promise<Outcome<void>> => ({ ok: true, value: undefined }))
+const bootVirtualDevice = vi.fn(async (): Promise<Outcome<void>> => ({ ok: true, value: undefined }))
 const shutdownDevice = vi.fn(async (): Promise<Outcome<void>> => ({ ok: true, value: undefined }))
 
 beforeEach(() => {
   selectDevice.mockClear()
-  bootAvd.mockClear()
+  bootVirtualDevice.mockClear()
   shutdownDevice.mockClear()
   ;(window as unknown as { api: Partial<RendererApi> }).api = {
     selectDevice,
-    bootAvd,
+    bootVirtualDevice,
     shutdownDevice
   } as unknown as RendererApi
 })
@@ -24,9 +24,9 @@ function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
   return {
     sdk: { ok: true, sdkRoot: '/opt/sdk' },
     server: null,
-    avds: [
-      { name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' },
-      { name: 'Pixel_Tablet', running: false, serial: null }
+    virtualDevices: [
+      { platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null },
+      { platform: 'android', id: 'Pixel_Tablet', name: 'Pixel_Tablet', running: false, serial: null, osVersion: null }
     ],
     devices: ['emulator-5554'],
     activeSerial: 'emulator-5554',
@@ -89,7 +89,7 @@ describe('DevicePanel', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Pixel_Tablet 부팅/ }))
 
-    expect(bootAvd).toHaveBeenCalledWith('Pixel_Tablet')
+    expect(bootVirtualDevice).toHaveBeenCalledWith('Pixel_Tablet')
   })
 
   it('shuts down the serial of the AVD that was clicked', async () => {
@@ -100,13 +100,53 @@ describe('DevicePanel', () => {
     expect(shutdownDevice).toHaveBeenCalledWith('emulator-5554')
   })
 
+  it('renders same-name entries with different ids and boots each by id', async () => {
+    render(
+      <DevicePanel
+        snapshot={snapshot({
+          virtualDevices: [
+            { platform: 'ios', id: 'udid-1', name: 'iPhone 16', running: false, serial: null, osVersion: '18.0' },
+            { platform: 'ios', id: 'udid-2', name: 'iPhone 16', running: false, serial: null, osVersion: '26.0' }
+          ],
+          devices: [],
+          activeSerial: null
+        })}
+      />
+    )
+
+    const buttons = screen.getAllByRole('button', { name: /iPhone 16 부팅/ })
+    expect(buttons).toHaveLength(2)
+    await userEvent.click(buttons[1] as HTMLElement)
+    expect(bootVirtualDevice).toHaveBeenCalledWith('udid-2')
+    await userEvent.click(buttons[0] as HTMLElement)
+    expect(bootVirtualDevice).toHaveBeenCalledWith('udid-1')
+  })
+
+  it('shows a platform label next to the name', () => {
+    render(
+      <DevicePanel
+        snapshot={snapshot({
+          virtualDevices: [
+            { platform: 'android', id: 'Pixel', name: 'Pixel', running: false, serial: null, osVersion: null },
+            { platform: 'ios', id: 'udid-1', name: 'iPhone 16', running: false, serial: null, osVersion: '18.0' }
+          ],
+          devices: [],
+          activeSerial: null
+        })}
+      />
+    )
+
+    expect(screen.getByText('Android')).toBeDefined()
+    expect(screen.getByText('iOS')).toBeDefined()
+  })
+
   it('selects a device when its row is clicked', async () => {
     render(
       <DevicePanel
         snapshot={snapshot({
-          avds: [
-            { name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' },
-            { name: 'Pixel_Tablet', running: true, serial: 'emulator-5556' }
+          virtualDevices: [
+            { platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null },
+            { platform: 'android', id: 'Pixel_Tablet', name: 'Pixel_Tablet', running: true, serial: 'emulator-5556', osVersion: null }
           ],
           devices: ['emulator-5554', 'emulator-5556']
         })}
@@ -120,7 +160,7 @@ describe('DevicePanel', () => {
 
   it('shows a progress state while an AVD is booting', async () => {
     let resolveBoot: (() => void) | undefined
-    bootAvd.mockImplementationOnce(
+    bootVirtualDevice.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           resolveBoot = () => resolve({ ok: true, value: undefined })
@@ -137,7 +177,7 @@ describe('DevicePanel', () => {
   })
 
   it('shows the failure reason when booting fails', async () => {
-    bootAvd.mockResolvedValueOnce({
+    bootVirtualDevice.mockResolvedValueOnce({
       ok: false,
       error: { kind: 'command_failed', message: '그런 AVD가 없다', hint: '목록을 확인해라' }
     })
@@ -149,9 +189,9 @@ describe('DevicePanel', () => {
   })
 
   it('tells the user when there is no AVD at all', () => {
-    render(<DevicePanel snapshot={snapshot({ avds: [], devices: [], activeSerial: null })} />)
+    render(<DevicePanel snapshot={snapshot({ virtualDevices: [], devices: [], activeSerial: null })} />)
 
-    expect(screen.getByText(/AVD가 없다/)).toBeDefined()
+    expect(screen.getByText(/가상 기기가 없다/)).toBeDefined()
   })
 
   it('shows a tracking failure alert with the error message and hint when tracking stopped with an error', () => {
@@ -215,9 +255,9 @@ describe('DevicePanel', () => {
     render(
       <DevicePanel
         snapshot={snapshot({
-          avds: [
-            { name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' },
-            { name: 'Pixel_Tablet', running: true, serial: 'emulator-5556' }
+          virtualDevices: [
+            { platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null },
+            { platform: 'android', id: 'Pixel_Tablet', name: 'Pixel_Tablet', running: true, serial: 'emulator-5556', osVersion: null }
           ],
           devices: ['emulator-5554', 'emulator-5556']
         })}
@@ -239,7 +279,7 @@ describe('DevicePanel', () => {
   it('shows a failure and re-enables the buttons when the boot promise rejects', async () => {
     // R16 defect 2: IPC 프라미스가 reject되면 try/catch 없이는 busy가 영원히
     // 남아 모든 버튼이 잠긴 채로 굳는다.
-    bootAvd.mockRejectedValueOnce(new Error('IPC 채널이 끊겼다'))
+    bootVirtualDevice.mockRejectedValueOnce(new Error('IPC 채널이 끊겼다'))
     render(<DevicePanel snapshot={snapshot()} />)
 
     await userEvent.click(screen.getByRole('button', { name: /Pixel_Tablet 부팅/ }))
@@ -253,7 +293,7 @@ describe('DevicePanel', () => {
     render(
       <DevicePanel
         snapshot={snapshot({
-          avds: [],
+          virtualDevices: [],
           devices: [],
           activeSerial: null,
           trackingFailure: { error: null, exitCode: 1 }
@@ -261,7 +301,7 @@ describe('DevicePanel', () => {
       />
     )
 
-    expect(screen.getByText(/AVD가 없다/)).toBeDefined()
+    expect(screen.getByText(/가상 기기가 없다/)).toBeDefined()
     const alert = screen.getByRole('alert')
     expect(alert.textContent).toContain('1')
     expect(alert.textContent).toMatch(/추적/)

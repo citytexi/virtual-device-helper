@@ -12,11 +12,16 @@ export interface DeviceInfo {
   height: number
 }
 
-/** AVD 하나. 실행 중이면 serial이 붙는다. */
-export interface AvdEntry {
+/** 가상 기기 하나(AVD 또는 시뮬레이터). 실행 중이면 serial이 붙는다. */
+export interface VirtualDeviceEntry {
+  platform: Platform
+  /** 부팅 대상을 가리키는 값. AVD는 이름, 시뮬레이터는 UDID다. 시뮬레이터 이름은 런타임마다 겹친다. */
+  id: string
+  /** 사람이 읽는 이름. AVD 이름 또는 시뮬레이터 이름. */
   name: string
   running: boolean
   serial: string | null
+  osVersion: string | null
 }
 
 /** 정규화된 사각형. 0..1, 소수 4자리로 반올림한다. */

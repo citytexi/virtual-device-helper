@@ -1,7 +1,7 @@
 import { connect } from 'node:net'
 import { networkInterfaces } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AvdController } from '../device/avdController'
+import type { VirtualDeviceCatalog } from '../device/virtualDeviceCatalog'
 import type { DeviceRegistry } from '../device/registry'
 import { serverInstructions } from '../../shared/agentGuide'
 import { startMcpHttpServer, type McpServerHandle } from './httpServer'
@@ -18,8 +18,8 @@ function fakeContext() {
     run: (_serial: string, task: () => Promise<unknown>) => task(),
     on: () => () => {}
   } as unknown as DeviceRegistry
-  const avd = { list: async () => [], boot: async () => '', shutdown: async () => {} } as AvdController
-  return { registry, avd, pidHistory: async () => [], onToolCall: vi.fn() }
+  const catalog = { list: async () => [], boot: async () => '', shutdown: async () => {} } as VirtualDeviceCatalog
+  return { registry, catalog, pidHistory: async () => [], onToolCall: vi.fn() }
 }
 
 let handle: McpServerHandle | null = null

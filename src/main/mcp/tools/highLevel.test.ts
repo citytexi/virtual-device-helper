@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AvdController } from '../../device/avdController'
+import type { VirtualDeviceCatalog } from '../../device/virtualDeviceCatalog'
 import type { DeviceRegistry } from '../../device/registry'
 import type { Device, DisplayFrame, UiDump, UiNode } from '../../../shared/types/device'
 import { createToolHarness } from '../testHarness'
@@ -44,13 +44,13 @@ function harnessFor(device: Partial<Device>) {
     on: () => () => {}
   } as unknown as DeviceRegistry
 
-  const avd = {
+  const catalog = {
     list: async () => [],
     boot: async () => 'emulator-5554',
     shutdown: async () => {}
-  } as AvdController
+  } as VirtualDeviceCatalog
 
-  return createToolHarness({ registry, avd })
+  return createToolHarness({ registry, catalog })
 }
 
 describe('ui_find', () => {
