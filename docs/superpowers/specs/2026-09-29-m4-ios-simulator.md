@@ -150,7 +150,7 @@ export interface Device {
 | `launch(pkg, activity?)` | `simctl launch`. `activity`가 오면 `unsupported` |
 | `clearData(pkg)` | 앱을 종료하고 `simctl get_app_container <udid> <bundle> data` 안쪽을 비운다 |
 | `grantPermission(pkg, permission)` | `simctl privacy <udid> grant <permission> <bundle>`. `permission`은 `photos`, `camera`, `location` 같은 서비스 이름 |
-| `screenshot` | `simctl io <udid> screenshot`. 축소는 Android와 같은 `resizeImage.ts`를 쓴다 |
+| `screenshot` | `simctl io <udid> screenshot --type=png <임시 파일>`을 읽는다. stdout(`-`)으로는 못 받는다(스파이크 7). 축소는 Android와 같은 `resizeImage.ts`를 쓴다 |
 | `readLogs` / `clearLogs` | 아래 "로그" 절 |
 | `displayFrame` | point 단위 화면 크기. `describe-ui` 루트 `AXFrame`에서 읽는다 |
 | `tap` / `swipe` / `inputText` / `pressKey` / `dumpUi` | 아래 "입력과 노드" 절. M4-1에서는 `unsupported` |
@@ -222,10 +222,13 @@ axeClient ───→ IosDevice     ┘
 | `messageType` `Debug` / `Info` / `Default` / `Error` / `Fault` | `level` `D` / `I` / `I` / `E` / `F` |
 | `subsystem`, 비었으면 프로세스 이름 | `tag` |
 | `processID` | `pid` |
-| `timestamp` | `timestamp`, `MM-DD HH:mm:ss.SSS`로 바꾼다 |
+| `timestamp` (`2026-09-30 14:40:14.608720+0900`) | `timestamp`, 앞 두 부분을 `MM-DD HH:mm:ss.SSS`로 자른다. 오프셋은 epoch 계산에만 쓴다 |
 | `eventMessage` | `message` |
 
 iOS에는 W와 V에 해당하는 레벨이 없다. 쓰지 않는다.
+
+ndjson에는 `eventType`이 `activityCreateEvent`인 줄도 섞여 나온다. 이 줄은 `messageType`과 `source`가 없고
+`eventMessage`는 비어 있다. `eventType`이 `logEvent`가 아닌 줄은 버린다.
 
 **앱 로그 패널**
 
@@ -253,7 +256,7 @@ iOS에는 W와 V에 해당하는 레벨이 없다. 쓰지 않는다.
 |---|---|
 | `tap(x, y)` | `tap -x -y` |
 | `swipe(x1, y1, x2, y2, durationMs)` | `swipe --start-x --start-y --end-x --end-y --duration <초>` |
-| `inputText(text)` | `type --stdin`. 텍스트를 인자로 넘기지 않는다 |
+| `inputText(text)` | ASCII만이면 `type --stdin`(텍스트를 인자로 넘기지 않는다). 비ASCII가 하나라도 있으면 `simctl pbcopy <udid>`로 클립보드를 채우고 `key-combo --modifiers 227 --key 25`(Cmd+V)로 붙여 넣는다(스파이크 3) |
 | `pressKey('home')` | `button home` |
 | `pressKey('enter')` / `pressKey('tab')` | `key 40` / `key 43` (HID keycode) |
 | `pressKey('back')` | `unsupported` |
@@ -274,6 +277,12 @@ iOS에는 W와 V에 해당하는 레벨이 없다. 쓰지 않는다.
 | 얻을 수 없다 | `focused`는 `false` |
 
 - 빈 Group 버리기, `index`/`parentIndex` 규칙은 Android `parseUiDump`와 같은 원칙이다.
+- 실제 `describe-ui` JSON은 최상위가 배열이고 노드마다 `frame`(`x`,`y`,`width`,`height` 숫자)과
+  `AXFrame`(같은 값의 문자열)을 함께 준다. 문자열을 파싱하지 않고 `frame`을 쓴다.
+- `type`은 Application, Group, Image, Button, StaticText, Heading, Slider, TextField로 나왔다.
+  Cell은 따로 없고 목록 한 줄이 Button이나 Group이다. 위 표의 Cell·Link 등은 방어적으로 둔다.
+- 빈 TextField의 `AXValue`에는 placeholder가 들어 있다. `text`로 그대로 올리면 입력값처럼 보이므로
+  M4-2가 다룬다.
 - `nodeRefs.ts`는 지금 `className`이 `EditText`로 끝나는지로 text를 뺀다. 이것을 `editable`
   필드로 바꾼다. Android 파서는 `EditText` 계열에 `editable: true`를 채운다.
   ADR-0011에 변경 메모를 단다.
@@ -287,6 +296,9 @@ platform으로 고른다.
 
 `AxeStreamSession`은 `axe stream-video --udid <udid> --format mjpeg --fps <n> --scale <s> --quality <q>`
 를 띄우고 stdout을 JPEG 한 장 단위로 자른다. 시작값은 fps 30, scale 0.5, quality 70이다.
+stdout은 순수 JPEG 연결이 아니라 `HTTP/1.1 200 OK` 헤더로 시작하는 `multipart/x-mixed-replace`이고,
+각 파트의 `Content-Length`로 자른다(스파이크 4). `--scale 1.0`과 `--quality 80`(둘 다 기본값)이면
+파트가 JPEG가 아니라 PNG로 나오므로 기본값에 기대지 않고 항상 명시한다.
 
 **포트 메시지** (`src/shared/types/stream.ts`)
 
@@ -313,7 +325,7 @@ export type StreamDown =
   - `move`: 끝점만 갱신한다.
   - `up`: 이동이 작으면 `tap`, 크면 `swipe`(시작점→끝점, `duration`은 실제 경과 시간).
 - 알려진 한계: 드래그가 손을 뗀 뒤에 한 번에 반영되고, 곡선 경로가 직선이 된다. 스파이크에서
-  `batch --stdin`이 열린 세션으로 단계를 바로 실행하면 그쪽으로 바꾼다.
+  `batch --stdin`은 EOF까지 읽은 뒤에야 실행하므로(스파이크 5) 이 방식이 확정이다.
 - `VideoPoint`(JPEG 프레임 픽셀)를 `displayFrame`(point) 비율로 바꾼다.
 - `scroll`은 그 위치의 짧은 `swipe`다. 방향은 `vScroll`/`hScroll`의 부호로 정한다.
 - `text`는 `type`, `key`는 HID keycode 표를 쓴다. `power`는 `button lock`이다. iOS `keys`에는
@@ -383,6 +395,56 @@ export type StreamDown =
 8. `log show`/`log stream --style ndjson`의 `timestamp` 형식과 한 줄의 필드.
 
 결과는 이 절 아래에 적고, 어긋난 설계는 본문을 고친다.
+
+### 스파이크 결과
+
+환경은 Xcode 26.6, iOS 26.5 시뮬레이터(iPhone 17), AXe 1.8.0이다. 수치는 관찰값이다.
+SwiftUI와 UIKit의 차이를 가를 서드파티 앱은 이번에 쓰지 못했고 Settings 앱만 봤다.
+
+1. **`describe-ui` 필드.** 최상위는 배열이고 노드마다 `type`, `role`(`AXButton` 등), `role_description`,
+   `AXLabel`, `AXValue`, `AXUniqueId`, `AXFrame`(문자열), `frame`(숫자 객체), `enabled`, `traits`, `subrole`,
+   `title`, `help`, `pid`, `custom_actions`, `content_required`, `children`이 있다. 값이 없으면 `null`이고
+   키 순서는 호출마다 다르다. 스펙의 노드 매핑 표와 필드 이름은 맞다. `frame` 숫자 객체가 따로 있고
+   Cell 타입이 없는 점은 본문에 반영했다. M4-2 계획의 AX 속성 이름은 실제와 같다.
+2. **`describe-ui` 소요.** 부팅 뒤 첫 호출은 약 4초였고 이후 0.5초 안팎이었다(iOS 18.2도 0.5~0.7초).
+   앱을 띄운 직후 첫 호출은 `No translation object returned for simulator` 오류로 실패한 적이 있다.
+   재시도하면 된다. 재검증 호출은 첫 호출 이후의 값으로 설계한다.
+3. **`type`.** `type --stdin`은 ASCII만 받는다. 한글·이모지는 `No keycode found for character`와
+   종료 코드 1로 실패한다. 게다가 시뮬레이터에 한국어 키보드가 켜져 있으면 ASCII `hello`가 `ㅗ디ㅣㅐ`로
+   들어간다(HID keycode가 활성 키보드 배열을 거친다). 우회는 통한다. `simctl pbcopy <udid>`로 클립보드를
+   채우고 `key-combo --modifiers 227 --key 25`(Cmd+V)를 보내면 `한글 😀 abc`가 그대로 들어갔다.
+   입력 전 `key-combo`(227, 4)와 `key 42`로 비웠다. 본문 입력 매핑을 고쳤다.
+4. **`stream-video`.** stdout은 `HTTP/1.1 200 OK` 헤더, `multipart/x-mixed-replace; boundary=--mjpegstream`이고
+   파트마다 `--mjpegstream`, `Content-Type: image/jpeg`, `Content-Length`가 붙는다. 그런데 `--scale 1.0`과
+   `--quality 80`(둘 다 기본값)이면 `image/jpeg`라고 적힌 파트가 실제로는 PNG(약 158KB)다. 둘 중 하나라도
+   기본값이 아니면 JPEG이다(scale 0.5 quality 70은 약 38KB). fps는 5 요청에 5.0~5.7, 15 요청에 14.3,
+   20 요청에 18.9, 30 요청(scale 0.5)에 약 18이 나왔다. 프로세스 시작에서 첫 바이트까지 약 0.24초,
+   첫 프레임 헤더까지 약 0.43초다. iOS 18.2에서도 JPEG이 나왔고 fps는 낮았다(5 요청에 약 4.7). 본문에
+   파싱 방법과 명시 옵션을 적었다.
+5. **`batch --stdin`.** 열린 채로는 실행하지 않는다. 2초 간격으로 세 단계를 보내는 동안 아무 단계도
+   실행되지 않았고 stdin을 닫은 뒤에야 세 단계가 연달아 실행됐다(단계당 약 0.5초). 독립 `tap` 호출은
+   프로세스당 약 0.8초다. 그래서 M4-3의 제스처는 `down`/`move`/`up`을 모아 `up`에 한 번 보내는 설계가 확정이다.
+6. **Xcode 26.** 위 항목은 Xcode 26.6과 iOS 26.5에서 모두 돌았다. iOS 18.2에서는 `describe-ui`, `stream-video`,
+   `log show`를 확인했다.
+7. **`screenshot -`.** 안 된다. `-`를 파일 이름으로 취급해 작업 디렉토리에 `-`라는 파일을 만들고 stdout에는
+   아무것도 내지 않는다(`/dev/stdout`도 빈 출력). 임시 파일로 쓰고 읽는다. `--type=png`로 약 0.17초,
+   `axe screenshot --output <파일>`은 약 0.2초다. 이 계획의 Task 6 `screenshot`을 고쳤다.
+8. **ndjson.** `log show`와 `log stream` 모두 한 줄이 JSON 하나이고 헤더 줄은 stdout에 없다. `timestamp`는
+   `2026-09-30 14:40:14.608720+0900`(로컬 시각, 마이크로초, 오프셋)이다. 필드는 `timestamp`, `eventType`,
+   `messageType`, `eventMessage`, `subsystem`, `category`, `processID`, `processImagePath`, `senderImagePath`,
+   `threadID`, `formatString`, `machTimestamp`, `traceID`, `bootUUID` 등이다. `messageType`은 `Default`,
+   `Error`, `Fault`를 봤고(`log stream` 기본은 Info·Debug를 내지 않는다) `eventType`이 `activityCreateEvent`인
+   줄에는 `messageType`이 없다. `spawn`한 로그 명령은 stderr에 `getpwuid_r did not find a match for uid 501`을
+   찍고, 파이프를 닫으면 `Child process terminated with signal 13`을 찍는다. 둘 다 무시한다. 본문 매핑 표와
+   Task 7의 `parseIosLogLine`을 고쳤다.
+
+추가로 확인한 것:
+
+- 같은 이름이 여러 런타임에 있다(`iPhone 17 Pro`는 iOS 26.0과 26.5). `list devices -j`의 런타임 키로 구분한다.
+  `Booting` 상태는 `boot` 직후 목록에서 잡혔다.
+- `launchctl list`는 `pid`, 종료 코드, 라벨의 탭 구분이고 Settings는 `UIKitApplication:com.apple.Preferences[...]`
+  줄에서 pid를 얻는다.
+- M4-2 계획이 쓰는 AX 속성 이름(`AXLabel`, `AXUniqueId`, `AXValue`, `AXFrame`, `type`)은 실제와 같다.
 
 ## 열린 질문
 

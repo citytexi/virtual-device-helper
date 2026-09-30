@@ -371,7 +371,7 @@ git commit -m "feat(ios): simctl 클라이언트와 시뮬레이터 목록·부�
   - `launch(pkg, activity)`: `activity`가 있으면 `unsupported('ios', 'activity 지정 실행', 'iOS 앱에는 activity가 없다')`. 없으면 `['launch', udid, pkg]`. 설치 안 된 bundle이면(stderr에 `not installed` 또는 `found nothing`) `package_not_found`.
   - `clearData(pkg)`: `stop` → `['get_app_container', udid, pkg, 'data']` → `emptyDirectory(stdout.trim())`. `get_app_container`가 실패하면 `package_not_found`.
   - `grantPermission(pkg, permission)`: `['privacy', udid, 'grant', permission, pkg]`.
-  - `screenshot(opts)`: Task 1 결과대로 `['io', udid, 'screenshot', '--type=png', '-']`의 `stdoutRaw`(안 되면 임시 파일). scale 검증과 축소는 `androidDevice.ts`와 같은 규칙.
+  - `screenshot(opts)`: Task 1 결과대로 stdout(`-`)은 안 되므로 임시 파일 경로를 두고 `['io', udid, 'screenshot', '--type=png', <임시 파일>]`을 실행한 뒤 읽고 지운다(`-`를 넘기면 작업 디렉토리에 `-` 파일이 생긴다). scale 검증과 축소는 `androidDevice.ts`와 같은 규칙.
   - `tap`/`swipe`/`inputText`/`pressKey`/`dumpUi`/`displayFrame`: `unsupported('ios', <동작>, 'M4-2에서 지원한다')`.
 - `app_reset_and_launch`: `waitForSettle`이 `unsupported` 에러로 실패하면 툴을 실패시키지 않고
   `{ pkg, settled: false, nodeCount: 0, settleSkipped: 'unsupported' }`를 돌려준다. 다른 에러는 그대로 던진다.
@@ -412,7 +412,7 @@ git commit -m "feat(ios): IosDevice의 정보·앱·스크린샷을 simctl로 �
 
 **Interfaces:**
 - Produces (`iosLog.ts`):
-  - `parseIosLogLine(line: string): (LogLine & { epochMs: number }) | null` — ndjson 한 줄. 매핑은 스펙 "`LogLine` 매핑" 표. `timestamp`는 기기 로컬 `MM-DD HH:mm:ss.SSS`, `epochMs`는 원문 timestamp의 오프셋까지 반영한 epoch. JSON이 아니거나 `eventMessage`가 없으면 null.
+  - `parseIosLogLine(line: string): (LogLine & { epochMs: number }) | null` — ndjson 한 줄. 매핑은 스펙 "`LogLine` 매핑" 표. `timestamp`는 기기 로컬 `MM-DD HH:mm:ss.SSS`, `epochMs`는 원문 timestamp의 오프셋까지 반영한 epoch. JSON이 아니거나 `eventType`이 `logEvent`가 아니거나(`activityCreateEvent`는 `messageType`이 없다) `eventMessage`가 없으면 null. `timestamp`는 `2026-09-30 14:40:14.608720+0900` 형식이다.
   - `toLogShowStart(since: string, nowMs: number): string` — `MM-DD HH:mm:ss.SSS`를 `log show --start`가 받는 `YYYY-MM-DD HH:mm:ss`로. 연도는 `logClock.ts`의 연말 규칙과 같게 정한다(미래 날짜면 작년).
   - `logFilterPredicate(filter: string): string` — `eventMessage CONTAINS[c] "<f>" OR subsystem CONTAINS[c] "<f>" OR process CONTAINS[c] "<f>"`. `<f>`에서 `\`와 `"`를 역슬래시로 이스케이프한다.
 - `IosDevice.readLogs(opts)`: `['spawn', udid, 'log', 'show', '--style', 'ndjson', '--start', <시작>, ...(filter ? ['--predicate', logFilterPredicate(filter)] : [])]`. 시작은 `since` → 마지막 `clearLogs` 시각 → `now - 300000` 순. `pids`로 거른 뒤 `limit`을 뒤에서부터 적용하고 `truncated`·`droppedCount`를 채운다(Android `readLogs`와 같은 의미).
