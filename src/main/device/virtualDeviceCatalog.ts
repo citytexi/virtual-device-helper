@@ -18,31 +18,48 @@ export interface VirtualDeviceCatalog {
 }
 
 export function createVirtualDeviceCatalog(sources: VirtualDeviceSource[]): VirtualDeviceCatalog {
-  /** 소스별 목록. 한 소스가 실패해도 나머지는 남기고, 실패는 로그로만 남긴다. */
-  async function listBySource(): Promise<Array<{ source: VirtualDeviceSource; entries: VirtualDeviceEntry[] }>> {
+  /**
+   * 소스별 목록. 한 소스가 실패해도 나머지는 남기고, 실패는 로그로 남기며 그 플랫폼을 failed로 돌려준다.
+   * boot가 "없는 기기"와 "목록을 못 읽은 플랫폼"을 구분해 안내하기 위해서다.
+   */
+  async function listBySource(): Promise<{
+    groups: Array<{ source: VirtualDeviceSource; entries: VirtualDeviceEntry[] }>
+    failed: Platform[]
+  }> {
     const settled = await Promise.all(
       sources.map(async (source) => {
         try {
-          return { source, entries: await source.list() }
+          return { source, entries: await source.list(), failed: null }
         } catch (thrown) {
           console.error(`가상 기기 목록을 읽지 못했다 (${source.platform}):`, thrown)
-          return null
+          return { source, entries: [], failed: source.platform }
         }
       })
     )
-    return settled.filter((item): item is NonNullable<typeof item> => item !== null)
+    const groups: Array<{ source: VirtualDeviceSource; entries: VirtualDeviceEntry[] }> = []
+    const failed: Platform[] = []
+    for (const item of settled) {
+      if (item.failed !== null) failed.push(item.failed)
+      else groups.push({ source: item.source, entries: item.entries })
+    }
+    return { groups, failed }
   }
 
   async function list(): Promise<VirtualDeviceEntry[]> {
-    return (await listBySource()).flatMap((item) => item.entries)
+    return (await listBySource()).groups.flatMap((item) => item.entries)
   }
 
   async function boot(id: string): Promise<string> {
-    const groups = await listBySource()
+    const { groups, failed } = await listBySource()
     const owner = groups.find((group) => group.entries.some((entry) => entry.id === id))
     if (!owner) {
-      throw deviceError('command_failed', `그런 가상 기기가 없다: ${id}`, 'device_list로 id를 확인해라', {
-        available: groups.flatMap((group) => group.entries.map((entry) => entry.id))
+      const hint =
+        failed.length === 0
+          ? 'device_list로 id를 확인해라'
+          : `device_list로 id를 확인해라. ${failed.join(', ')} 가상 기기 목록을 읽지 못해 그쪽 기기는 확인하지 못했다`
+      throw deviceError('command_failed', `그런 가상 기기가 없다: ${id}`, hint, {
+        available: groups.flatMap((group) => group.entries.map((entry) => entry.id)),
+        failedPlatforms: failed
       })
     }
     return owner.source.boot(id)
