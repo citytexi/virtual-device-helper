@@ -54,6 +54,13 @@ const APP_SECTION = [
   '모르면 이 프로젝트에서 찾아라(예: build.gradle의 `applicationId`, 빌드 산출물 경로). APK가 없으면 디버그 빌드부터 만든다.'
 ].join('\n')
 
+const PLATFORM_SECTION = [
+  '## 플랫폼 차이',
+  '- iOS에는 `back` 키와 `activity`가 없다. 쓰면 `unsupported` 에러가 온다.',
+  '- 권한 이름은 iOS에서 `photos`·`camera`·`location` 같은 `simctl privacy` 서비스 이름이다.',
+  '- `pkg`는 Android에서는 패키지명, iOS에서는 bundle id다.'
+].join('\n')
+
 const RULES_SECTION = ['## 규칙', ...RULES.map((rule) => `- ${rule}`)].join('\n')
 
 function reportSection(extra: string[]): string {
@@ -67,7 +74,7 @@ function reportSection(extra: string[]): string {
 }
 
 function body(intro: string, targetSerial: string | null, sections: string[]): string {
-  return [intro, deviceSection(targetSerial), APP_SECTION, ...sections, RULES_SECTION].join('\n\n')
+  return [intro, deviceSection(targetSerial), APP_SECTION, ...sections, PLATFORM_SECTION, RULES_SECTION].join('\n\n')
 }
 
 export function promptTemplates(targetSerial: string | null): PromptTemplate[] {

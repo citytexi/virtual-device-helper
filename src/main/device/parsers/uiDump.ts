@@ -182,7 +182,8 @@ function collect(
           clickable,
           enabled: toBool(node.enabled),
           focused: toBool(node.focused),
-          scrollable
+          scrollable,
+          editable: shortClassName(node.class).endsWith('EditText')
         })
       }
     }

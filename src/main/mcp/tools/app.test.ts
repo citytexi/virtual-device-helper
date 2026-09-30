@@ -32,7 +32,7 @@ describe('app_install', () => {
   it('returns the package name of the installed apk', async () => {
     const harness = await harnessFor({ install: async () => 'com.example.app' })
 
-    await expect(harness.call('app_install', { apkPath: '/tmp/app.apk' })).resolves.toEqual({
+    await expect(harness.call('app_install', { appPath: '/tmp/app.apk' })).resolves.toEqual({
       pkg: 'com.example.app'
     })
 
@@ -43,22 +43,22 @@ describe('app_install', () => {
     const install = vi.fn(async () => 'com.example.app')
     const harness = await harnessFor({ install })
 
-    await harness.call('app_install', { apkPath: '/tmp/app.apk', reinstall: true })
+    await harness.call('app_install', { appPath: '/tmp/app.apk', reinstall: true })
 
     expect(install).toHaveBeenCalledWith('/tmp/app.apk', { reinstall: true })
 
     await harness.close()
   })
 
-  it('reports apk_path_invalid as a structured error', async () => {
+  it('reports app_path_invalid as a structured error', async () => {
     const harness = await harnessFor({
       install: async () => {
-        throw deviceError('apk_path_invalid', '파일이 없다', '경로를 확인해라')
+        throw deviceError('app_path_invalid', '파일이 없다', '경로를 확인해라')
       }
     })
 
-    const error = await harness.callExpectingError('app_install', { apkPath: '/tmp/missing.apk' })
-    expect(error.kind).toBe('apk_path_invalid')
+    const error = await harness.callExpectingError('app_install', { appPath: '/tmp/missing.apk' })
+    expect(error.kind).toBe('app_path_invalid')
 
     await harness.close()
   })
@@ -67,7 +67,7 @@ describe('app_install', () => {
     const harness = await harnessFor({ install: async () => null })
 
     await expect(
-      harness.call('app_install', { apkPath: '/tmp/app.apk', reinstall: true })
+      harness.call('app_install', { appPath: '/tmp/app.apk', reinstall: true })
     ).resolves.toEqual({ pkg: null })
 
     await harness.close()

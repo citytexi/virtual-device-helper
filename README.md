@@ -118,7 +118,7 @@ Claude Code가 아닌 MCP 클라이언트는 상단 바의 "설정 JSON 복사"�
 | `no_device` | 대상 기기가 없다 | `device_list`로 확인하고 `device_boot` 또는 `device_select` |
 | `ambiguous_device` | 기기가 여럿인데 대상을 정하지 않았다 | `device_select`로 하나를 고른다 |
 | `package_not_found` | 기기에 그 패키지가 없다 | 패키지명을 확인하고 `app_install`을 먼저 한다 |
-| `apk_path_invalid` | APK 경로가 틀렸다 | 빌드를 먼저 하고 호스트의 절대 경로를 준다 |
+| `app_path_invalid` | 앱 경로(.apk 또는 .app)가 틀렸다 | 빌드를 먼저 하고 호스트의 절대 경로를 준다 |
 | `device_unresponsive` | 기기가 응답하지 않는다 | `device_shutdown` 후 `device_boot`로 다시 켠다 |
 | `stale_ref` | 화면이 바뀌었다 | `ui_find`를 다시 부른다 |
 | `command_failed` | 그 밖의 명령 실패 | `hint`와 `details`의 stderr를 읽는다 |

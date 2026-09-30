@@ -86,6 +86,12 @@ describe('parseUiDump', () => {
     expect(dump.frame).toEqual({ width: 1080, height: 2400 })
   })
 
+  it('marks EditText class nodes as editable and the rest as not', () => {
+    const nodes = parseUiDump(sample, natural).nodes
+    expect(nodes.find((n) => n.resourceId === 'email')!.editable).toBe(true)
+    expect(nodes.filter((n) => n.resourceId !== 'email').every((n) => n.editable === false)).toBe(true)
+  })
+
   it('swaps the frame axes when the hierarchy is rotated', () => {
     const dump = parseUiDump(landscapeSample, { width: 1080, height: 2340 }) // rotation="1", 루트 [0,0][2340,1080]
     expect(dump.frame).toEqual({ width: 2340, height: 1080 })

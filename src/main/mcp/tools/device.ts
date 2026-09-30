@@ -95,7 +95,7 @@ export function registerDeviceTools(server: McpServer, context: ToolContext): vo
   server.registerTool(
     'device_info',
     {
-      description: '기기의 모델명, API 레벨, 화면 크기를 돌려준다. 좌표를 계산하기 전에 쓴다.',
+      description: '기기의 플랫폼, 모델명, OS 버전, 화면 크기를 돌려준다. 좌표를 계산하기 전에 쓴다.',
       inputSchema: serialArg
     },
     async ({ serial }) => {

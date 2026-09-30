@@ -22,9 +22,16 @@ function fakeAdb(responses: Record<string, string | Buffer>): { adb: AdbClient; 
 const noopResize = (png: Buffer) => ({ png, width: 1080, height: 2400 })
 
 describe('AndroidDevice.info', () => {
+  it('exposes platform android', () => {
+    const { adb } = fakeAdb({})
+    const device = createAndroidDevice({ serial: 'emulator-5554', adb, resizeImage: noopResize })
+    expect(device.platform).toBe('android')
+  })
+
   it('reads model, api level and screen size', async () => {
     const { adb } = fakeAdb({
       'ro.product.model': 'Pixel 7\n',
+      'ro.build.version.release': '14\n',
       'ro.build.version.sdk': '34\n',
       'wm size': 'Physical size: 1080x2400\n'
     })
@@ -32,8 +39,9 @@ describe('AndroidDevice.info', () => {
 
     await expect(device.info()).resolves.toEqual({
       serial: 'emulator-5554',
+      platform: 'android',
       model: 'Pixel 7',
-      apiLevel: 34,
+      osVersion: '14 (API 34)',
       width: 1080,
       height: 2400
     })
@@ -42,6 +50,7 @@ describe('AndroidDevice.info', () => {
   it('prefers the override size when one is set', async () => {
     const { adb } = fakeAdb({
       'ro.product.model': 'Pixel 7\n',
+      'ro.build.version.release': '14\n',
       'ro.build.version.sdk': '34\n',
       'wm size': 'Physical size: 1080x2400\nOverride size: 540x1200\n'
     })
@@ -213,7 +222,8 @@ describe('AndroidDevice.dumpUi', () => {
           clickable: true,
           enabled: true,
           focused: false,
-          scrollable: false
+          scrollable: false,
+          editable: false
         }
       ],
       frame: { width: 1080, height: 2400 }

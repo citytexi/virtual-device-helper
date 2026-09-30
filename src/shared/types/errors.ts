@@ -1,3 +1,5 @@
+import type { Platform } from './device'
+
 /**
  * 툴 실패의 종류. 에이전트가 이 값을 보고 복구 경로를 고른다.
  * 응답 잘림은 여기 들어가지 않는다 — 에러가 아니라 성공 응답의 필드다.
@@ -8,10 +10,12 @@ export type ToolErrorKind =
   | 'no_device'
   | 'ambiguous_device'
   | 'package_not_found'
-  | 'apk_path_invalid'
+  | 'app_path_invalid'
   | 'device_unresponsive'
   | 'command_failed'
   | 'stale_ref'
+  | 'unsupported'
+  | 'ios_tool_not_found'
 
 export interface ToolError {
   kind: ToolErrorKind
@@ -37,6 +41,16 @@ export function deviceError(
   details?: Record<string, unknown>
 ): DeviceError {
   return new DeviceError({ kind, message, hint, details })
+}
+
+/** 이 기기가 할 수 없는 동작. 조용히 무시하지 않고 이 에러로 알린다. */
+export function unsupported(platform: Platform, action: string, reason: string): DeviceError {
+  return deviceError(
+    'unsupported',
+    `${platform}에서는 ${action}을 할 수 없다: ${reason}`,
+    '에이전트 가이드의 플랫폼 차이 절을 확인해라',
+    { platform, action }
+  )
 }
 
 export function isDeviceError(value: unknown): value is DeviceError {

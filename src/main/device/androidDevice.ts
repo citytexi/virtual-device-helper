@@ -215,13 +215,14 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
   }
 
   async function info(): Promise<DeviceInfo> {
-    const [model, sdk, size] = await Promise.all([
+    const [model, release, sdk, size] = await Promise.all([
       getprop('ro.product.model'),
+      getprop('ro.build.version.release'),
       getprop('ro.build.version.sdk'),
       naturalSize()
     ])
 
-    return { serial, model, apiLevel: Number(sdk), width: size.width, height: size.height }
+    return { serial, platform: 'android', model, osVersion: `${release} (API ${sdk})`, width: size.width, height: size.height }
   }
 
   async function screenshot(opts: ScreenshotOpts = {}): Promise<ScreenshotResult> {
@@ -349,13 +350,13 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     })
   }
 
-  async function install(apkPath: string, opts: InstallOpts = {}): Promise<string | null> {
-    if (!apkPath.endsWith('.apk')) {
-      throw deviceError('apk_path_invalid', `APK 파일이 아니다: ${apkPath}`, '.apk 파일 경로를 줘라', { apkPath })
+  async function install(appPath: string, opts: InstallOpts = {}): Promise<string | null> {
+    if (!appPath.endsWith('.apk')) {
+      throw deviceError('app_path_invalid', `APK 파일이 아니다: ${appPath}`, '.apk 파일 경로를 줘라', { appPath })
     }
-    if (!fileExists(apkPath)) {
-      throw deviceError('apk_path_invalid', `파일이 없다: ${apkPath}`, '경로를 확인해라. 상대 경로면 절대 경로로 바꿔라', {
-        apkPath
+    if (!fileExists(appPath)) {
+      throw deviceError('app_path_invalid', `파일이 없다: ${appPath}`, '경로를 확인해라. 상대 경로면 절대 경로로 바꿔라', {
+        appPath
       })
     }
 
@@ -363,7 +364,7 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
 
     const args = ['install']
     if (opts.reinstall) args.push('-r')
-    args.push(apkPath)
+    args.push(appPath)
     try {
       await adb.exec(serial, args, { timeoutMs: 180_000 })
     } catch (error) {
@@ -536,6 +537,7 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
 
   return {
     serial,
+    platform: 'android',
     info,
     screenshot,
     dumpUi,

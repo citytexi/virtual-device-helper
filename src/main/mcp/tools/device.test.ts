@@ -7,8 +7,9 @@ import { createToolHarness } from '../testHarness'
 
 const info: DeviceInfo = {
   serial: 'emulator-5554',
+  platform: 'android',
   model: 'Pixel 7',
-  apiLevel: 34,
+  osVersion: '14 (API 34)',
   width: 1080,
   height: 2400
 }

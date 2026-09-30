@@ -20,6 +20,7 @@ function node(overrides: Partial<UiNode> = {}): UiNode {
     enabled: true,
     focused: false,
     scrollable: false,
+    editable: false,
     ...overrides
   }
 }
