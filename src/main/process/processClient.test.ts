@@ -55,3 +55,29 @@ describe('processClient.exec failures injection', () => {
     await expect(client.exec(['a'], { timeoutMs: 10 })).rejects.toMatchObject({ message: 'INJECTED timeout 10 a' })
   })
 })
+
+describe('processClient.stream line decoding', () => {
+  it('keeps a multi-byte character intact when it is split across two chunks', async () => {
+    const bytes = Buffer.from('시뮬레이터 로그\n', 'utf8')
+    // '시'(3바이트) 한가운데서 자른다.
+    const chunks = [bytes.subarray(0, 1), bytes.subarray(1)]
+    const spawn: SpawnFn = () => {
+      const child = new EventEmitter() as ReturnType<SpawnFn>
+      child.stdout = Readable.from(chunks)
+      child.stderr = Readable.from([])
+      child.kill = vi.fn() as never
+      child.stdout.on('end', () => queueMicrotask(() => child.emit('close', 0)))
+      return child
+    }
+    const stream = createProcessClient('tool', failures, spawn).stream(['a'])
+    const lines: string[] = []
+    const rawBytes: number[] = []
+    stream.onLine((line) => lines.push(line))
+    stream.onData((chunk) => rawBytes.push(chunk.length))
+    stream.onError(() => {})
+    await new Promise<void>((resolve) => stream.onClose(() => resolve()))
+
+    expect(lines).toEqual(['시뮬레이터 로그'])
+    expect(rawBytes).toEqual([1, bytes.length - 1])
+  })
+})

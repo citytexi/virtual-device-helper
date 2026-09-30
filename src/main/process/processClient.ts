@@ -1,4 +1,5 @@
 import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { StringDecoder } from 'node:string_decoder'
 import type { DeviceError } from '../../shared/types/errors'
 
 export type SpawnFn = (command: string, args: string[]) => ChildProcessWithoutNullStreams
@@ -178,6 +179,10 @@ export function createProcessClient(command: string, failures: ProcessFailures, 
     const closeCallbacks: Array<(code: number | null) => void> = []
     const errorCallbacks: Array<(error: DeviceError) => void> = []
     let buffer = ''
+    // 청크 경계가 멀티바이트 문자 한가운데에 떨어질 수 있다. 청크마다 toString하면 그 글자가
+    // 깨지므로, 덜 온 바이트를 다음 청크까지 들고 있는 디코더를 스트림마다 하나 둔다.
+    const decoder = new StringDecoder('utf8')
+    let decoderEnded = false
     // close()가 세우는 정지 플래그. data·close·error 핸들러는 전부 진입할 때
     // 이 값을 확인해서, close() 이후 도착하는 이벤트가 콜백을 부르지 않게 막는다.
     // SIGTERM은 비동기라 콜백 등록을 지우는 것만으로는 막을 수 없다.
@@ -188,7 +193,12 @@ export function createProcessClient(command: string, failures: ProcessFailures, 
     // 개행으로 끝나지 않고 끝난 마지막 조각을 한 번 흘려보낸다. 여러 번 불려도
     // 버퍼를 비우고 나가므로 같은 줄이 두 번 나가지 않는다.
     function flushTrailingLine(): void {
-      if (stopped || buffer.length === 0) return
+      if (stopped) return
+      if (!decoderEnded) {
+        decoderEnded = true
+        buffer += decoder.end()
+      }
+      if (buffer.length === 0) return
       const line = buffer
       buffer = ''
       for (const callback of lineCallbacks) callback(line)
@@ -257,7 +267,7 @@ export function createProcessClient(command: string, failures: ProcessFailures, 
         const copy = Buffer.from(chunk)
         for (const callback of dataCallbacks) callback(copy)
 
-        buffer += copy.toString('utf8')
+        buffer += decoder.write(copy)
         const parts = buffer.split('\n')
         buffer = parts.pop() ?? ''
         for (const line of parts) {
