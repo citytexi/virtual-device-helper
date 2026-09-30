@@ -100,11 +100,11 @@ M4-1 최종 리뷰에서 미룬 것 중 이 계획이 맡는 것이다. 해당 t
 - `PlatformStatus`의 ok 갈래에 `notes: string[]`를 더한다. iOS가 ok인데 axe가 없으면 `notes: ['AXe가 없어 iOS 입력·노드·실시간 화면을 쓸 수 없다. brew install cameroncooke/axe/axe로 설치하고 앱을 다시 켜라']`. `DevicePanel`은 각 플랫폼의 `notes`를 `notice-info` 줄로 그린다.
 - `index.ts`의 iOS `createDevice`는 `axe: AxeClient | null`을 `createIosDevice`에 넘긴다(`IosDeviceDeps.axe`, Task 3에서 쓴다).
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다** — `processClient`: `input`을 주면 가짜 child의 stdin에 그 바이트가 쓰이고 `end()`된다 / `axeClient`: `exec('U', ['tap', '-x', '1'])`의 spawn 인자가 `['tap', '-x', '1', '--udid', 'U']` / `locateAxe`: `/opt/homebrew/bin/axe`만 있으면 그 경로, 둘 다 없고 `which`가 `null`이면 `null` / `DevicePanel`: `notes`가 보인다 / `bootstrap`: axe 없음이 스냅샷 `platforms.ios.notes`로 간다.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/process src/main/ios src/main/app src/renderer/src/components/DevicePanel.test.tsx` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(ios): axe 클라이언트와 찾기, 프로세스 stdin 입력을 더한다"`
+- [x] **Step 1: 실패하는 테스트를 쓴다** — `processClient`: `input`을 주면 가짜 child의 stdin에 그 바이트가 쓰이고 `end()`된다 / `axeClient`: `exec('U', ['tap', '-x', '1'])`의 spawn 인자가 `['tap', '-x', '1', '--udid', 'U']` / `locateAxe`: `/opt/homebrew/bin/axe`만 있으면 그 경로, 둘 다 없고 `which`가 `null`이면 `null` / `DevicePanel`: `notes`가 보인다 / `bootstrap`: axe 없음이 스냅샷 `platforms.ios.notes`로 간다.
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/process src/main/ios src/main/app src/renderer/src/components/DevicePanel.test.tsx` / Expected: FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "feat(ios): axe 클라이언트와 찾기, 프로세스 stdin 입력을 더한다"`
 
 ---
 
@@ -121,11 +121,11 @@ M4-1 최종 리뷰에서 미룬 것 중 이 계획이 맡는 것이다. 해당 t
   - JSON이 아니거나 루트가 없으면 `command_failed`, message `describe-ui 출력을 읽지 못했다`.
 - Produces: `parseAxeFrame(json: string): DisplayFrame` — 같은 루트 규칙. Task 3의 `displayFrame`이 쓴다.
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다** (`describe-ui-settings.json`) — Settings 첫 화면의 셀 하나(스파이크에서 본 label)가 `clickable: true`와 0..1 `bounds`로 나온다 / 모든 노드의 `parentIndex`가 자기보다 작은 index거나 null / 루트 자식이 빈 배열인 JSON은 `nodes: []` / `frame`의 크기가 fixture 루트 `AXFrame`과 같다 / 중심이 `frame` 아래로 벗어난 노드를 fixture에 더한 복사본에서 그 노드가 빠진다 / TextField 노드가 있으면 `editable: true`.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/device/parsers/axeUi.test.ts` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(ios): describe-ui 트리를 UiDump로 바꾼다"`
+- [x] **Step 1: 실패하는 테스트를 쓴다** (`describe-ui-settings.json`) — Settings 첫 화면의 셀 하나(스파이크에서 본 label)가 `clickable: true`와 0..1 `bounds`로 나온다 / 모든 노드의 `parentIndex`가 자기보다 작은 index거나 null / 루트 자식이 빈 배열인 JSON은 `nodes: []` / `frame`의 크기가 fixture 루트 `AXFrame`과 같다 / 중심이 `frame` 아래로 벗어난 노드를 fixture에 더한 복사본에서 그 노드가 빠진다 / TextField 노드가 있으면 `editable: true`.
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/device/parsers/axeUi.test.ts` / Expected: FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "feat(ios): describe-ui 트리를 UiDump로 바꾼다"`
 
 ---
 
@@ -148,11 +148,11 @@ M4-1 최종 리뷰에서 미룬 것 중 이 계획이 맡는 것이다. 해당 t
   - `displayFrame()`: `['describe-ui']` → `parseAxeFrame`. 캐시하지 않는다(회전).
 - `agentGuide.ts`의 "플랫폼 차이" 절에서 M4-1의 "iOS 입력은 아직 안 된다" 문장을 지우고, iOS 좌표·노드 차이(`resourceId`는 `accessibilityIdentifier`, `focused`는 늘 false)를 적는다.
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다** — 위 매핑마다 `fakeAxe.calls`의 인자 / `inputText('a"b\nc 한글')`이 인자가 아니라 `input`으로 간다 / `pressKey('back')`은 `unsupported`이고 axe를 부르지 않는다 / `axe: null`이면 `tap`이 `ios_tool_not_found` / `dumpUi()`가 fixture로 Task 2와 같은 결과.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/device/iosDevice.ui.test.ts src/shared/agentGuide.test.ts` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(ios): IosDevice의 탭·스와이프·텍스트·키·노드를 AXe로 구현한다"`
+- [x] **Step 1: 실패하는 테스트를 쓴다** — 위 매핑마다 `fakeAxe.calls`의 인자 / `inputText('a"b\nc 한글')`이 인자가 아니라 `input`으로 간다 / `pressKey('back')`은 `unsupported`이고 axe를 부르지 않는다 / `axe: null`이면 `tap`이 `ios_tool_not_found` / `dumpUi()`가 fixture로 Task 2와 같은 결과.
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/device/iosDevice.ui.test.ts src/shared/agentGuide.test.ts` / Expected: FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "feat(ios): IosDevice의 탭·스와이프·텍스트·키·노드를 AXe로 구현한다"`
 
 ---
 
@@ -162,7 +162,7 @@ M4-1 최종 리뷰에서 미룬 것 중 이 계획이 맡는 것이다. 해당 t
 - Create: `src/main/device/deviceContract.test.ts`, `src/main/device/iosDevice.ui.ios.integration.test.ts`
 - Modify: `docs/superpowers/specs/2026-09-29-m4-ios-simulator.md`, `docs/architecture/main-layers.md`, 이 계획 문서
 
-- [ ] **Step 1: 계약 테스트를 쓴다**
+- [x] **Step 1: 계약 테스트를 쓴다**
 
 `describe.each([['android', makeAndroid], ['ios', makeIos]])`로 같은 시나리오를 돈다. 두 팩토리는 각각
 `fakeAdb()`와 `fakeSimctl()`·`fakeAxe()`에 fixture를 물린 기기를 돌려준다.
@@ -171,21 +171,21 @@ M4-1 최종 리뷰에서 미룬 것 중 이 계획이 맡는 것이다. 해당 t
 
 Run: `npx vitest run src/main/device/deviceContract.test.ts` / Expected: PASS.
 
-- [ ] **Step 2: 통합 테스트를 쓴다**
+- [x] **Step 2: 통합 테스트를 쓴다**
 
 부팅된 시뮬레이터와 axe가 없으면 skip. Settings를 띄우고 `dumpUi()`에서 clickable 셀 하나를 골라
 그 중심을 `displayFrame()` 기준 point로 `tap` → 1초 뒤 `dumpUi()`의 지문이 달라진다 → `pressKey('home')`.
 
 Run: `npm run test:integration -- src/main/device/iosDevice.ui.ios.integration.test.ts` / Expected: PASS.
 
-- [ ] **Step 3: 앱으로 완료 기준을 확인한다**
+- [x] **Step 3: 앱으로 완료 기준을 확인한다**
 
 앱을 띄우고 MCP 클라이언트로: Settings에서 `ui_find({ text: <검색 필드 label> })` → `ui_tap({ ref })` →
 `ui_text({ ref, text: 'Wi' })` → `ui_find`로 검색 결과 확인 → 1분 지난 ref로 `ui_tap`하면 화면이 바뀐 경우
 `stale_ref`. `app_reset_and_launch`가 이제 `settled`를 준다(`settleSkipped` 없음). `describe-ui` 소요
 시간을 다섯 번 재 평균을 적는다. 결과를 스펙 끝 "M4-2 검증 결과" 절에 적는다.
 
-- [ ] **Step 4: 문서를 고치고 커밋한다**
+- [x] **Step 4: 문서를 고치고 커밋한다**
 
 `main-layers.md`에 `axeClient`를 더하고 `verified`를 갱신한다. Run: `python3 docs/script/docs.py lint && python3 docs/script/docs.py links` / Expected: 문제 0건.
 

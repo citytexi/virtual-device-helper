@@ -260,7 +260,7 @@ ndjson에는 `eventType`이 `activityCreateEvent`인 줄도 섞여 나온다. �
 |---|---|
 | `tap(x, y)` | `tap -x -y` |
 | `swipe(x1, y1, x2, y2, durationMs)` | `swipe --start-x --start-y --end-x --end-y --duration <초>` |
-| `inputText(text)` | ASCII만이면 `type --stdin`(텍스트를 인자로 넘기지 않는다). 비ASCII가 하나라도 있으면 `simctl pbcopy <udid>`로 클립보드를 채우고 `key-combo --modifiers 227 --key 25`(Cmd+V)로 붙여 넣는다(스파이크 3) |
+| `inputText(text)` | 모든 텍스트를 `simctl pbcopy <udid>`의 stdin으로 클립보드에 넣고 `key-combo --modifiers 227 --key 25`(Cmd+V)로 붙여 넣는다. 텍스트는 인자로 넘기지 않는다. `type --stdin` 갈래는 두지 않는다 — `type`은 ASCII만 받고, 시뮬레이터 키보드가 한국어면 ASCII도 활성 배열을 거쳐 깨지기 때문이다(스파이크 3) |
 | `pressKey('home')` | `button home` |
 | `pressKey('enter')` / `pressKey('tab')` | `key 40` / `key 43` (HID keycode) |
 | `pressKey('back')` | `unsupported` |
@@ -285,8 +285,9 @@ ndjson에는 `eventType`이 `activityCreateEvent`인 줄도 섞여 나온다. �
   `AXFrame`(같은 값의 문자열)을 함께 준다. 문자열을 파싱하지 않고 `frame`을 쓴다.
 - `type`은 Application, Group, Image, Button, StaticText, Heading, Slider, TextField로 나왔다.
   Cell은 따로 없고 목록 한 줄이 Button이나 Group이다. 위 표의 Cell·Link 등은 방어적으로 둔다.
-- 빈 TextField의 `AXValue`에는 placeholder가 들어 있다. `text`로 그대로 올리면 입력값처럼 보이므로
-  M4-2가 다룬다.
+- 빈 TextField의 `AXValue`에는 placeholder가 들어 있다(설정 앱 검색 필드는 `검색`). 이것을 걸러 내지 않고
+  `text`로 그대로 둔다. `nodeRefs.ts`의 `ownFingerprint`가 `editable` 노드의 text를 지문에서 빼므로 입력으로
+  값이 바뀌어도 ref는 살아 있다. Android uiautomator도 빈 입력칸의 hint를 `text`로 내므로 두 플랫폼이 같다.
 - `nodeRefs.ts`는 지금 `className`이 `EditText`로 끝나는지로 text를 뺀다. 이것을 `editable`
   필드로 바꾼다. Android 파서는 `EditText` 계열에 `editable: true`를 채운다.
   ADR-0011에 변경 메모를 단다.
@@ -488,3 +489,40 @@ SwiftUI와 UIKit의 차이를 가를 서드파티 앱은 이번에 쓰지 못했
 
 **열린 것.** 설치 성공 경로(`app_install`, `app_reset_and_launch`의 `settleSkipped`)는 시뮬레이터용으로 빌드한
 `.app`이 있는 환경에서 한 번 더 확인해야 한다. 앱 창에서 보는 항목(5·6, 기기 패널 라벨)은 사람이 확인한다.
+
+## M4-2 검증 결과
+
+2026-09-30에 iPhone 17(iOS 26.5) 시뮬레이터 하나를 부팅해 확인했다. Xcode 26.6, AXe 1.8.0(`/opt/homebrew/bin/axe`)이다.
+확인한 뒤 그 시뮬레이터를 껐다. 시뮬레이터 키보드와 로케일은 한국어였다. M4-1과 같이 앱 창은 사람이 볼 수 없어,
+실제 모듈(`simctl` 클라이언트, `axeClient.ts`의 `createAxeClient`, `locateAxe.ts`의 `locateAxe`, `IosDevice`, 기기
+관리 층, `startMcpHttpServer`)을 그대로 조립해 MCP 클라이언트로 HTTP 호출했다. 앱 조립 코드(`index.ts`,
+`bootstrap.ts`)와 앱 창은 이 경로에 없다.
+
+**계약 테스트** (`deviceContract.test.ts`): 같은 시나리오를 `AndroidDevice`(가짜 adb, `window-dump-emulator.xml`)와
+`IosDevice`(가짜 simctl·axe, `describe-ui-settings.json`)에 돌려 모두 통과했다. `dumpUi`의 bounds가 0..1,
+`displayFrame`이 양수, `tap`과 `pressKey('home')` resolve, `stop` 두 번 연속 성공, 없는 경로 `install`의 `app_path_invalid`.
+
+**통합 테스트** (`iosDevice.ui.ios.integration.test.ts`, 부팅된 시뮬레이터에서): 통과했다. 설정 앱 `dumpUi`에서 검색
+필드가 아닌 clickable 셀을 골라 그 중심을 `displayFrame` 기준 point로 `tap`하면 1초 뒤 덤프 지문이 달라지고,
+`pressKey('home')`이 성공한다. 부팅된 시뮬레이터가 없으면 skip된다. M4-1의 `iosDevice.ios.integration.test.ts`도
+같은 기기에서 다시 통과했다.
+
+| 항목 | 결과 | 관찰 |
+|---|---|---|
+| 1. `ui_find({ query: '검색' })` | 확인 | 설정 첫 화면에서 검색 필드가 `className: 'TextField'`, `text: '검색'`(placeholder)으로 나온다. 목록 위 검색 버튼(`com.apple.settings.search`)과 돋보기 이미지도 함께 걸린다. |
+| 2. `ui_tap({ ref })` | 확인 | 검색 필드 ref로 탭해 검색 화면으로 들어갔다. 응답은 탭한 점을 0..1로 준다. |
+| 3. `ui_text({ ref, text: 'Wi' })` | 확인 | 이어서 받은 ref로 입력하면 검색 필드의 `text`가 `Wi`가 된다. 같은 경로로 `일반`도 그대로 들어갔다(한국어 키보드에서 pbcopy + Cmd+V). |
+| 4. `ui_find`로 검색 결과 확인 | 부분 확인 | 검색 화면이 뜨고 `‘Wi’에 대한 결과 없음`이 노드로 나온다. `일반`도 결과가 없었다. 새로 만든 시뮬레이터의 설정 검색 색인이 비어 있던 것으로 보인다. 결과 목록이 나오는 경우는 미검증 — 색인이 찬 시뮬레이터가 없음. |
+| 5. 1분 지난 ref로 `ui_tap` | 확인 | 검색 결과 화면의 ref를 받아 두고 `ui_key home`으로 화면을 바꾼 뒤 60초 기다려 탭하면 `stale_ref`("지문이 같은 노드가 새 화면에 없다")다. |
+| 6. `app_reset_and_launch` | 확인 | 시뮬레이터용으로 직접 빌드한 최소 SwiftUI `.app`(`dev.vdh.probe`)을 `app_install`로 설치하자 bundle id를 돌려줬고, `app_reset_and_launch`가 `{ settled: true, nodeCount: 2 }`를 줬다. `settleSkipped`는 없다. 확인 뒤 `app_uninstall`로 지웠다. 설정 앱(시스템 앱)은 여전히 `unsupported`("시스템 앱 데이터 지우기")다. |
+| 7. `ui_key back` | 확인 | `unsupported`("iOS에서는 back 키를 할 수 없다: iOS에는 back 버튼이 없다")다. |
+| 8. `describe-ui` 소요 | 측정 | 설정 앱에서 워밍업 한 번(약 1.7초) 뒤 다섯 번 재 평균 약 0.82초(0.57~1.24초)다. 같은 때 `ui_find` 한 번은 0.6~2.0초였다. |
+
+**실제 기기로 잡은 것.** 설정 앱을 띄우고 약 3초 뒤 `ui_find`로 받은 검색 필드 ref를 바로 `ui_tap`하자 `stale_ref`가
+났다. 버그가 아니라 화면이 실제로 바뀐 것이다. 실행 뒤 약 4초에 `Toolbar`(`도구 막대`) Group이 트리에 나타나
+검색 필드의 조상이 되고, `nodeRefs.ts`의 `fingerprintOf`가 조상 경로를 지문에 넣으므로 ref가 안전하게 실패한다.
+화면이 안정된 뒤(실행 뒤 6초) 받은 ref는 탭·입력 모두 통했다. 에이전트는 `app_reset_and_launch`의 안정 대기를
+쓰거나 `stale_ref`를 받으면 `ui_find`를 다시 부르면 된다. 코드는 고치지 않았다.
+
+**열린 것.** 검색 결과 목록이 나오는 경우(항목 4), 앱 창에서 보는 항목(기기 화면의 탭 표시, 활동 탭의 입력 가림)은
+사람이 확인한다. 서드파티 UIKit 앱의 `describe-ui` 모양은 이번에도 보지 못했고 SwiftUI 최소 앱과 설정 앱만 봤다.
