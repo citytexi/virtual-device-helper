@@ -15,6 +15,9 @@ import { trackSimulators } from './ios/trackSimulators'
 import { createLogManager } from './logs/logManager'
 import { createLogTail } from './logs/logTail'
 import { createPidof, createSeedPids } from './logs/adbLogDeps'
+import { createIosLogTail } from './logs/iosLogTail'
+import { createIosPidof, createIosSeedPids } from './logs/iosLogDeps'
+import { createPlatformLogDeps } from './logs/platformLogDeps'
 import { startMcpHttpServer } from './mcp/httpServer'
 import { defaultLocateSdkDeps, locateSdk } from './sdk/locateSdk'
 import { resolveScrcpyJar } from './stream/scrcpyJar'
@@ -131,11 +134,25 @@ app
       },
       createLogManager: (registry, paths, hooks) => {
         const adb = createAdbClient(paths.adb)
+        // simctl은 상태가 없어 로그용으로 따로 만들어도 된다. iOS 기기는 macOS에서만 생긴다.
+        const simctl = createSimctlClient()
+        const platformDeps = createPlatformLogDeps({
+          platformOf: (serial) => registry.resolve(serial).platform,
+          android: {
+            createTail: (serial, handlers) =>
+              createLogTail({ serial, adb, isConnected: () => registry.serials().includes(serial) }, handlers),
+            seedPids: createSeedPids(adb),
+            pidof: createPidof(adb)
+          },
+          ios: {
+            createTail: (udid, handlers) =>
+              createIosLogTail({ udid, simctl, isConnected: () => registry.serials().includes(udid) }, handlers),
+            seedPids: createIosSeedPids(simctl),
+            pidof: createIosPidof(simctl)
+          }
+        })
         return createLogManager({
-          createTail: (serial, handlers) =>
-            createLogTail({ serial, adb, isConnected: () => registry.serials().includes(serial) }, handlers),
-          seedPids: createSeedPids(adb),
-          pidof: createPidof(adb),
+          ...platformDeps,
           createChannel: () => createPortChannel<LogDown>(),
           postPort: (meta, remote) => postPortToRenderer(IPC_CHANNELS.logPort, meta, remote),
           onTailState: hooks.onTailState
