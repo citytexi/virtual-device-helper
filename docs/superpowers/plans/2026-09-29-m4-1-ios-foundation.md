@@ -12,7 +12,7 @@ archived_reason:
 related_adr: [ADR-0015, ADR-0014, ADR-0005, ADR-0003, ADR-0008, ADR-0011, ADR-0013]
 related_spec: m4-ios-simulator
 related_architecture: main-layers
-related_plan:
+related_plan: [m4-2-ios-input-nodes, m4-3-ios-streaming]
 related_code: [device.ts#Device, errors.ts#ToolErrorKind, adbClient.ts#createAdbClient, avdController.ts#createAvdController, registry.ts#createDeviceRegistry, bootstrap.ts#bootstrapApp, index.ts, appState.ts#createAppState, ipc.ts#AppSnapshot, DevicePanel.tsx#DevicePanel, SdkMissing.tsx#SdkMissing, nodeRefs.ts, logManager.ts#LogManagerDeps, logTail.ts#createLogTail, pidTracker.ts#createPidTracker, device.ts#registerDeviceTools, app.ts, agentGuide.ts, layering.test.ts]
 tags: [plan, ios, simctl]
 ---

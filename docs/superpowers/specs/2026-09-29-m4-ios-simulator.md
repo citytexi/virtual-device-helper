@@ -10,7 +10,7 @@ superseded_by:
 related_adr: [ADR-0014, ADR-0015, ADR-0016, ADR-0005, ADR-0003, ADR-0008, ADR-0010, ADR-0011, ADR-0012, ADR-0013]
 related_spec: [m1-device-core-mcp-server, m2-live-streaming, m3-node-control-logs-events, agent-guide]
 related_architecture: main-layers
-related_plan: [m4-1-ios-foundation]
+related_plan: [m4-1-ios-foundation, m4-2-ios-input-nodes, m4-3-ios-streaming]
 related_code: [device.ts#Device, device.ts#DeviceInfo, device.ts#UiNode, device.ts#AvdEntry, errors.ts#ToolErrorKind, registry.ts#createDeviceRegistry, avdController.ts#AvdController, index.ts#createDeviceStack, bootstrap.ts#assembleWithoutSdk, nodeRefs.ts, logManager.ts#LogManagerDeps, streamManager.ts#StreamManagerDeps, stream.ts#StreamDown, stream.ts#ControlIntent, streamDecoder.ts, layering.test.ts, agentGuide.ts]
 tags: [spec, ios, simulator, axe]
 ---
