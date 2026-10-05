@@ -60,7 +60,7 @@ function fakeLogSimctl(script: StreamScript = {}) {
 
 function setup(nowMs: number, script: StreamScript = {}) {
   const { simctl, closed } = fakeLogSimctl(script)
-  const device = createIosDevice({ udid: UDID, simctl, resizeImage: noopResize, now: () => nowMs })
+  const device = createIosDevice({ udid: UDID, simctl, axe: null, resizeImage: noopResize, now: () => nowMs })
   return { simctl, device, closed }
 }
 
@@ -76,7 +76,7 @@ describe('IosDevice.readLogs', () => {
   it('starts at the clearLogs watermark and does not call simctl for clearLogs', async () => {
     let clock = NOW
     const { simctl } = fakeLogSimctl()
-    const device = createIosDevice({ udid: UDID, simctl, resizeImage: noopResize, now: () => clock })
+    const device = createIosDevice({ udid: UDID, simctl, axe: null, resizeImage: noopResize, now: () => clock })
     await device.clearLogs()
     expect(simctl.calls).toEqual([])
     clock = NOW + 60_000
@@ -90,7 +90,7 @@ describe('IosDevice.readLogs', () => {
     let clock = watermark
     const { device, simctl } = setup(watermark)
     const all = await device.readLogs({ limit: 200, since: '01-01 00:00:00.000' })
-    const dev = createIosDevice({ udid: UDID, simctl, resizeImage: noopResize, now: () => clock })
+    const dev = createIosDevice({ udid: UDID, simctl, axe: null, resizeImage: noopResize, now: () => clock })
     await dev.clearLogs()
     clock = watermark + 60_000
     const result = await dev.readLogs({ limit: 200 })

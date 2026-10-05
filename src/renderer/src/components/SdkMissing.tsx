@@ -38,7 +38,7 @@ export function SdkMissing({ platforms }: SdkMissingProps): JSX.Element {
 
       <h2>iOS 시뮬레이터를 쓸 수 없다</h2>
       {ios.ok ? null : <p>{ios.reason}</p>}
-      <p>Xcode를 설치하고 xcode-select -s로 개발자 디렉토리를 정해라</p>
+      {ios.ok || ios.hint === null ? null : <p>{ios.hint}</p>}
     </main>
   )
 }

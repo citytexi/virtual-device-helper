@@ -56,6 +56,46 @@ describe('processClient.exec failures injection', () => {
   })
 })
 
+describe('processClient.exec stdin input', () => {
+  function spawnWithStdin(): { spawn: SpawnFn; written: Buffer[]; ended: () => boolean } {
+    const written: Buffer[] = []
+    let ended = false
+    const spawn: SpawnFn = () => {
+      const child = new EventEmitter() as ReturnType<SpawnFn>
+      child.stdout = Readable.from([''])
+      child.stderr = Readable.from([''])
+      child.stdin = {
+        write: (chunk: string | Buffer) => {
+          written.push(Buffer.from(chunk))
+          return true
+        },
+        end: () => {
+          ended = true
+        },
+        on: () => {}
+      } as never
+      child.kill = vi.fn() as never
+      queueMicrotask(() => child.emit('close', 0))
+      return child
+    }
+    return { spawn, written, ended: () => ended }
+  }
+
+  it('writes input to stdin and closes it', async () => {
+    const { spawn, written, ended } = spawnWithStdin()
+    await createProcessClient('tool', failures, spawn).exec(['a'], { input: '한글 text' })
+    expect(Buffer.concat(written).toString('utf8')).toBe('한글 text')
+    expect(ended()).toBe(true)
+  })
+
+  it('leaves stdin alone when no input is given', async () => {
+    const { spawn, written, ended } = spawnWithStdin()
+    await createProcessClient('tool', failures, spawn).exec(['a'])
+    expect(written).toEqual([])
+    expect(ended()).toBe(false)
+  })
+})
+
 describe('processClient.stream line decoding', () => {
   it('keeps a multi-byte character intact when it is split across two chunks', async () => {
     const bytes = Buffer.from('시뮬레이터 로그\n', 'utf8')

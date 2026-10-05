@@ -7,6 +7,8 @@ export type SpawnFn = (command: string, args: string[]) => ChildProcessWithoutNu
 export interface ExecOpts {
   /** 기본 30초. 화면 캡처처럼 오래 걸리는 명령은 호출부가 늘린다. */
   timeoutMs?: number
+  /** 주면 stdin에 쓰고 닫는다. 안 주면 stdin을 건드리지 않는다. 긴 텍스트를 인자 대신 넘길 때 쓴다. */
+  input?: string | Buffer
 }
 
 export interface ExecResult {
@@ -85,6 +87,13 @@ export function createProcessClient(command: string, failures: ProcessFailures, 
       const stdoutChunks: Buffer[] = []
       const stderrChunks: Buffer[] = []
       let settled = false
+
+      if (opts.input !== undefined) {
+        // 자식이 stdin을 읽지 않고 끝나면 EPIPE가 오는데, 결과는 종료 코드가 정하므로 여기서는 삼킨다.
+        child.stdin.on('error', () => {})
+        child.stdin.write(opts.input)
+        child.stdin.end()
+      }
 
       // 실제 child_process에서도 'close'가 stdout/stderr가 끝나기 전에 온다는
       // 보장은 없다. 세 신호(close, stdout end, stderr end)가 모두 도착한

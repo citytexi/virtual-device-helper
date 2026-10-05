@@ -4,6 +4,7 @@ import { createDeviceRegistry, type DeviceRegistry } from '../device/registry'
 import type { LogManager } from '../logs/logManager'
 import type { TailState } from '../../shared/types/logs'
 import type { McpServerHandle, StartMcpHttpServerOpts } from '../mcp/httpServer'
+import { AXE_HINT } from '../ios/axeClient'
 import type { IosToolsResult } from '../ios/locateIosTools'
 import type { LocateSdkResult, SdkPaths } from '../sdk/locateSdk'
 import type { StreamLifecycle, StreamManager } from '../stream/streamManager'
@@ -32,6 +33,8 @@ export interface BootstrapDeps {
   located: LocateSdkResult
   /** iOS 도구(xcode-select·xcrun simctl)를 찾은 결과. */
   iosTools: IosToolsResult
+  /** AXe 실행 파일 경로. 못 찾았으면 null이고, iOS 입력·노드·실시간 화면만 못 쓴다. */
+  axePath: string | null
   ipcMain: IpcMain
   send: SendToRenderer
   /**
@@ -75,6 +78,10 @@ const STREAM_EVENTS = {
   stopped: 'stream_stopped'
 } as const satisfies Record<StreamLifecycle, DeviceTimelineEvent>
 
+const XCODE_HINT = 'Xcode를 설치하고 xcode-select -s로 개발자 디렉토리를 정해라'
+
+const AXE_MISSING_NOTE = `AXe가 없어 iOS 입력·노드·실시간 화면을 쓸 수 없다. ${AXE_HINT}`
+
 function sdkMissingError() {
   return deviceError(
     'sdk_not_found',
@@ -84,12 +91,16 @@ function sdkMissingError() {
 }
 
 /** 두 탐색 결과를 스냅샷의 플랫폼 상태로 옮긴다. */
-function platformStatuses(located: LocateSdkResult, iosTools: IosToolsResult): PlatformStatuses {
+function platformStatuses(located: LocateSdkResult, iosTools: IosToolsResult, axePath: string | null): PlatformStatuses {
+  const iosNotes = axePath === null ? [AXE_MISSING_NOTE] : []
   return {
     android: located.ok
-      ? { ok: true, location: located.paths.sdkRoot }
-      : { ok: false, reason: 'Android SDK를 찾지 못했다', searched: located.searched },
-    ios: iosTools.ok ? { ok: true, location: iosTools.developerDir } : { ok: false, reason: iosTools.reason, searched: [] }
+      ? { ok: true, location: located.paths.sdkRoot, notes: [] }
+      : { ok: false, reason: 'Android SDK를 찾지 못했다', searched: located.searched, hint: null },
+    // 호스트가 macOS가 아니면 Xcode를 깔 수 없으니 안내를 내리지 않는다. 판단은 여기서 하고 renderer는 그리기만 한다.
+    ios: iosTools.ok
+      ? { ok: true, location: iosTools.developerDir, notes: iosNotes }
+      : { ok: false, reason: iosTools.reason, searched: [], hint: iosTools.hostSupported ? XCODE_HINT : null }
   }
 }
 
@@ -143,7 +154,7 @@ function assembleWithoutPlatforms(platforms: PlatformStatuses): { state: AppStat
  */
 export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp> {
   const { located, iosTools } = deps
-  const platforms = platformStatuses(located, iosTools)
+  const platforms = platformStatuses(located, iosTools, deps.axePath)
 
   // 플랫폼마다 따로 조립한다. 하나라도 준비되면 전체 조립과 MCP 서버를 연다.
   if (!located.ok && !iosTools.ok) {

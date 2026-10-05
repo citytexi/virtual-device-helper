@@ -13,7 +13,7 @@ describe('locateIosTools', () => {
 
     const result = await locateIosTools({ platform: 'linux', execFile })
 
-    expect(result).toEqual({ ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다' })
+    expect(result).toEqual({ ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', hostSupported: false })
     expect(execFile).not.toHaveBeenCalled()
   })
 
@@ -26,7 +26,10 @@ describe('locateIosTools', () => {
     const result = await locateIosTools({ platform: 'darwin', execFile })
 
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.reason).toEqual(expect.any(String))
+    if (!result.ok) {
+      expect(result.reason).toEqual(expect.any(String))
+      expect(result.hostSupported).toBe(true)
+    }
   })
 
   it('xcode-select -p가 실패하면 ok false다', async () => {
@@ -64,7 +67,7 @@ describe('locateIosTools', () => {
       const pending = locateIosTools({ platform: 'darwin', execFile, timeoutMs: 10_000 })
       await vi.advanceTimersByTimeAsync(10_000)
 
-      await expect(pending).resolves.toEqual({ ok: false, reason: 'xcrun simctl이 응답하지 않는다' })
+      await expect(pending).resolves.toEqual({ ok: false, reason: 'xcrun simctl이 응답하지 않는다', hostSupported: true })
     } finally {
       vi.useRealTimers()
     }
@@ -78,7 +81,7 @@ describe('locateIosTools', () => {
 
     const result = await locateIosTools({ platform: 'darwin', execFile })
 
-    expect(result).toEqual({ ok: false, reason: 'xcrun simctl이 응답하지 않는다' })
+    expect(result).toEqual({ ok: false, reason: 'xcrun simctl이 응답하지 않는다', hostSupported: true })
   })
 
   it('기본 제한 시간은 10초다', () => {

@@ -60,9 +60,47 @@ describe('createVirtualDeviceCatalog', () => {
         kind: 'command_failed',
         message: '그런 가상 기기가 없다: nope',
         hint: 'device_list로 id를 확인해라',
-        details: { available: ['Pixel'] }
+        details: { available: ['Pixel'], failedPlatforms: [] }
       }
     })
+  })
+
+  it('reports the platforms whose list failed when the id is not found', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const catalog = createVirtualDeviceCatalog([
+      fakeSource('android', [entry('android', 'Pixel')]),
+      fakeSource('ios', [], {
+        list: async () => {
+          throw new Error('boom')
+        }
+      })
+    ])
+
+    await expect(catalog.boot('udid-1')).rejects.toMatchObject({
+      toolError: {
+        kind: 'command_failed',
+        message: '그런 가상 기기가 없다: udid-1',
+        hint: 'device_list로 id를 확인해라. ios 가상 기기 목록을 읽지 못해 그쪽 기기는 확인하지 못했다',
+        details: { available: ['Pixel'], failedPlatforms: ['ios'] }
+      }
+    })
+    errorSpy.mockRestore()
+  })
+
+  it('still boots an id owned by a healthy source when another source failed', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const ios = fakeSource('ios', [entry('ios', 'udid-1')])
+    const catalog = createVirtualDeviceCatalog([
+      fakeSource('android', [], {
+        list: async () => {
+          throw new Error('boom')
+        }
+      }),
+      ios
+    ])
+
+    await expect(catalog.boot('udid-1')).resolves.toBe('ios-serial')
+    errorSpy.mockRestore()
   })
 
   it('routes shutdown by platform', async () => {

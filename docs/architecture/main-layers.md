@@ -9,7 +9,7 @@ related_adr: [ADR-0005, ADR-0001, ADR-0010, ADR-0013]
 related_spec: [m1-device-core-mcp-server, m2-live-streaming, m3-node-control-logs-events, m4-ios-simulator]
 related_architecture:
 related_plan:
-related_code: [processClient.ts#createProcessClient, adbClient.ts#createAdbClient, simctlClient.ts#createSimctlClient, androidDevice.ts#createAndroidDevice, iosDevice.ts#createIosDevice, trackSimulators.ts#trackSimulators, platformLogDeps.ts#createPlatformLogDeps, registry.ts#createDeviceRegistry, registerTools.ts#registerTools, httpServer.ts#startMcpHttpServer, ipcBridge.ts#registerIpcBridge, appState.ts#createAppState, streamManager.ts#createStreamManager, logManager.ts#createLogManager, bootstrap.ts#bootstrapApp, layering.test.ts]
+related_code: [processClient.ts#createProcessClient, adbClient.ts#createAdbClient, simctlClient.ts#createSimctlClient, axeClient.ts#createAxeClient, locateAxe.ts#locateAxe, androidDevice.ts#createAndroidDevice, iosDevice.ts#createIosDevice, trackSimulators.ts#trackSimulators, platformLogDeps.ts#createPlatformLogDeps, registry.ts#createDeviceRegistry, registerTools.ts#registerTools, httpServer.ts#startMcpHttpServer, ipcBridge.ts#registerIpcBridge, appState.ts#createAppState, streamManager.ts#createStreamManager, logManager.ts#createLogManager, bootstrap.ts#bootstrapApp, layering.test.ts]
 tags: [architecture, main, layers]
 ---
 
@@ -31,7 +31,8 @@ main 프로세스는 아래에서 위로 쌓인다. 타깃 디바이스를 가�
 | 프로세스 경계 | `src/main/process/` · `processClient.ts#createProcessClient` | 외부 바이너리 실행의 공통부(`exec`, `stream`, stderr 꼬리, 제한 시간). 도구마다 실패 분류만 주입한다 | 프로세스 실행 |
 | adb 경계 | `src/main/adb/` · `adbClient.ts#createAdbClient` | adb 바이너리 실행, `exec`(일회성)과 `stream`(장시간). `processClient` 위에 선다 | adb 문법 |
 | simctl 경계 | `src/main/ios/` · `simctlClient.ts#createSimctlClient` | `xcrun simctl` 실행과 iOS 도구 실패 분류. `processClient` 위에 선다 | simctl 문법 |
-| 기기 구현 | `src/main/device/` · `androidDevice.ts#createAndroidDevice`, `iosDevice.ts#createIosDevice` | adb / simctl 출력에 의미를 붙여 `Device`를 구현한다. 출력 파싱은 `device/parsers/`에 둔다. iOS는 아직 지원하지 않는 동작을 `unsupported`로 거절한다 | Android / iOS 도메인 |
+| axe 경계 | `src/main/ios/` · `axeClient.ts#createAxeClient` | AXe 바이너리 실행. 모든 호출 끝에 `--udid <udid>`를 붙인다. 텍스트는 axe에 넘기지 않는다. `iosDevice.ts`의 `inputText`가 `simctl pbcopy` stdin으로 클립보드에 넣고 axe `key-combo`(⌘V)로 붙여 넣으므로, 입력할 때마다 시뮬레이터 클립보드가 덮인다. 실패는 `ios_tool_not_found`·`command_failed`·`device_unresponsive`로 분류한다. `processClient` 위에 선다 | axe 문법 |
+| 기기 구현 | `src/main/device/` · `androidDevice.ts#createAndroidDevice`, `iosDevice.ts#createIosDevice` | adb / simctl / axe 출력에 의미를 붙여 `Device`를 구현한다. 출력 파싱은 `device/parsers/`에 둔다(`describe-ui`는 `axeUi.ts#parseAxeUi`). iOS의 입력·노드·화면 크기는 axe를 거치고, axe가 없으면 `ios_tool_not_found`다. iOS에 없는 동작(`back` 키 등)은 `unsupported`로 거절한다 | Android / iOS 도메인 |
 | 기기 관리 | `src/main/device/` · `registry.ts#createDeviceRegistry` | 연결된 기기와 활성 기기, 기기별 직렬 실행(`run`), 부팅 직후 등록 대기(`waitFor`). 기기 추적은 adb 쪽 `trackDevices`와 simctl 폴링 `ios/trackSimulators.ts#trackSimulators`가 같은 `onChange`로 합류한다 | `Device` 인터페이스 |
 | MCP 툴 | `src/main/mcp/` · `registerTools.ts#registerTools`, `runTool.ts#runTool` | 툴 정의, 응답 크기 제어, 호출 기록 | MCP 규격 |
 | MCP 전송 | `src/main/mcp/` · `httpServer.ts#startMcpHttpServer` | Streamable HTTP, 세션, 인증. 근거는 [ADR-0001](../adr/0001-mcp-transport-http-in-app.md) | HTTP |
@@ -73,6 +74,8 @@ iOS(`iosLogTail.ts`의 `log stream` tail, `iosLogDeps.ts`)로 나눈다. 준비�
 iOS 도구(`ios/locateIosTools.ts#locateIosTools`)를 각각 찾고, 준비된 플랫폼만 조립해 기기 관리 층·앱 상태·
 파이프라인 매니저·MCP 서버를 순서대로 연결한다. 한 플랫폼만 준비돼도 MCP 서버를 연다. 둘 다 못 찾을
 때만 기기 관리 층 없이 안내 상태로 뜬다. 안내에는 플랫폼별 상태(`platforms`)가 담긴다.
+AXe는 `index.ts`가 `ios/locateAxe.ts#locateAxe`로 따로 찾는다. 패키징된 앱은 셸 `PATH`를 받지 못하므로 Homebrew
+기본 경로를 먼저 보고 그다음 `PATH`를 본다. 못 찾아도 iOS 자체는 조립하고 `IosDevice`에 `axe: null`을 넘긴다.
 
 주입 구조라서 테스트는 `adbClient`만 가짜로 바꾸면 그 위층 전부를 실기기 없이 덮는다. 실기기가 필요한
 테스트는 `*.integration.test.ts`로 이름을 나눈다.

@@ -26,6 +26,7 @@ describe('IosDevice.info', () => {
     const device = createIosDevice({
       udid: entry.udid,
       simctl,
+      axe: null,
       resizeImage: noopResize,
       readFile: async () => pngHeader(1206, 2622),
       removeFile: async () => {}
@@ -49,7 +50,7 @@ describe('IosDevice.info', () => {
 
 describe('IosDevice.screenshot', () => {
   it('rejects scale 0 with command_failed', async () => {
-    const device = createIosDevice({ udid: 'U', simctl: fakeSimctl({}), resizeImage: noopResize })
+    const device = createIosDevice({ udid: 'U', simctl: fakeSimctl({}), axe: null, resizeImage: noopResize })
     await expect(device.screenshot({ scale: 0 })).rejects.toMatchObject({ toolError: { kind: 'command_failed' } })
   })
 
@@ -65,6 +66,7 @@ describe('IosDevice.screenshot', () => {
     const device = createIosDevice({
       udid: 'U',
       simctl,
+      axe: null,
       resizeImage: resize,
       readFile: async () => pngHeader(1000, 2000),
       removeFile
@@ -78,12 +80,5 @@ describe('IosDevice.screenshot', () => {
     expect(removeFile).toHaveBeenCalledWith(args[4])
     expect(resize).toHaveBeenCalledWith(expect.any(Buffer), 1000)
     expect(result.width).toBe(1000)
-  })
-})
-
-describe('IosDevice M4-2 actions', () => {
-  it('tap is unsupported', async () => {
-    const device = createIosDevice({ udid: 'U', simctl: fakeSimctl({}), resizeImage: noopResize })
-    await expect(device.tap(0, 0)).rejects.toMatchObject({ toolError: { kind: 'unsupported' } })
   })
 })
