@@ -11,7 +11,7 @@ export type RegistryEvent =
    * 자리에서 얼어붙는데, 이걸 알리지 않으면 위층(M1-4의 UI)은 "지금 기기가
    * 정말 없는 것"과 "추적이 죽어서 갱신이 멈춘 것"을 구분할 수 없다.
    */
-  | { type: 'tracking_failed'; failure: TrackFailure }
+  | { type: 'tracking_failed'; platform: Platform; failure: TrackFailure }
 
 /**
  * 부팅이 끝난 기기가 연결 목록에 나타나기를 기다리는 상한. adb는 track-devices가 바로 밀어 주지만
@@ -23,11 +23,12 @@ export interface DeviceRegistryDeps {
   /**
    * 연결·해제와 추적 실패를 알려 주는 구독. 반환값은 구독 해제 함수다.
    * onFailure는 trackDevices의 세 번째 인자를 그대로 통과시키는 자리다 —
-   * 실패를 삼키면 원인이 사라지고 "기기가 안 보인다"는 증상만 남는다.
+   * 실패를 삼키면 원인이 사라지고 "기기가 안 보인다"는 증상만 남는다. 추적은 플랫폼마다
+   * 따로 돌고 따로 죽으므로 어느 플랫폼의 것인지도 함께 넘긴다.
    */
   track: (
     onChange: (serial: string, connected: boolean, platform: Platform) => void,
-    onFailure: (failure: TrackFailure) => void
+    onFailure: (platform: Platform, failure: TrackFailure) => void
   ) => () => void
   createDevice: (serial: string, platform: Platform) => Device
 }
@@ -98,8 +99,8 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
     if (active === serial) setActiveInternal(null)
   }
 
-  function onFailure(failure: TrackFailure): void {
-    emit({ type: 'tracking_failed', failure })
+  function onFailure(platform: Platform, failure: TrackFailure): void {
+    emit({ type: 'tracking_failed', platform, failure })
   }
 
   const registry: DeviceRegistry = {

@@ -121,9 +121,9 @@ app
         const axe = axePath ? createAxeClient(axePath) : null
         const registry = createDeviceRegistry({
           track: (onChange, onFailure) => {
-            const stopAdb = adb ? trackDevices(adb, (serial, connected) => onChange(serial, connected, 'android'), onFailure) : () => {}
+            const stopAdb = adb ? trackDevices(adb, (serial, connected) => onChange(serial, connected, 'android'), (failure) => onFailure('android', failure)) : () => {}
             const stopSimulators = simctl
-              ? trackSimulators(simctl, (serial, connected) => onChange(serial, connected, 'ios'), onFailure)
+              ? trackSimulators(simctl, (serial, connected) => onChange(serial, connected, 'ios'), (failure) => onFailure('ios', failure))
               : () => {}
             return () => {
               stopAdb()

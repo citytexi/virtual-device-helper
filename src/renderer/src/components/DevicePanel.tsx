@@ -10,7 +10,7 @@ export interface DevicePanelProps {
 }
 
 /**
- * 기기 추적(adb track-devices)이 멎었을 때 보여주는 경고. main이 죽었다는 뜻이
+ * 기기 추적(플랫폼마다 하나)이 멎었을 때 보여주는 경고. main이 죽었다는 뜻이
  * 아니라 목록이 그 순간부터 더 이상 갱신되지 않는다는 뜻이라 role="alert"로
  * 눈에 띄게 두되, 원인(error)이 있으면 메시지·힌트를, 없으면 종료 코드를 보여준다.
  */
@@ -23,7 +23,7 @@ function TrackingFailureNotice({ failure }: { failure: TrackingFailure }): JSX.E
 
   return (
     <p role="alert" className="notice notice-warn">
-      기기 추적이 멈췄다. 목록이 오래된 것일 수 있다. {detail}
+      {failure.label} 기기 추적이 멈췄다. 목록이 오래된 것일 수 있다. {detail}
     </p>
   )
 }
@@ -80,9 +80,10 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
     }
   }
 
-  const trackingNotice = snapshot.trackingFailure ? (
-    <TrackingFailureNotice failure={snapshot.trackingFailure} />
-  ) : null
+  // 플랫폼마다 한 칸씩이다. 어느 쪽인지는 main이 준 label이 말하니 여기서는 있는 것만 훑는다.
+  const trackingNotice = Object.values(snapshot.trackingFailures).map((failure) =>
+    failure ? <TrackingFailureNotice key={failure.platform} failure={failure} /> : null
+  )
 
   if (snapshot.virtualDevices.length === 0) {
     return (

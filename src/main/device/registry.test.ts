@@ -5,7 +5,7 @@ import { createDeviceRegistry, type RegistryEvent } from './registry'
 
 function makeRegistry() {
   let notify: ((serial: string, connected: boolean, platform: Platform) => void) | undefined
-  let notifyFailure: ((failure: TrackFailure) => void) | undefined
+  let notifyFailure: ((platform: Platform, failure: TrackFailure) => void) | undefined
   let stopped = false
   const created: Array<[string, Platform]> = []
 
@@ -28,7 +28,7 @@ function makeRegistry() {
     created,
     connect: (serial: string, platform: Platform = 'android') => notify?.(serial, true, platform),
     disconnect: (serial: string, platform: Platform = 'android') => notify?.(serial, false, platform),
-    fail: (failure: TrackFailure) => notifyFailure?.(failure),
+    fail: (failure: TrackFailure, platform: Platform = 'android') => notifyFailure?.(platform, failure),
     stopped: () => stopped
   }
 }
@@ -375,7 +375,19 @@ describe('DeviceRegistry tracking failure', () => {
     const failure: TrackFailure = { error: null, exitCode: 1 }
     harness.fail(failure)
 
-    expect(events).toEqual([{ type: 'tracking_failed', failure }])
+    expect(events).toEqual([{ type: 'tracking_failed', platform: 'android', failure }])
+  })
+
+  it('어느 플랫폼의 추적이 죽었는지 이벤트에 싣는다', () => {
+    const harness = makeRegistry()
+    const events: RegistryEvent[] = []
+    harness.registry.on((event) => events.push(event))
+    harness.registry.start()
+
+    const failure: TrackFailure = { error: null, exitCode: null }
+    harness.fail(failure, 'ios')
+
+    expect(events).toEqual([{ type: 'tracking_failed', platform: 'ios', failure }])
   })
 
   it('keeps the existing device list intact when tracking fails', () => {

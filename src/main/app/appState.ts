@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { VirtualDeviceCatalog } from '../device/virtualDeviceCatalog'
 import type { DeviceRegistry, RegistryEvent } from '../device/registry'
 import type { McpServerHandle } from '../mcp/httpServer'
-import type { VirtualDeviceEntry } from '../../shared/types/device'
+import type { Platform, VirtualDeviceEntry } from '../../shared/types/device'
 import { TIMELINE_LIMIT } from '../../shared/limits'
 import type {
   AppSnapshot,
@@ -46,13 +46,18 @@ export interface AppState {
 function toMainEvent(event: RegistryEvent): MainEvent {
   if (event.type !== 'tracking_failed') return event
   const failure: TrackingFailure = {
+    platform: event.platform,
+    label: PLATFORM_LABELS[event.platform],
     error: event.failure.error?.toolError ?? null,
     exitCode: event.failure.exitCode
   }
   return { type: 'tracking_failed', failure }
 }
 
-/** registry 이벤트 중 타임라인에 남길 것. tracking_failed는 스냅샷의 trackingFailure가 따로 말한다. */
+/** 추적 실패 안내가 어느 플랫폼인지 말할 때 쓰는 이름. 문구는 main이 정하고 renderer는 그대로 보인다. */
+const PLATFORM_LABELS: Record<Platform, string> = { android: 'Android', ios: 'iOS' }
+
+/** registry 이벤트 중 타임라인에 남길 것. tracking_failed는 스냅샷의 trackingFailures가 따로 말한다. */
 function deviceEventOf(event: RegistryEvent): { serial: string | null; event: DeviceTimelineEvent } | null {
   switch (event.type) {
     case 'device_connected':
@@ -91,7 +96,7 @@ export function createAppState(deps: AppStateDeps): AppState {
   const timeline: TimelineEntry[] = []
   const listeners = new Set<(event: MainEvent) => void>()
   let server: McpServerHandle | null = deps.server
-  let trackingFailure: TrackingFailure | null = null
+  const trackingFailures: AppSnapshot['trackingFailures'] = { android: null, ios: null }
   const anyReady = deps.platforms.android.ok || deps.platforms.ios.ok
 
   function emit(event: MainEvent): void {
@@ -134,7 +139,7 @@ export function createAppState(deps: AppStateDeps): AppState {
 
   deps.registry.on((event: RegistryEvent) => {
     const mainEvent = toMainEvent(event)
-    if (mainEvent.type === 'tracking_failed') trackingFailure = mainEvent.failure
+    if (mainEvent.type === 'tracking_failed') trackingFailures[mainEvent.failure.platform] = mainEvent.failure
     emit(mainEvent)
     const device = deviceEventOf(event)
     if (device) recordDeviceEvent(device.serial, device.event)
@@ -155,7 +160,7 @@ export function createAppState(deps: AppStateDeps): AppState {
         devices: deps.registry.serials(),
         activeSerial: deps.registry.getActive(),
         timeline: [...timeline],
-        trackingFailure
+        trackingFailures: { ...trackingFailures }
       }
     },
 
