@@ -110,6 +110,8 @@ export function createAxeControl(deps: AxeControlDeps): {
   }
 
   function finishGesture(g: Gesture): void {
+    // 손을 뗀 지금 잰다. 줄 안에서 재면 앞 호출과 displayFrame을 기다린 시간이 스와이프 길이에 더해진다.
+    const seconds = Math.max(MIN_SWIPE_SECONDS, (now() - g.startedAt) / 1000)
     enqueue(async () => {
       const frame = await frameFor(g.startVideo)
       if (!frame || !validVideo(g.endVideo)) return
@@ -119,7 +121,6 @@ export function createAxeControl(deps: AxeControlDeps): {
         await exec(['tap', '-x', String(Math.round(a.x)), '-y', String(Math.round(a.y))])
         return
       }
-      const seconds = Math.max(MIN_SWIPE_SECONDS, (now() - g.startedAt) / 1000)
       await exec(swipeArgs(a, b, seconds))
     })
   }

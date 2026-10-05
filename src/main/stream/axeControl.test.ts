@@ -74,6 +74,28 @@ describe('createAxeControl', () => {
     expect(axe.calls.map((c) => c.args.join(' '))).toEqual([key])
   })
 
+  it('duration은 손을 뗀 시각까지다. 줄에서 기다리거나 displayFrame을 재는 시간은 넣지 않는다', async () => {
+    let t = 1000
+    const key = 'swipe --start-x 20 --start-y 40 --end-x 100 --end-y 200 --duration 0.3'
+    const axe = fakeAxe({ [key]: execOk() })
+    const control = createAxeControl({
+      udid: 'U',
+      axe,
+      // describe-ui는 실제로 수백 ms가 걸린다.
+      displayFrame: async () => {
+        t += 500
+        return FRAME
+      },
+      inputText: async () => {},
+      now: () => t
+    })
+    control.send(touch('down', 10, 20), VIDEO)
+    t = 1300
+    control.send(touch('up', 50, 100), VIDEO)
+    await flush()
+    expect(axe.calls).toEqual([{ args: key.split(' ') }])
+  })
+
   it('duration은 최소 0.05초다', async () => {
     const key = 'swipe --start-x 20 --start-y 40 --end-x 100 --end-y 200 --duration 0.05'
     const { axe, control } = setup({ handlers: { [key]: execOk() }, now: () => 5 })
