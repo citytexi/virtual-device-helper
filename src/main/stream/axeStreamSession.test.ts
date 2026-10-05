@@ -146,4 +146,91 @@ describe('createAxeStreamSession', () => {
     t.session.sendControl(intent)
     expect(t.control.send).toHaveBeenLastCalledWith(intent, { width: 300, height: 600 })
   })
+
+  it('close()가 start() 도중 불리면 타이머 진행 없이 바로 reject하고 타이머를 지운다', async () => {
+    const clearTimer = vi.fn() as unknown as typeof clearTimeout
+    const t = setup({ clearTimer, setTimer: (() => 7) as unknown as typeof setTimeout })
+    const started = t.session.start()
+    const assertion = expect(started).rejects.toMatchObject({ toolError: { kind: 'command_failed' } })
+    await t.session.close()
+    await assertion
+    expect(clearTimer).toHaveBeenCalledWith(7)
+    expect(t.fs.stream.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('close() 뒤의 start()는 axe.stream을 열지 않는다', async () => {
+    const t = setup()
+    await t.session.close()
+    await expect(t.session.start()).rejects.toMatchObject({ toolError: { kind: 'command_failed' } })
+    expect(t.axe.stream).not.toHaveBeenCalled()
+  })
+
+  it('첫 프레임 뒤와 실패 뒤에 타이머를 지운다', async () => {
+    const clearTimer = vi.fn() as unknown as typeof clearTimeout
+    const ok = setup({ clearTimer, setTimer: (() => 1) as unknown as typeof setTimeout })
+    const p = ok.session.start()
+    ok.fs.push(part(frames[0]!))
+    await p
+    expect(clearTimer).toHaveBeenCalledWith(1)
+
+    const clear2 = vi.fn() as unknown as typeof clearTimeout
+    const bad = setup({ clearTimer: clear2, setTimer: (() => 2) as unknown as typeof setTimeout })
+    const q = bad.session.start()
+    bad.fs.fail(deviceError('command_failed', 'x', 'y'))
+    bad.fs.end(1)
+    await expect(q).rejects.toBeDefined()
+    expect(clear2).toHaveBeenCalledWith(2)
+  })
+
+  it('close()를 두 번 불러도 stream.close와 control.close는 한 번씩이다', async () => {
+    const t = setup()
+    const started = t.session.start()
+    t.fs.push(part(frames[0]!))
+    await started
+    await t.session.close()
+    await t.session.close()
+    expect(t.fs.stream.close).toHaveBeenCalledTimes(1)
+    expect(t.control.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('첫 프레임과 크기 변경에서 onSession이 onFrame보다 먼저다', async () => {
+    const events: string[] = []
+    const fs = fakeStream()
+    const axe = { exec: vi.fn(), stream: vi.fn(() => fs.stream) } as unknown as AxeClient
+    const session = createAxeStreamSession(
+      { udid: 'U1', axe, control: { send: vi.fn(), close: vi.fn() } },
+      { onSession: () => events.push('session'), onPacket: () => {}, onFrame: () => events.push('frame'), onEnded: () => {} }
+    )
+    const started = session.start()
+    fs.push(part(frames[0]!))
+    await started
+    fs.push(resizedPart(frames[1]!, 300, 600))
+    expect(events).toEqual(['session', 'frame', 'session', 'frame'])
+  })
+
+  it('크기를 못 읽는 프레임은 버린다', async () => {
+    const t = setup()
+    void t.session.start().catch(() => {})
+    // SOI/EOI만 있고 SOF가 없는 프레임
+    t.fs.push(part(Uint8Array.from([0xff, 0xd8, 0xff, 0xd9])))
+    expect(t.got).toEqual([])
+    expect(t.infos).toEqual([])
+    await t.session.close()
+  })
+
+  it('stderr를 담은 stream 에러가 start() reject로 전해진다', async () => {
+    const t = setup()
+    const started = t.session.start()
+    const err = deviceError('command_failed', 'axe 실패', '확인해라', { stderr: 'No such device' })
+    t.fs.fail(err)
+    t.fs.end(1)
+    await expect(started).rejects.toMatchObject({ toolError: { details: { stderr: 'No such device' } } })
+  })
+
+  it('첫 session 정보 전의 sendControl은 아무 일도 하지 않는다', () => {
+    const t = setup()
+    void t.session.start().catch(() => {})
+    t.session.sendControl({ type: 'key', key: 'home' })
+    expect(t.control.send).not.toHaveBeenCalled()
+  })
 })

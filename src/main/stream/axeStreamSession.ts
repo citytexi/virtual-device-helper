@@ -39,16 +39,31 @@ export function createAxeStreamSession(deps: AxeStreamSessionDeps, handlers: Str
   let ended = false
   // 스트림이 에러를 알린 뒤 close가 따라온다. 그 에러를 종료 원인으로 쓴다.
   let streamError: DeviceError | null = null
+  let startFailed = false
+  let streamClosed = false
+
+  function closeStream(): void {
+    if (streamClosed) return
+    streamClosed = true
+    stream?.close()
+  }
+  // 진행 중인 start()를 즉시 실패시키는 핸들. 타이머 정리까지 함께 한다.
   let failStart: ((error: DeviceError) => void) | null = null
 
+  /** start() 도중 close()가 불려서 그만둘 때 던지는 에러. scrcpySession과 같은 kind다. */
+  function closedWhileStarting(): DeviceError {
+    return deviceError('command_failed', '세션이 시작 중에 닫혔다', '다시 연결해라', { serial: deps.udid })
+  }
+
   function onFrame(jpeg: Uint8Array, resolveStart: () => void): void {
-    if (closed) return
+    // 닫혔거나 시작에 실패한 뒤에 늦게 온 프레임은 무시한다.
+    if (closed || startFailed) return
     const dim = jpegSize(jpeg)
     // 크기를 못 읽는 프레임은 버린다. 크기를 모르면 입력 좌표를 만들 수 없다.
     if (!dim) return
     if (!size || size.width !== dim.width || size.height !== dim.height) {
       size = dim
-      handlers.onSession({ ...dim, codec: 'jpeg', keys: IOS_KEYS })
+      handlers.onSession({ ...dim, codec: 'jpeg', keys: [...IOS_KEYS] })
     }
     if (!started) {
       started = true
@@ -73,6 +88,7 @@ export function createAxeStreamSession(deps: AxeStreamSessionDeps, handlers: Str
     serial: deps.udid,
 
     start() {
+      if (closed) return Promise.reject(closedWhileStarting())
       return new Promise<void>((resolve, reject) => {
         let settled = false
         const timer = setTimer(() => {
@@ -88,8 +104,9 @@ export function createAxeStreamSession(deps: AxeStreamSessionDeps, handlers: Str
         function fail(error: DeviceError): void {
           if (settled) return
           settled = true
+          startFailed = true
           clearTimer(timer)
-          stream?.close()
+          closeStream()
           reject(error)
         }
         failStart = fail
@@ -118,7 +135,8 @@ export function createAxeStreamSession(deps: AxeStreamSessionDeps, handlers: Str
     async close() {
       if (closed) return
       closed = true
-      stream?.close()
+      failStart?.(closedWhileStarting())
+      closeStream()
       deps.control.close()
     }
   }
