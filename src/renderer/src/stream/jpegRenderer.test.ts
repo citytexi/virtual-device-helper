@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createJpegRenderer } from './jpegRenderer'
+import { createJpegRenderer, MAX_CONSECUTIVE_FAILURES } from './jpegRenderer'
 
 function bitmap(name: string): ImageBitmap {
   return { name, close: vi.fn() } as unknown as ImageBitmap
@@ -26,7 +26,7 @@ describe('createJpegRenderer', () => {
       return d.promise
     })
     const draw = vi.fn()
-    const renderer = createJpegRenderer({ decode, draw })
+    const renderer = createJpegRenderer({ decode, draw, onError: vi.fn() })
 
     renderer.push(new Uint8Array([1]))
     renderer.push(new Uint8Array([2]))
@@ -50,7 +50,7 @@ describe('createJpegRenderer', () => {
   it('close() 뒤에 끝난 decode는 그리지 않고 bitmap을 닫는다', async () => {
     const d = deferred<ImageBitmap>()
     const draw = vi.fn()
-    const renderer = createJpegRenderer({ decode: () => d.promise, draw })
+    const renderer = createJpegRenderer({ decode: () => d.promise, draw, onError: vi.fn() })
 
     renderer.push(new Uint8Array([1]))
     renderer.close()
@@ -64,7 +64,7 @@ describe('createJpegRenderer', () => {
 
   it('close() 뒤 push는 무시한다', () => {
     const decode = vi.fn(async () => bitmap('x'))
-    const renderer = createJpegRenderer({ decode, draw: vi.fn() })
+    const renderer = createJpegRenderer({ decode, draw: vi.fn(), onError: vi.fn() })
 
     renderer.close()
     renderer.push(new Uint8Array([1]))
@@ -76,7 +76,7 @@ describe('createJpegRenderer', () => {
     const first = deferred<ImageBitmap>()
     const decode = vi.fn((jpeg: Uint8Array) => (jpeg[0] === 1 ? first.promise : Promise.resolve(bitmap('ok'))))
     const draw = vi.fn()
-    const renderer = createJpegRenderer({ decode, draw })
+    const renderer = createJpegRenderer({ decode, draw, onError: vi.fn() })
 
     renderer.push(new Uint8Array([1]))
     renderer.push(new Uint8Array([2]))
@@ -84,5 +84,65 @@ describe('createJpegRenderer', () => {
     await flush()
 
     expect(draw).toHaveBeenCalledTimes(1)
+  })
+
+  describe('연속 실패', () => {
+    /** 프레임을 한 장씩 기다려 가며 넣는다. decode 결과는 frames의 순서대로 정해진다. */
+    async function feed(outcomes: Array<'ok' | 'fail' | 'drawThrows'>) {
+      const bitmaps: ImageBitmap[] = []
+      let i = 0
+      const decode = vi.fn(async () => {
+        const outcome = outcomes[i++]
+        if (outcome === 'fail') throw new Error('깨진 JPEG')
+        const b = bitmap(`b${i}`)
+        bitmaps.push(b)
+        return b
+      })
+      let drawIndex = 0
+      const draw = vi.fn(() => {
+        drawIndex += 1
+        if (outcomes[drawIndex - 1] === 'drawThrows') throw new Error('draw 실패')
+      })
+      const onError = vi.fn()
+      const renderer = createJpegRenderer({ decode, draw, onError })
+      return { renderer, decode, draw, onError, bitmaps }
+    }
+
+    async function pushAll(renderer: { push(j: Uint8Array): void }, count: number) {
+      for (let n = 0; n < count; n++) {
+        renderer.push(new Uint8Array([n]))
+        await flush()
+      }
+    }
+
+    it('실패한 decode의 bitmap은 그리지 않고 다음 프레임은 처리한다', async () => {
+      const f = await feed(['fail', 'ok'])
+      await pushAll(f.renderer, 2)
+      expect(f.draw).toHaveBeenCalledTimes(1)
+      expect(f.onError).not.toHaveBeenCalled()
+    })
+
+    it('연속 10번 실패하면 onError를 한 번 부르고 그 뒤로는 아무것도 그리지 않는다', async () => {
+      const f = await feed([...Array(MAX_CONSECUTIVE_FAILURES).fill('fail'), 'ok', 'ok'])
+      await pushAll(f.renderer, MAX_CONSECUTIVE_FAILURES + 2)
+      expect(f.onError).toHaveBeenCalledTimes(1)
+      expect(f.onError.mock.calls[0]?.[0]).toBeInstanceOf(Error)
+      expect(f.draw).not.toHaveBeenCalled()
+    })
+
+    it('중간에 성공이 끼면 연속 횟수가 처음부터 다시 센다', async () => {
+      const failures = Array(MAX_CONSECUTIVE_FAILURES - 1).fill('fail')
+      const f = await feed([...failures, 'ok', ...failures, 'ok'])
+      await pushAll(f.renderer, failures.length * 2 + 2)
+      expect(f.onError).not.toHaveBeenCalled()
+      expect(f.draw).toHaveBeenCalledTimes(2)
+    })
+
+    it('draw가 던져도 같은 방식으로 세고 bitmap은 닫는다', async () => {
+      const f = await feed(Array(MAX_CONSECUTIVE_FAILURES).fill('drawThrows'))
+      await pushAll(f.renderer, MAX_CONSECUTIVE_FAILURES)
+      expect(f.onError).toHaveBeenCalledTimes(1)
+      for (const b of f.bitmaps) expect(b.close).toHaveBeenCalled()
+    })
   })
 })

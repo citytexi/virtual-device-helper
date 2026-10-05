@@ -4,7 +4,12 @@ export interface JpegRendererDeps {
   decode(jpeg: Uint8Array): Promise<ImageBitmap>
   /** 캔버스에 그리고 bitmap.close()를 부른다. */
   draw(bitmap: ImageBitmap): void
+  /** 연속 실패가 한도에 닿아 포기할 때 한 번 불린다. 이후 renderer는 아무것도 그리지 않는다. */
+  onError(error: Error): void
 }
+
+/** 연속 decode/draw 실패 한도. 한 장 깨진 것은 건너뛰지만 계속 깨지면 사람이 알아야 한다. */
+export const MAX_CONSECUTIVE_FAILURES = 10
 
 export interface JpegRenderer {
   push(jpeg: Uint8Array): void
@@ -25,6 +30,7 @@ export function createJpegRenderer(deps: JpegRendererDeps): JpegRenderer {
   let closed = false
   let busy = false
   let latest: Uint8Array | null = null
+  let failures = 0
 
   async function run(first: Uint8Array): Promise<void> {
     busy = true
@@ -34,9 +40,24 @@ export function createJpegRenderer(deps: JpegRendererDeps): JpegRenderer {
       try {
         const bitmap = await deps.decode(next)
         if (closed) bitmap.close()
-        else deps.draw(bitmap)
-      } catch {
-        // 깨진 JPEG 한 장은 건너뛴다. 다음 프레임이 곧 온다.
+        else {
+          try {
+            deps.draw(bitmap)
+          } catch (error) {
+            // draw가 bitmap을 닫기 전에 던졌을 수 있다 — 두 번 닫아도 무해하다.
+            bitmap.close()
+            throw error
+          }
+        }
+        failures = 0
+      } catch (error) {
+        // 깨진 한 장은 건너뛴다. 연속으로 한도만큼 깨지면 포기하고 알린다.
+        failures += 1
+        if (failures >= MAX_CONSECUTIVE_FAILURES && !closed) {
+          closed = true
+          latest = null
+          deps.onError(error instanceof Error ? error : new Error(String(error)))
+        }
       }
       next = latest
     }

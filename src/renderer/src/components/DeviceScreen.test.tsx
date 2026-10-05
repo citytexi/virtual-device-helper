@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MainEvent, RendererApi } from '../../../shared/types/ipc'
@@ -116,6 +116,14 @@ describe('DeviceScreen', () => {
     expect(screen.queryByRole('button', { name: '최근 앱' })).toBeNull()
     expect(screen.getByRole('button', { name: '홈' })).toBeDefined()
     expect(screen.getByRole('button', { name: '전원' })).toBeDefined()
+  })
+
+  it('첫 session 전(keys가 빈 배열)에는 툴바에 키 버튼이 없다', () => {
+    streamWith({ state: 'connecting' }, null, [])
+
+    render(<DeviceScreen serial="emulator-5554" />)
+
+    expect(within(screen.getByRole('toolbar', { name: '기기 버튼' })).queryAllByRole('button')).toHaveLength(0)
   })
 
   it('disables the toolbar until the stream is live', () => {
