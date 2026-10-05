@@ -8,7 +8,7 @@ import { IOS_KEY_ARGS } from './iosKeys'
 const TAP_SLOP_POINTS = 10
 const MIN_SWIPE_SECONDS = 0.05
 const SCROLL_SECONDS = 0.1
-/** scroll 한 번의 이동 거리: displayFrame.height × 이 비율 × clamp(scroll, -1, 1). */
+/** scroll 한 번의 이동 거리: 세로는 displayFrame.height, 가로는 width × 이 비율 × clamp(scroll, -1, 1). */
 const SCROLL_DISTANCE_RATIO = 0.15
 
 type Video = { width: number; height: number }
@@ -23,6 +23,15 @@ export interface AxeControlDeps {
   now?: () => number
   /** 기본은 console.error */
   onError?: (error: DeviceError) => void
+}
+
+/** 줄에서 아직 시작하지 않은 scroll. 뒤에 온 scroll이 여기에 합쳐진다. */
+interface WaitingScroll {
+  point: VideoPoint
+  video: Video
+  hScroll: number
+  vScroll: number
+  started: boolean
 }
 
 interface Gesture {
@@ -60,15 +69,24 @@ export function createAxeControl(deps: AxeControlDeps): {
   let closed = false
   let gesture: Gesture | null = null
   let chain: Promise<void> = Promise.resolve()
+  // 줄의 마지막 항목. 대기 중인 scroll이 마지막일 때만 새 scroll을 합친다.
+  let tail: object | null = null
+  let waitingScroll: WaitingScroll | null = null
 
   /** 앞 작업이 끝나면 돈다. close 뒤에는 시작하지 않고, 실패는 onError로 보내 줄을 끊지 않는다. */
-  function enqueue(task: () => Promise<void>): void {
+  function enqueue(task: () => Promise<void>, token: object = {}): void {
+    tail = token
     chain = chain.then(async () => {
       if (closed) return
       try {
         await task()
       } catch (thrown) {
-        if (!closed) onError(toDeviceError(thrown))
+        if (closed) return
+        try {
+          onError(toDeviceError(thrown))
+        } catch {
+          // onError가 던져도 줄은 계속 간다.
+        }
       }
     })
   }
@@ -83,8 +101,12 @@ export function createAxeControl(deps: AxeControlDeps): {
     return frame
   }
 
+  /** 비디오 좌표를 point로 바꾸고 화면 안으로 자른다. */
   function toPoints(p: VideoPoint, video: Video, frame: DisplayFrame): { x: number; y: number } {
-    return { x: (p.x * frame.width) / video.width, y: (p.y * frame.height) / video.height }
+    return {
+      x: clamp((p.x * frame.width) / video.width, 0, frame.width),
+      y: clamp((p.y * frame.height) / video.height, 0, frame.height)
+    }
   }
 
   function finishGesture(g: Gesture): void {
@@ -120,19 +142,35 @@ export function createAxeControl(deps: AxeControlDeps): {
 
   function scroll(intent: Extract<ControlIntent, { type: 'scroll' }>, video: Video): void {
     if (!validVideo(video)) return
+    // 휠은 초당 수십 번 오는데 AXe 호출은 느리다. 대기 중인 scroll이 줄의 끝이면 거기에 합친다.
+    if (waitingScroll && !waitingScroll.started && tail === waitingScroll) {
+      waitingScroll.point = intent.point
+      waitingScroll.video = video
+      waitingScroll.hScroll += intent.hScroll
+      waitingScroll.vScroll += intent.vScroll
+      return
+    }
+    const entry: WaitingScroll = {
+      point: intent.point,
+      video,
+      hScroll: intent.hScroll,
+      vScroll: intent.vScroll,
+      started: false
+    }
+    waitingScroll = entry
     enqueue(async () => {
-      const frame = await frameFor(video)
+      entry.started = true
+      const frame = await frameFor(entry.video)
       if (!frame) return
-      const a = toPoints(intent.point, video, frame)
-      const dist = frame.height * SCROLL_DISTANCE_RATIO
-      // Android 축 의미: vScroll > 0은 위로 스크롤, 곧 손가락이 아래로 간다. hScroll > 0은 손가락이 오른쪽으로 간다.
+      const a = toPoints(entry.point, entry.video, frame)
+      // 양수는 Android 축 의미(뷰포트가 오른쪽·위로)라 내용을 쥔 손가락은 왼쪽·아래로 간다.
       const b = {
-        x: clamp(a.x + dist * clamp(intent.hScroll, -1, 1), 0, frame.width),
-        y: clamp(a.y + dist * clamp(intent.vScroll, -1, 1), 0, frame.height)
+        x: clamp(a.x - frame.width * SCROLL_DISTANCE_RATIO * clamp(entry.hScroll, -1, 1), 0, frame.width),
+        y: clamp(a.y + frame.height * SCROLL_DISTANCE_RATIO * clamp(entry.vScroll, -1, 1), 0, frame.height)
       }
       if (b.x === a.x && b.y === a.y) return
       await exec(swipeArgs(a, b, SCROLL_SECONDS))
-    })
+    }, entry)
   }
 
   function touch(intent: Extract<ControlIntent, { type: 'touch' }>, video: Video): void {

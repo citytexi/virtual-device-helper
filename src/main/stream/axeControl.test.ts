@@ -240,6 +240,161 @@ describe('createAxeControl', () => {
     expect(axe.calls).toEqual([{ args: ['key', '40'] }])
   })
 
+  it('hScroll 1은 손가락이 왼쪽으로 가고 거리는 width의 0.15다', async () => {
+    const key = 'swipe --start-x 200 --start-y 200 --end-x 140 --end-y 200 --duration 0.1'
+    const { axe, control } = setup({ handlers: { [key]: execOk() } })
+    control.send({ type: 'scroll', point: pt(100, 100), hScroll: 1, vScroll: 0 }, VIDEO)
+    await flush()
+    expect(axe.calls.map((c) => c.args.join(' '))).toEqual([key])
+  })
+
+  it('hScroll -1은 손가락이 오른쪽으로 간다', async () => {
+    const key = 'swipe --start-x 200 --start-y 200 --end-x 260 --end-y 200 --duration 0.1'
+    const { axe, control } = setup({ handlers: { [key]: execOk() } })
+    control.send({ type: 'scroll', point: pt(100, 100), hScroll: -1, vScroll: 0 }, VIDEO)
+    await flush()
+    expect(axe.calls.map((c) => c.args.join(' '))).toEqual([key])
+  })
+
+  it('scroll 끝점은 화면 안으로 자른다', async () => {
+    const key = 'swipe --start-x 100 --start-y 790 --end-x 100 --end-y 800 --duration 0.1'
+    const { axe, control } = setup({ handlers: { [key]: execOk() } })
+    control.send({ type: 'scroll', point: pt(50, 395), hScroll: 0, vScroll: 1 }, VIDEO)
+    await flush()
+    expect(axe.calls.map((c) => c.args.join(' '))).toEqual([key])
+  })
+
+  it('느린 호출 중 몰린 scroll은 합쳐서 swipe 한 번이고 합은 [-1, 1]로 자른다', async () => {
+    const { axe, calls, resolvers } = deferredAxe()
+    const displayFrame = vi.fn(async () => FRAME)
+    const control = createAxeControl({ udid: 'U', axe, displayFrame, inputText: async () => {} })
+    control.send({ type: 'key', key: 'enter' }, VIDEO)
+    await flush()
+    for (let i = 0; i < 10; i++) {
+      control.send({ type: 'scroll', point: pt(50, 100 + i), hScroll: 0, vScroll: 0.3 }, VIDEO)
+    }
+    resolvers[0]?.()
+    await flush()
+    resolvers[1]?.()
+    await flush()
+    expect(calls).toHaveLength(2)
+    // 마지막 point(50, 109) -> (100, 218), 합 3은 1로 잘려 y + 120
+    expect(calls[1]).toEqual(['swipe', '--start-x', '100', '--start-y', '218', '--end-x', '100', '--end-y', '338', '--duration', '0.1'])
+    // key 뒤에 선 scroll 하나만 displayFrame을 부른다
+    expect(displayFrame).toHaveBeenCalledTimes(1)
+  })
+
+  it('이미 시작한 scroll에는 합치지 않고 새 scroll이 대기 항목이 된다', async () => {
+    const { axe, calls, resolvers } = deferredAxe()
+    const control = createAxeControl({ udid: 'U', axe, displayFrame: async () => FRAME, inputText: async () => {} })
+    control.send({ type: 'scroll', point: pt(50, 100), hScroll: 0, vScroll: 0.5 }, VIDEO)
+    await flush()
+    control.send({ type: 'scroll', point: pt(50, 100), hScroll: 0, vScroll: 0.5 }, VIDEO)
+    control.send({ type: 'scroll', point: pt(50, 100), hScroll: 0, vScroll: 0.25 }, VIDEO)
+    resolvers[0]?.()
+    await flush()
+    resolvers[1]?.()
+    await flush()
+    expect(calls).toHaveLength(2)
+    expect(calls[0]?.[8]).toBe('260') // 200 + 60
+    expect(calls[1]?.[8]).toBe('290') // 200 + 90 (0.75)
+  })
+
+  it('scroll, tap, scroll은 세 호출이고 순서가 보존된다', async () => {
+    const { axe, calls, resolvers } = deferredAxe()
+    const control = createAxeControl({ udid: 'U', axe, displayFrame: async () => FRAME, inputText: async () => {} })
+    control.send({ type: 'key', key: 'enter' }, VIDEO)
+    control.send({ type: 'scroll', point: pt(50, 100), hScroll: 0, vScroll: 1 }, VIDEO)
+    control.send(touch('down', 10, 10), VIDEO)
+    control.send(touch('up', 10, 10), VIDEO)
+    control.send({ type: 'scroll', point: pt(50, 100), hScroll: 0, vScroll: 1 }, VIDEO)
+    await flush()
+    for (let i = 0; i < 4; i++) {
+      resolvers[i]?.()
+      await flush()
+    }
+    expect(calls.map((c) => c[0])).toEqual(['key', 'swipe', 'tap', 'swipe'])
+  })
+
+  it('화면 밖 up은 화면 안으로 잘라 swipe한다', async () => {
+    const key = 'swipe --start-x 200 --start-y 400 --end-x 400 --end-y 800 --duration 0.05'
+    const { axe, control } = setup({ handlers: { [key]: execOk() }, now: () => 1 })
+    control.send(touch('down', 100, 200), VIDEO)
+    control.send(touch('up', 250, 450), VIDEO)
+    await flush()
+    expect(axe.calls.map((c) => c.args.join(' '))).toEqual([key])
+  })
+
+  it('새 down은 끝나지 않은 앞 제스처를 대체한다', async () => {
+    const { axe, control } = setup({ handlers: { 'tap -x 60 -y 60': execOk() } })
+    control.send(touch('down', 5, 5), VIDEO)
+    control.send(touch('down', 30, 30), VIDEO)
+    control.send(touch('up', 30, 30), VIDEO)
+    await flush()
+    expect(axe.calls).toEqual([{ args: ['tap', '-x', '60', '-y', '60'] }])
+  })
+
+  it('displayFrame이 크기 0을 주면 제스처를 버린다', async () => {
+    const axe = fakeAxe({})
+    const control = createAxeControl({
+      udid: 'U',
+      axe,
+      displayFrame: async () => ({ width: 0, height: 0 }),
+      inputText: async () => {}
+    })
+    control.send(touch('down', 5, 5), VIDEO)
+    control.send(touch('up', 5, 5), VIDEO)
+    await flush()
+    expect(axe.calls).toEqual([])
+  })
+
+  it('onError가 던져도 줄이 죽지 않는다', async () => {
+    const axe = fakeAxe({ 'key 40': new Error('boom'), 'key 42': execOk() })
+    const control = createAxeControl({
+      udid: 'U',
+      axe,
+      displayFrame: async () => FRAME,
+      inputText: async () => {},
+      onError: () => {
+        throw new Error('onError 실패')
+      }
+    })
+    control.send({ type: 'key', key: 'enter' }, VIDEO)
+    control.send({ type: 'key', key: 'backspace' }, VIDEO)
+    await flush()
+    expect(axe.calls.map((c) => c.args.join(' '))).toEqual(['key 40', 'key 42'])
+  })
+
+  it('호출이 도는 중 close하면 뒤 작업은 안 돌고 onError도 부르지 않는다', async () => {
+    const calls: string[][] = []
+    let reject: (e: Error) => void = () => {}
+    const axe: AxeClient = {
+      exec: vi.fn((_u: string, args: string[]) => {
+        calls.push(args)
+        return new Promise<ExecResult>((_r, rej) => {
+          reject = rej
+        })
+      }),
+      stream: vi.fn()
+    }
+    const errors: DeviceError[] = []
+    const control = createAxeControl({
+      udid: 'U',
+      axe,
+      displayFrame: async () => FRAME,
+      inputText: async () => {},
+      onError: (e) => errors.push(e)
+    })
+    control.send({ type: 'key', key: 'enter' }, VIDEO)
+    control.send({ type: 'key', key: 'backspace' }, VIDEO)
+    await flush()
+    control.close()
+    reject(new Error('late'))
+    await flush()
+    expect(calls).toHaveLength(1)
+    expect(errors).toEqual([])
+  })
+
   it('close 뒤의 send와 대기 중이던 작업, 진행 중 제스처를 버린다', async () => {
     const { axe, calls, resolvers } = deferredAxe()
     const inputText = vi.fn(async () => {})
