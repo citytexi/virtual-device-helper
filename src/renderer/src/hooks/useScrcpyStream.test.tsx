@@ -57,11 +57,12 @@ describe('useScrcpyStream', () => {
 
     h.deliverPort('emulator-5554', port)
     h.deliver(port, { type: 'status', status: { state: 'streaming' } })
-    h.deliver(port, { type: 'session', width: 472, height: 1024 })
+    h.deliver(port, { type: 'session', width: 472, height: 1024, codec: 'h264', keys: ['home', 'back'] })
     h.deliver(port, { type: 'packet', config: true, key: false, ptsUs: null, data: new Uint8Array([1]) })
 
     expect(result.current.status).toEqual({ state: 'streaming' })
     expect(result.current.video).toEqual({ width: 472, height: 1024 })
+    expect(result.current.keys).toEqual(['home', 'back'])
     expect(h.decoders[0]?.push).toHaveBeenCalledTimes(1)
   })
 

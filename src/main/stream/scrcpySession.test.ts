@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { AdbClient, AdbStream, ExecResult } from '../adb/adbClient'
 import { deviceError, isDeviceError } from '../../shared/types/errors'
+import { DEVICE_KEYS } from '../../shared/types/stream'
 import { createScrcpySession, DEVICE_JAR_PATH, serverArgs } from './scrcpySession'
 
 const FIXTURE = readFileSync(join(__dirname, '__fixtures__', 'scrcpy-v4.1-first-chunks.bin'))
@@ -113,7 +114,7 @@ function harness(sockets: FakeSocket[], overrides: { exec?: AdbClient['exec']; c
   const sleep = vi.fn(async (ms: number) => {
     clock += ms
   })
-  const handlers = { onSession: vi.fn(), onPacket: vi.fn(), onEnded: vi.fn() }
+  const handlers = { onSession: vi.fn(), onPacket: vi.fn(), onFrame: vi.fn(), onEnded: vi.fn() }
   const session = createScrcpySession(
     {
       serial: 'emulator-5554',
@@ -169,7 +170,7 @@ describe('createScrcpySession', () => {
     ])
     expect(h.adb.stream).toHaveBeenCalledWith('emulator-5554', serverArgs(0x1234abcd))
     expect(h.connect.mock.calls).toEqual([[27183], [27183]])
-    expect(h.handlers.onSession).toHaveBeenCalledWith(472, 1024)
+    expect(h.handlers.onSession).toHaveBeenCalledWith({ width: 472, height: 1024, codec: 'h264', keys: [...DEVICE_KEYS] })
   })
 
   it('relays packets that arrive after start', async () => {

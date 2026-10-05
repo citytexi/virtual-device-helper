@@ -16,7 +16,7 @@ const captureScreenshot = vi.fn(async () => ({ ok: true, value: { base64: 'QUJD'
 const eventListeners: Array<(event: MainEvent) => void> = []
 
 function streamWith(status: SessionStatus, video: ScrcpyStream['video'] = { width: 472, height: 1024 }): void {
-  vi.mocked(useScrcpyStream).mockReturnValue({ status, video, send, reconnect })
+  vi.mocked(useScrcpyStream).mockReturnValue({ status, video, keys: [], send, reconnect })
 }
 
 // jsdom은 레이아웃을 하지 않는다. 캔버스가 비디오의 절반 크기로 딱 맞게 그려졌다고 둔다.

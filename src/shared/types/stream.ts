@@ -67,8 +67,10 @@ export type SessionStatus =
 /** main → renderer 포트 메시지 */
 export type StreamDown =
   | { type: 'status'; status: SessionStatus }
-  | { type: 'session'; width: number; height: number }
+  | { type: 'session'; width: number; height: number; codec: 'h264' | 'jpeg'; keys: DeviceKey[] }
   | { type: 'packet'; config: boolean; key: boolean; ptsUs: number | null; data: Uint8Array }
+  /** jpeg 세션의 화면 한 장. 이미지 한 장이 메시지 하나다. */
+  | { type: 'frame'; data: Uint8Array }
 
 /** renderer → main 포트 메시지 */
 export type StreamUp = ControlIntent

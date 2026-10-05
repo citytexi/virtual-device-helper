@@ -8,7 +8,7 @@ import {
   type StreamPortMeta,
   type VideoPoint
 } from '../../shared/types/stream'
-import type { ScrcpySession, SessionHandlers } from './scrcpySession'
+import type { StreamSession, StreamSessionHandlers } from './streamSession'
 import { INJECT_TEXT_MAX_BYTES } from './scrcpyProtocol'
 
 export const RECONNECT_DELAYS_MS = [1000, 2000, 4000] as const
@@ -24,7 +24,7 @@ export interface PortLike {
 }
 
 export interface StreamManagerDeps {
-  createSession(serial: string, handlers: SessionHandlers): ScrcpySession
+  createSession(serial: string, handlers: StreamSessionHandlers): StreamSession
   /** remote는 renderer로 건넬 반대쪽 포트다. 매니저는 그 내용을 모른다. */
   createChannel(): { local: PortLike; remote: unknown }
   postPort(meta: StreamPortMeta, remote: unknown): void
@@ -53,7 +53,7 @@ interface Entry {
   sessionId: string
   port: PortLike
   /** 시작 중인 세션도 여기 붙는다. 그래야 closeEntry가 시작을 중단시킬 수 있다. */
-  session: ScrcpySession | null
+  session: StreamSession | null
   /** onState로 마지막에 알린 상태. 한 번도 알리지 않았으면 null이다. */
   reported: StreamLifecycle | null
 }
@@ -167,11 +167,13 @@ export function createStreamManager(deps: StreamManagerDeps): StreamManager {
     await closeEntry(entry)
   }
 
-  function handlersFor(entry: Entry): SessionHandlers {
+  function handlersFor(entry: Entry): StreamSessionHandlers {
     return {
-      onSession: (width, height) => post(entry, { type: 'session', width, height }),
+      onSession: (info) =>
+        post(entry, { type: 'session', width: info.width, height: info.height, codec: info.codec, keys: info.keys }),
       onPacket: (packet) =>
         post(entry, { type: 'packet', config: packet.config, key: packet.key, ptsUs: packet.ptsUs, data: packet.data }),
+      onFrame: (data) => post(entry, { type: 'frame', data }),
       onEnded: (error) => void recover(entry, error.toolError)
     }
   }

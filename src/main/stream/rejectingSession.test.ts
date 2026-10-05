@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { deviceError, unsupported } from '../../shared/types/errors'
 import type { StreamDown } from '../../shared/types/stream'
-import type { ScrcpySession, SessionHandlers } from './scrcpySession'
+import type { StreamSession, StreamSessionHandlers } from './streamSession'
 import { createPlatformStreamSession, rejectingSession } from './rejectingSession'
 import { createStreamManager, type PortLike } from './streamManager'
 
@@ -15,7 +15,7 @@ class FakePort implements PortLike {
   on(): void {}
 }
 
-const handlers = {} as SessionHandlers
+const handlers = {} as StreamSessionHandlers
 
 describe('rejectingSession', () => {
   it('start()는 받은 에러로 reject하고 나머지는 아무것도 하지 않는다', async () => {
@@ -51,7 +51,7 @@ describe('rejectingSession', () => {
 })
 
 describe('createPlatformStreamSession', () => {
-  const androidSession = { serial: 'emulator-5554' } as ScrcpySession
+  const androidSession = { serial: 'emulator-5554' } as StreamSession
 
   it('iOS 기기는 M4-3 전까지 unsupported로 거절하는 세션을 받는다', async () => {
     const android = vi.fn(() => androidSession)

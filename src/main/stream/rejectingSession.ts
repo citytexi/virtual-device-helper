@@ -1,15 +1,16 @@
 import type { Platform } from '../../shared/types/device'
 import { deviceError, isDeviceError, unsupported, type DeviceError } from '../../shared/types/errors'
 import type { StreamManagerDeps } from './streamManager'
+import type { StreamSession } from './streamSession'
 
 type CreateSession = StreamManagerDeps['createSession']
 
 /**
  * start()가 곧바로 error로 reject하는 세션. 스트림 매니저는 첫 start() 실패를 재시도 없이
  * failed로 알리므로, renderer는 기존 강등 경로대로 스크린샷을 보여 준다.
- * 나머지 멤버는 아무것도 하지 않는다. `StreamSession` 인터페이스로 올리는 일은 M4-3이다.
+ * 나머지 멤버는 아무것도 하지 않는다.
  */
-export function rejectingSession(error: DeviceError): ReturnType<CreateSession> {
+export function rejectingSession(error: DeviceError): StreamSession {
   return {
     // 매니저는 세션의 serial을 읽지 않는다. 이 세션은 어느 기기에도 붙지 않는다.
     serial: '',
