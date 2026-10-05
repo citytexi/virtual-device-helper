@@ -29,14 +29,21 @@ function TrackingFailureNotice({ failure }: { failure: TrackingFailure }): JSX.E
 }
 
 /**
- * 한 플랫폼만 준비됐을 때 빠진 쪽을 한 줄로 알린다. 둘 다 빠진 경우는 App이 SdkMissing으로
- * 화면을 바꾸므로 여기 오지 않는다. 기기의 platform이 아니라 조립 상태만 본다.
+ * 준비되지 않은 플랫폼마다 main이 정한 reason(과 hint)을 한 줄로 알린다. 둘 다 빠진 경우는 App이
+ * SdkMissing으로 화면을 바꾸므로 여기 오지 않는다. 문구는 main이 고르니 platform으로 나누지 않는다.
  */
 function PlatformNotice({ platforms }: { platforms: AppSnapshot['platforms'] }): JSX.Element | null {
-  const { android, ios } = platforms
-  if (!android.ok && ios.ok) return <p className="notice notice-info">Android SDK를 찾지 못해 AVD는 쓸 수 없다.</p>
-  if (android.ok && !ios.ok) return <p className="notice notice-info">{ios.reason} — iOS 시뮬레이터는 쓸 수 없다.</p>
-  return null
+  const missing = [platforms.android, platforms.ios].flatMap((status) => (status.ok ? [] : [status]))
+  if (missing.length === 0) return null
+  return (
+    <>
+      {missing.map((status) => (
+        <p key={status.reason} className="notice notice-info">
+          {status.hint === null ? status.reason : `${status.reason} — ${status.hint}`}
+        </p>
+      ))}
+    </>
+  )
 }
 
 /** 준비된 플랫폼이 덧붙인 알림(예: AXe 없음)을 한 줄씩 보인다. */
@@ -90,7 +97,7 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
       <section aria-label="기기" className="device-panel">
         <h2 className="pane-title">기기</h2>
         <PlatformNotice platforms={snapshot.platforms} />
-      <PlatformNotes platforms={snapshot.platforms} />
+        <PlatformNotes platforms={snapshot.platforms} />
         {trackingNotice}
         <p className="empty">가상 기기가 없다. Android Studio에서 AVD를 만들거나 Xcode에서 시뮬레이터를 추가하고 앱을 다시 켜라.</p>
       </section>

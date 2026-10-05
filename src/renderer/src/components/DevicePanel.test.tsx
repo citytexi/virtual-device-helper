@@ -56,7 +56,7 @@ describe('DevicePanel platform notices', () => {
     expect(note.className).toContain('notice-info')
   })
 
-  it('shows a one-line Android notice when only iOS is ready', () => {
+  it('shows the Android reason when only iOS is ready', () => {
     render(
       <DevicePanel
         snapshot={snapshot({
@@ -68,10 +68,25 @@ describe('DevicePanel platform notices', () => {
       />
     )
 
-    expect(screen.getByText('Android SDK를 찾지 못해 AVD는 쓸 수 없다.')).toBeDefined()
+    expect(screen.getByText('Android SDK를 찾지 못했다')).toBeDefined()
   })
 
-  it('shows a one-line iOS notice with the reason when only Android is ready', () => {
+  it('shows the hint main sent next to the reason of the missing platform', () => {
+    render(
+      <DevicePanel
+        snapshot={snapshot({
+          platforms: {
+            android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: [], hint: 'ANDROID_HOME을 지정해라' },
+            ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: [] }
+          }
+        })}
+      />
+    )
+
+    expect(screen.getByText(/Android SDK를 찾지 못했다/).textContent).toContain('ANDROID_HOME을 지정해라')
+  })
+
+  it('shows the iOS reason when only Android is ready', () => {
     render(
       <DevicePanel
         snapshot={snapshot({
@@ -83,7 +98,7 @@ describe('DevicePanel platform notices', () => {
       />
     )
 
-    expect(screen.getByText('macOS에서만 iOS 시뮬레이터를 쓸 수 있다 — iOS 시뮬레이터는 쓸 수 없다.')).toBeDefined()
+    expect(screen.getByText('macOS에서만 iOS 시뮬레이터를 쓸 수 있다')).toBeDefined()
   })
 
   it('shows the notice even when there are no virtual devices', () => {
@@ -99,13 +114,13 @@ describe('DevicePanel platform notices', () => {
       />
     )
 
-    expect(screen.getByText('Android SDK를 찾지 못해 AVD는 쓸 수 없다.')).toBeDefined()
+    expect(screen.getByText('Android SDK를 찾지 못했다')).toBeDefined()
   })
 
   it('shows no platform notice when both are ready', () => {
     render(<DevicePanel snapshot={snapshot()} />)
 
-    expect(screen.queryByText(/쓸 수 없다\./)).toBeNull()
+    expect(screen.queryByText(/찾지 못했다|쓸 수 있다/)).toBeNull()
   })
 })
 

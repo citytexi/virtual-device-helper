@@ -9,8 +9,11 @@ import { bootstrapApp, rendererSender, type BootstrapDeps } from './bootstrap'
 type Handler = (event: unknown, ...args: unknown[]) => unknown
 
 const missing: BootstrapDeps['located'] = { ok: false, searched: ['/opt/sdk/platform-tools/adb'] }
+const ANDROID_HINT =
+  'Android Studio를 설치하고 Device Manager에서 AVD를 만든 뒤 앱을 다시 켜라. 이미 설치돼 있다면 ANDROID_HOME 또는 ANDROID_SDK_ROOT를 SDK 경로로 지정해라'
+
 const iosMissing: BootstrapDeps['iosTools'] = { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', hostSupported: false }
-const iosNoXcode: BootstrapDeps['iosTools'] = { ok: false, reason: 'Xcode 개발자 디렉토리를 찾지 못했다', hostSupported: true }
+const iosNoXcode: BootstrapDeps['iosTools'] = { ok: false, reason: 'iOS: Xcode 개발자 디렉토리를 찾지 못했다', hostSupported: true }
 const iosReady: BootstrapDeps['iosTools'] = { ok: true, developerDir: '/Applications/Xcode.app/Contents/Developer' }
 
 function fakeStack() {
@@ -113,7 +116,7 @@ describe('bootstrapApp without any platform', () => {
 
     expect(snapshot).toEqual({
       platforms: {
-        android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/sdk/platform-tools/adb'], hint: null },
+        android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/sdk/platform-tools/adb'], hint: ANDROID_HINT },
         ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [], hint: null }
       },
       server: null,
@@ -443,6 +446,17 @@ describe('bootstrapApp with an SDK', () => {
   })
 })
 
+describe('bootstrapApp Android hint', () => {
+  it('sends the Android Studio / ANDROID_HOME guidance when the SDK is missing', async () => {
+    const h = harness({ located: missing, iosTools: iosReady })
+
+    await bootstrapApp(h.deps)
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(snapshot.platforms.android).toMatchObject({ ok: false, hint: ANDROID_HINT })
+  })
+})
+
 describe('bootstrapApp iOS hint', () => {
   it('gives no hint when the host is not macOS', async () => {
     const h = harness({ located: missing, iosTools: iosMissing })
@@ -461,7 +475,7 @@ describe('bootstrapApp iOS hint', () => {
 
     expect(snapshot.platforms.ios).toEqual({
       ok: false,
-      reason: 'Xcode 개발자 디렉토리를 찾지 못했다',
+      reason: 'iOS: Xcode 개발자 디렉토리를 찾지 못했다',
       searched: [],
       hint: 'Xcode를 설치하고 xcode-select -s로 개발자 디렉토리를 정해라'
     })
@@ -481,7 +495,7 @@ describe('bootstrapApp with only iOS', () => {
       ok: false,
       reason: 'Android SDK를 찾지 못했다',
       searched: ['/opt/sdk/platform-tools/adb'],
-      hint: null
+      hint: ANDROID_HINT
     })
     expect(snapshot.platforms.ios).toEqual({ ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: [] })
   })

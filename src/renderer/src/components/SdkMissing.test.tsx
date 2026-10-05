@@ -7,19 +7,29 @@ import { SdkMissing } from './SdkMissing'
 function missing(
   searched: string[],
   iosReason = 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다',
-  iosHint: string | null = null
+  iosHint: string | null = null,
+  androidHint: string | null = null
 ): AppSnapshot['platforms'] {
   return {
-    android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched, hint: null },
+    android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched, hint: androidHint },
     ios: { ok: false, reason: iosReason, searched: [], hint: iosHint }
   }
 }
 
 describe('SdkMissing', () => {
-  it('says what to install', () => {
+  it('shows the Android reason and the hint main sent', () => {
+    const hint = 'Android Studio를 설치하고 Device Manager에서 AVD를 만든 뒤 앱을 다시 켜라'
+    render(<SdkMissing platforms={missing(['/opt/sdk/platform-tools/adb'], undefined, null, hint)} />)
+
+    expect(screen.getByText('Android SDK를 찾지 못했다')).toBeDefined()
+    expect(screen.getByText(hint)).toBeDefined()
+  })
+
+  it('does not show Android Studio guidance when main sent no Android hint', () => {
     render(<SdkMissing platforms={missing(['/opt/sdk/platform-tools/adb'])} />)
 
-    expect(screen.getByText(/Android Studio/)).toBeDefined()
+    expect(screen.queryByText(/Android Studio/)).toBeNull()
+    expect(screen.queryByText(/ANDROID_HOME/)).toBeNull()
   })
 
   it('lists every path it looked at so the user can see why it failed', () => {
@@ -29,17 +39,10 @@ describe('SdkMissing', () => {
     expect(screen.getByText('/opt/b/adb')).toBeDefined()
   })
 
-  it('names the environment variables that override the search', () => {
-    render(<SdkMissing platforms={missing([])} />)
-
-    expect(screen.getByText(/ANDROID_HOME/)).toBeDefined()
-  })
-
-  it('shows the iOS reason and the hint main sent next to the Android guidance', () => {
+  it('shows the iOS reason and the hint main sent ', () => {
     const hint = 'Xcode를 설치하고 xcode-select -s로 개발자 디렉토리를 정해라'
     render(<SdkMissing platforms={missing(['/opt/a/adb'], 'xcrun simctl을 실행할 수 없다', hint)} />)
 
-    expect(screen.getByText(/Android Studio/)).toBeDefined()
     expect(screen.getByText('xcrun simctl을 실행할 수 없다')).toBeDefined()
     expect(screen.getByText(hint)).toBeDefined()
   })
