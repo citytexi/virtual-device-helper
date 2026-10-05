@@ -3,7 +3,7 @@ import { createConnection } from 'node:net'
 import type { AdbClient, AdbStream } from '../adb/adbClient'
 import { deviceError, isDeviceError, type DeviceError } from '../../shared/types/errors'
 import { DEVICE_KEYS, type ControlIntent } from '../../shared/types/stream'
-import { createVideoStreamParser, serializeControl, type VideoPacket } from './scrcpyProtocol'
+import { createVideoStreamParser, serializeControl } from './scrcpyProtocol'
 import { SCRCPY_SERVER_VERSION } from './scrcpyJar'
 import type { StreamSession, StreamSessionHandlers } from './streamSession'
 
