@@ -2,6 +2,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { StreamDown, StreamPortMeta } from '../../../shared/types/stream'
+import type { JpegRenderer } from '../stream/jpegRenderer'
 import type { StreamDecoder } from '../stream/streamDecoder'
 import { useScrcpyStream, type ScrcpyStreamDeps, type StreamDecoderHandlers } from './useScrcpyStream'
 
@@ -18,6 +19,7 @@ function fakePort(): FakePort {
 function harness(startResult: Awaited<ReturnType<ScrcpyStreamDeps['startStream']>> = { ok: true, value: undefined }) {
   let portCallback: ((meta: StreamPortMeta, port: MessagePort) => void) | null = null
   const decoders: Array<StreamDecoder & { push: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn>; handlers: StreamDecoderHandlers }> = []
+  const jpegRenderers: Array<JpegRenderer & { push: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn>; draw: (bitmap: ImageBitmap) => void }> = []
   const deps: ScrcpyStreamDeps = {
     startStream: vi.fn(async () => startResult),
     stopStream: vi.fn(async () => ({ ok: true as const, value: undefined })),
@@ -31,13 +33,18 @@ function harness(startResult: Awaited<ReturnType<ScrcpyStreamDeps['startStream']
       const decoder = { push: vi.fn(), close: vi.fn(), handlers }
       decoders.push(decoder)
       return decoder
+    }),
+    createJpegRenderer: vi.fn((draw) => {
+      const renderer = { push: vi.fn(), close: vi.fn(), draw }
+      jpegRenderers.push(renderer)
+      return renderer
     })
   }
   const canvasRef: { current: HTMLCanvasElement | null } = { current: null }
   const deliverPort = (serial: string, port: FakePort) =>
     act(() => portCallback?.({ serial, sessionId: 'x' }, port as unknown as MessagePort))
   const deliver = (port: FakePort, message: StreamDown) => act(() => port.onmessage?.({ data: message } as MessageEvent))
-  return { deps, canvasRef, decoders, deliverPort, deliver }
+  return { deps, canvasRef, decoders, jpegRenderers, deliverPort, deliver }
 }
 
 describe('useScrcpyStream', () => {
@@ -299,7 +306,9 @@ describe('useScrcpyStream', () => {
     } as unknown as HTMLCanvasElement
     h.canvasRef.current = canvas
     renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
-    h.deliverPort('emulator-5554', fakePort())
+    const port = fakePort()
+    h.deliverPort('emulator-5554', port)
+    h.deliver(port, { type: 'session', width: 472, height: 1024, codec: 'h264', keys: [] })
     const frame = { displayWidth: 472, displayHeight: 1024, close: vi.fn() } as unknown as VideoFrame
 
     act(() => h.decoders[0]?.handlers.onFrame(frame))
@@ -332,5 +341,110 @@ describe('useScrcpyStream', () => {
     const stopOrder = vi.mocked(h.deps.stopStream).mock.invocationCallOrder[0]
     const startBOrder = vi.mocked(h.deps.startStream).mock.invocationCallOrder[1]
     expect(stopOrder).toBeLessThan(startBOrder as number)
+  })
+
+  describe('jpeg codec', () => {
+    function canvasWith(drawImage = vi.fn()) {
+      return { width: 0, height: 0, getContext: vi.fn(() => ({ drawImage })) } as unknown as HTMLCanvasElement
+    }
+
+    it('frame 메시지를 jpeg 경로로 보내고 VideoDecoder 쪽은 쓰지 않는다', () => {
+      const h = harness()
+      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const port = fakePort()
+      h.deliverPort('sim-1', port)
+      h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: ['home'] })
+      const data = new Uint8Array([0xff, 0xd8])
+
+      h.deliver(port, { type: 'frame', data })
+
+      expect(h.jpegRenderers).toHaveLength(1)
+      expect(h.jpegRenderers[0]?.push).toHaveBeenCalledWith(data)
+      expect(h.decoders[0]?.push).not.toHaveBeenCalled()
+      expect(h.decoders[0]?.close).toHaveBeenCalled()
+    })
+
+    it('codec이 h264에서 jpeg로 바뀌면 이전 디코더를 닫는다', () => {
+      const h = harness()
+      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const port = fakePort()
+      h.deliverPort('sim-1', port)
+      h.deliver(port, { type: 'session', width: 472, height: 1024, codec: 'h264', keys: [] })
+      expect(h.decoders[0]?.close).not.toHaveBeenCalled()
+
+      h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: [] })
+
+      expect(h.decoders[0]?.close).toHaveBeenCalled()
+      expect(h.jpegRenderers).toHaveLength(1)
+    })
+
+    it('codec이 jpeg에서 h264로 바뀌면 jpeg 경로를 닫고 새 디코더를 만든다', () => {
+      const h = harness()
+      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const port = fakePort()
+      h.deliverPort('sim-1', port)
+      h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: [] })
+
+      h.deliver(port, { type: 'session', width: 472, height: 1024, codec: 'h264', keys: [] })
+
+      expect(h.jpegRenderers[0]?.close).toHaveBeenCalled()
+      expect(h.decoders).toHaveLength(2)
+    })
+
+    it('같은 codec의 session이 다시 오면 경로를 새로 만들지 않는다', () => {
+      const h = harness()
+      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const port = fakePort()
+      h.deliverPort('sim-1', port)
+      h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: [] })
+      h.deliver(port, { type: 'session', width: 1278, height: 590, codec: 'jpeg', keys: [] })
+
+      expect(h.jpegRenderers).toHaveLength(1)
+    })
+
+    it('회전해 width/height가 다른 session이 오면 캔버스 크기와 video가 따라간다', () => {
+      const h = harness()
+      const canvas = canvasWith()
+      h.canvasRef.current = canvas
+      const { result } = renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const port = fakePort()
+      h.deliverPort('sim-1', port)
+      h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: [] })
+      expect([canvas.width, canvas.height]).toEqual([590, 1278])
+
+      h.deliver(port, { type: 'session', width: 1278, height: 590, codec: 'jpeg', keys: [] })
+
+      expect([canvas.width, canvas.height]).toEqual([1278, 590])
+      expect(result.current.video).toEqual({ width: 1278, height: 590 })
+    })
+
+    it('bitmap을 캔버스(session 크기)에 맞춰 그리고 닫는다', () => {
+      const h = harness()
+      const drawImage = vi.fn()
+      const canvas = canvasWith(drawImage)
+      h.canvasRef.current = canvas
+      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const port = fakePort()
+      h.deliverPort('sim-1', port)
+      h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: [] })
+      const bitmap = { close: vi.fn() } as unknown as ImageBitmap
+
+      act(() => h.jpegRenderers[0]?.draw(bitmap))
+
+      expect(drawImage).toHaveBeenCalledWith(bitmap, 0, 0, 590, 1278)
+      expect(bitmap.close).toHaveBeenCalled()
+    })
+
+    it('unmount하면 jpeg 경로도 닫는다', () => {
+      const h = harness()
+      const { unmount } = renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const port = fakePort()
+      h.deliverPort('sim-1', port)
+      h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: [] })
+
+      unmount()
+
+      expect(h.jpegRenderers[0]?.close).toHaveBeenCalled()
+    })
   })
 })

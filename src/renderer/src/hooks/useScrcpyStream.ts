@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { Outcome } from '../../../shared/types/ipc'
 import type { ControlIntent, DeviceKey, SessionStatus, StreamDown, StreamPortMeta } from '../../../shared/types/stream'
 import type { VideoSize } from '../stream/inputMapper'
+import { createJpegRenderer, decodeJpeg, type JpegRenderer } from '../stream/jpegRenderer'
 import { createStreamDecoder, type StreamDecoder } from '../stream/streamDecoder'
 import { onStreamPort } from '../stream/streamPort'
 
@@ -16,6 +17,8 @@ export interface ScrcpyStreamDeps {
   stopStream(): Promise<Outcome<void>>
   onStreamPort(callback: (meta: StreamPortMeta, port: MessagePort) => void): () => void
   createDecoder(handlers: StreamDecoderHandlers): StreamDecoder
+  /** `session.codec`이 jpeg일 때 쓴다. draw는 bitmap을 그린 뒤 닫는 쪽이 아니라 받는 쪽이 닫는다. */
+  createJpegRenderer(draw: (bitmap: ImageBitmap) => void): JpegRenderer
 }
 
 export interface ScrcpyStream {
@@ -40,7 +43,8 @@ function browserDeps(): ScrcpyStreamDeps {
         createChunk: (init) => new EncodedVideoChunk(init),
         onFrame: handlers.onFrame,
         onError: handlers.onError
-      })
+      }),
+    createJpegRenderer: (draw) => createJpegRenderer({ decode: decodeJpeg, draw })
   }
 }
 
@@ -54,16 +58,45 @@ const NO_KEYS: DeviceKey[] = []
  */
 const MAX_DECODER_RESTARTS = 3
 
-function drawFrame(canvas: HTMLCanvasElement | null, frame: VideoFrame): void {
+/** 캔버스 크기를 맞춘다. 바뀔 때만 대입한다 — 대입은 캔버스를 지운다. */
+function sizeCanvas(canvas: HTMLCanvasElement, width: number, height: number): void {
+  if (canvas.width !== width) canvas.width = width
+  if (canvas.height !== height) canvas.height = height
+}
+
+function drawFrame(canvas: HTMLCanvasElement | null, frame: VideoFrame, size: VideoSize | null): void {
   try {
     if (!canvas) return
-    if (canvas.width !== frame.displayWidth) canvas.width = frame.displayWidth
-    if (canvas.height !== frame.displayHeight) canvas.height = frame.displayHeight
+    // 캔버스 크기는 session이 정한다. session 전에 온 프레임만 프레임 크기를 따른다.
+    sizeCanvas(canvas, size?.width ?? frame.displayWidth, size?.height ?? frame.displayHeight)
     canvas.getContext('2d')?.drawImage(frame, 0, 0)
   } finally {
     // 닫지 않으면 디코더의 프레임 풀이 말라 디코딩이 멈춘다.
     frame.close()
   }
+}
+
+/**
+ * JPEG 한 장을 session 크기의 캔버스에 맞춰 그린다. 스트림이 축소(--scale)돼 와도 입력 좌표는
+ * session의 width/height 기준이라 캔버스는 그 크기를 지킨다.
+ */
+function drawBitmap(canvas: HTMLCanvasElement | null, bitmap: ImageBitmap, size: VideoSize | null): void {
+  try {
+    if (!canvas) return
+    const width = size?.width ?? bitmap.width
+    const height = size?.height ?? bitmap.height
+    sizeCanvas(canvas, width, height)
+    canvas.getContext('2d')?.drawImage(bitmap, 0, 0, width, height)
+  } finally {
+    bitmap.close()
+  }
+}
+
+/** codec마다 하나씩 쓰는 프레임 경로. 둘 중 하나만 살아 있다. */
+interface FramePath {
+  codec: 'h264' | 'jpeg'
+  push(message: StreamDown): void
+  close(): void
 }
 
 /**
@@ -93,7 +126,9 @@ export function useScrcpyStream(
     const d = depsRef.current as ScrcpyStreamDeps
     let active = true
     let port: MessagePort | null = null
-    let decoder: StreamDecoder | null = null
+    let path: FramePath | null = null
+    // 가장 나중 session의 크기. 캔버스 크기는 두 경로 모두 이것만 따른다.
+    let size: VideoSize | null = null
     setStatus(CONNECTING)
     setVideo(null)
     setKeys(NO_KEYS)
@@ -102,38 +137,73 @@ export function useScrcpyStream(
       portRef.current = null
       port?.close()
       port = null
-      decoder?.close()
-      decoder = null
+      path?.close()
+      path = null
+    }
+
+    function h264Path(): FramePath {
+      const decoder = d.createDecoder({
+        onFrame: (frame) => {
+          // 한 프레임이라도 그렸다면 그 디코더는 살아 있는 것 — 실패 카운트를 씻는다.
+          restartCountRef.current = 0
+          drawFrame(canvasRef.current, frame, size)
+        },
+        onError: (error) => {
+          // 닫힌 경로(codec 전환·교체)의 늦은 에러는 지금 세션과 무관하다.
+          if (!active || path?.close !== close) return
+          if (restartCountRef.current >= MAX_DECODER_RESTARTS) {
+            // 한도를 넘겼다 — 더 재시작하지 않고 사람이 보게 failed로 강등한다.
+            setStatus({
+              state: 'failed',
+              error: { kind: 'command_failed', message: error.message, hint: '다시 연결해라' }
+            })
+            // main은 이 실패를 모른다 — 포트를 놓아 늦게 온 status가 failed를 덮어쓰지
+            // 못하게 하고, main에도 세션을 그만두라고 알린다.
+            release()
+            d.stopStream().catch(() => {})
+            return
+          }
+          restartCountRef.current += 1
+          setAttempt((n) => n + 1)
+        }
+      })
+      const close = (): void => decoder.close()
+      return {
+        codec: 'h264',
+        push: (message) => {
+          if (message.type === 'packet') decoder.push(message)
+        },
+        close
+      }
+    }
+
+    function jpegPath(): FramePath {
+      const renderer = d.createJpegRenderer((bitmap) => {
+        restartCountRef.current = 0
+        drawBitmap(canvasRef.current, bitmap, size)
+      })
+      return {
+        codec: 'jpeg',
+        push: (message) => {
+          if (message.type === 'frame') renderer.push(message.data)
+        },
+        close: () => renderer.close()
+      }
+    }
+
+    /** session이 알린 codec에 맞는 경로로 바꾼다. 같은 codec이면 그대로 둔다. */
+    function useCodec(codec: 'h264' | 'jpeg'): void {
+      if (path?.codec === codec) return
+      path?.close()
+      path = codec === 'jpeg' ? jpegPath() : h264Path()
     }
 
     function adopt(next: MessagePort): void {
       release()
-      let adoptedDecoder: StreamDecoder
       try {
-        adoptedDecoder = d.createDecoder({
-          onFrame: (frame) => {
-            // 한 프레임이라도 그렸다면 그 디코더는 살아 있는 것 — 실패 카운트를 씻는다.
-            restartCountRef.current = 0
-            drawFrame(canvasRef.current, frame)
-          },
-          onError: (error) => {
-            if (!active) return
-            if (restartCountRef.current >= MAX_DECODER_RESTARTS) {
-              // 한도를 넘겼다 — 더 재시작하지 않고 사람이 보게 failed로 강등한다.
-              setStatus({
-                state: 'failed',
-                error: { kind: 'command_failed', message: error.message, hint: '다시 연결해라' }
-              })
-              // main은 이 실패를 모른다 — 포트를 놓아 늦게 온 status가 failed를 덮어쓰지
-              // 못하게 하고, main에도 세션을 그만두라고 알린다.
-              release()
-              d.stopStream().catch(() => {})
-              return
-            }
-            restartCountRef.current += 1
-            setAttempt((n) => n + 1)
-          }
-        })
+        // session이 오기 전에는 codec을 모른다. 기존 동작대로 h264로 먼저 열고, session이
+        // jpeg이면 그때 바꾼다.
+        path = h264Path()
       } catch (error) {
         // createDecoder 자체가 던지면(예: 코덱 미지원) 이 포트로는 아무것도 못 한다 — 포트를
         // 닫아 흘리지 않고, main에도 세션을 그만두라 알리고, 사람이 보게 failed로 강등한다.
@@ -150,17 +220,34 @@ export function useScrcpyStream(
         return
       }
       port = next
-      decoder = adoptedDecoder
       portRef.current = next
       next.onmessage = (event: MessageEvent) => {
         if (!active || port !== next) return
         const message = event.data as StreamDown
         if (message.type === 'status') setStatus(message.status)
         else if (message.type === 'session') {
-          setVideo({ width: message.width, height: message.height })
+          size = { width: message.width, height: message.height }
+          setVideo(size)
           setKeys(message.keys)
-        }
-        else if (message.type === 'packet') adoptedDecoder.push(message)
+          // 회전으로 크기만 바뀌면 다음 프레임 그릴 때 캔버스가 새 크기를 따른다. 지금 한 번
+          // 맞춰 두면 프레임이 오기 전 입력 좌표 변환도 새 크기와 어긋나지 않는다.
+          const canvas = canvasRef.current
+          if (canvas) sizeCanvas(canvas, size.width, size.height)
+          try {
+            useCodec(message.codec)
+          } catch (error) {
+            setStatus({
+              state: 'failed',
+              error: {
+                kind: 'command_failed',
+                message: error instanceof Error ? error.message : String(error),
+                hint: '다시 연결해라'
+              }
+            })
+            release()
+            d.stopStream().catch(() => {})
+          }
+        } else path?.push(message)
       }
     }
 

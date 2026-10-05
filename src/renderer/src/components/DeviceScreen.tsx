@@ -45,7 +45,7 @@ function LiveScreen({ serial }: { serial: string }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const dragging = useRef(false)
   const stream = useScrcpyStream(serial, canvasRef)
-  const { status, video, send } = stream
+  const { status, video, keys, send } = stream
   const live = status.state === 'streaming'
   const overlayText = statusText(status)
 
@@ -145,7 +145,7 @@ function LiveScreen({ serial }: { serial: string }): JSX.Element {
       )}
 
       <div className="device-keys" role="toolbar" aria-label="기기 버튼">
-        {DEVICE_BUTTONS.map((button) => (
+        {DEVICE_BUTTONS.filter((button) => keys.includes(button.key)).map((button) => (
           <button
             key={button.key}
             type="button"

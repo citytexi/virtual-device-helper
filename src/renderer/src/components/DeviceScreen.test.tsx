@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MainEvent, RendererApi } from '../../../shared/types/ipc'
-import type { SessionStatus } from '../../../shared/types/stream'
+import { DEVICE_KEYS, type DeviceKey, type SessionStatus } from '../../../shared/types/stream'
 import type { ScrcpyStream } from '../hooks/useScrcpyStream'
 import { useScrcpyStream } from '../hooks/useScrcpyStream'
 import { DeviceScreen } from './DeviceScreen'
@@ -15,8 +15,12 @@ const reconnect = vi.fn()
 const captureScreenshot = vi.fn(async () => ({ ok: true, value: { base64: 'QUJD', width: 1, height: 1 } }))
 const eventListeners: Array<(event: MainEvent) => void> = []
 
-function streamWith(status: SessionStatus, video: ScrcpyStream['video'] = { width: 472, height: 1024 }): void {
-  vi.mocked(useScrcpyStream).mockReturnValue({ status, video, keys: [], send, reconnect })
+function streamWith(
+  status: SessionStatus,
+  video: ScrcpyStream['video'] = { width: 472, height: 1024 },
+  keys: readonly DeviceKey[] = DEVICE_KEYS
+): void {
+  vi.mocked(useScrcpyStream).mockReturnValue({ status, video, keys: [...keys], send, reconnect })
 }
 
 // jsdom은 레이아웃을 하지 않는다. 캔버스가 비디오의 절반 크기로 딱 맞게 그려졌다고 둔다.
@@ -101,6 +105,17 @@ describe('DeviceScreen', () => {
     await userEvent.click(screen.getByRole('button', { name: '홈' }))
 
     expect(send).toHaveBeenCalledWith({ type: 'key', key: 'home' })
+  })
+
+  it('세션이 준 keys에 없는 버튼은 그리지 않는다', () => {
+    streamWith({ state: 'streaming' }, { width: 590, height: 1278 }, ['home', 'power'])
+
+    render(<DeviceScreen serial="sim-1" />)
+
+    expect(screen.queryByRole('button', { name: '뒤로' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '최근 앱' })).toBeNull()
+    expect(screen.getByRole('button', { name: '홈' })).toBeDefined()
+    expect(screen.getByRole('button', { name: '전원' })).toBeDefined()
   })
 
   it('disables the toolbar until the stream is live', () => {
