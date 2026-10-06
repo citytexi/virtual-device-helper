@@ -144,11 +144,16 @@ export function DevicePanel({ snapshot }: DevicePanelProps): JSX.Element {
                 {avd.name}
               </button>
 
-              <span className="badge">{PLATFORM_LABEL[avd.platform]}</span>
+              <span className="device-badges">
+                <span className="badge">{PLATFORM_LABEL[avd.platform]}</span>
+                {isActive ? <span className="badge">(대상)</span> : null}
+              </span>
 
-              {isActive ? <span className="badge">(대상)</span> : null}
-
-              {avd.serial ? <span className="device-serial mono">{avd.serial}</span> : null}
+              {avd.serial ? (
+                <span className="device-serial mono" title={avd.serial}>
+                  {avd.serial}
+                </span>
+              ) : null}
 
               {avd.running && avd.serial ? (
                 <button

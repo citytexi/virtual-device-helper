@@ -16,6 +16,9 @@
 | [m4-1-ios-foundation](2026-09-29-m4-1-ios-foundation.md) | done | simctl·IosDevice·시뮬레이터 목록과 추적·iOS 로그·플랫폼별 조립 |
 | [m4-2-ios-input-nodes](2026-09-30-m4-2-ios-input-nodes.md) | done | axeClient·describe-ui 파서·IosDevice 입력과 노드·계약 테스트 |
 | [m4-3-ios-streaming](2026-09-30-m4-3-ios-streaming.md) | in-progress | StreamSession·MJPEG 분할·AxeStreamSession·axeControl·renderer JPEG 경로 |
+| [m5-1-device-card-badges](2026-10-06-m5-1-device-card-badges.md) | draft | 기기 카드에서 포개지는 배지를 한 묶음으로 놓는다 |
+| [m5-2-jpeg-frame-ack](2026-10-06-m5-2-jpeg-frame-ack.md) | draft | JPEG 프레임을 renderer 확인 뒤에 보낸다. 화면 하나에서 검증 |
+| [m5-3-screen-slots](2026-10-06-m5-3-screen-slots.md) | draft | 화면 칸 조정자, 칸·세대 IPC, renderer 포트 라우터, 여러 화면 |
 <!-- index:end -->
 
 ## 아카이브

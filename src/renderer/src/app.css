@@ -431,7 +431,7 @@ code {
 
 .device-row {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-1) var(--space-2);
   padding: var(--space-2) var(--space-3);
@@ -470,7 +470,7 @@ code {
   text-decoration: underline;
 }
 
-/* 1행: 점 · 이름 · 부팅/종료. 2행: 대상 배지 · 일련번호. */
+/* 1행: 점 · 이름 · 부팅/종료. 2행: 배지 묶음. 3행: 일련번호. */
 .device-row .device-action {
   grid-column: 3;
   grid-row: 1;
@@ -478,22 +478,21 @@ code {
   padding: 0 10px;
 }
 
-.device-row .badge,
-.device-row .device-serial {
+.device-badges {
   grid-row: 2;
-}
-
-.device-row .badge {
-  grid-column: 2;
-  justify-self: start;
-}
-
-.device-row .badge + .device-serial {
-  grid-column: 3;
+  grid-column: 2 / -1;
+  display: flex;
+  gap: var(--space-1);
+  min-width: 0;
 }
 
 .device-row .device-serial {
-  grid-column: 2 / 4;
+  grid-row: 3;
+  grid-column: 2 / -1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-muted);
 }
 
