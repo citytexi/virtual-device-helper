@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen } from '@testing-library/react'
+import type { JSX } from 'react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ScreenBoundary } from './ScreenBoundary'
