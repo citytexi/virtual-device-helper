@@ -26,7 +26,7 @@ export class ScreenBoundary extends Component<{ children: ReactNode }, State> {
       return (
         <div role="alert" className="screen-error">
           <p>이 화면을 그리지 못했다</p>
-          <button type="button" onClick={this.retry}>
+          <button type="button" className="btn" onClick={this.retry}>
             다시 시도
           </button>
         </div>

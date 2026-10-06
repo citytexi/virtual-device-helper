@@ -168,8 +168,12 @@ export interface RendererApi {
   bootVirtualDevice(id: string): Promise<Outcome<void>>
   shutdownDevice(serial: string): Promise<Outcome<void>>
   captureScreenshot(serial: string): Promise<Outcome<ScreenshotResult>>
-  /** 이 기기로 스트림을 연다. 이전 스트림은 main이 닫는다. 포트는 IPC_CHANNELS.streamPort로 따로 온다. */
+  /**
+   * 이 칸·세대(`ref`)의 스트림을 연다. 세대가 지금 것과 다르거나 칸이 비었으면 성공으로 끝내고 아무것도 하지 않는다.
+   * 포트는 IPC_CHANNELS.streamPort로 따로 오며 `slotId`와 `epoch` 꼬리표가 붙는다.
+   */
   startStream(ref: SlotRef): Promise<Outcome<void>>
+  /** 이 칸·세대의 스트림을 닫는다. 낡은 세대의 요청은 지금 세션을 건드리지 않고 성공으로 끝난다. */
   stopStream(ref: SlotRef): Promise<Outcome<void>>
   /** 이 기기의 로그를 연다. 이전 로그 포트는 main이 닫는다. 포트는 IPC_CHANNELS.logPort로 따로 온다. */
   openLogs(serial: string): Promise<Outcome<void>>

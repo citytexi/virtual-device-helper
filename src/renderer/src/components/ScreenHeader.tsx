@@ -13,24 +13,29 @@ export interface ScreenHeaderProps {
 export function ScreenHeader({ screen, isTarget, onMakeTarget, onReconnect, canReconnect }: ScreenHeaderProps): JSX.Element {
   return (
     <header className="screen-header">
-      <span className="screen-label">{screen.label}</span>
-      <span className="mono" title={screen.serial}>
-        {screen.serial}
+      <span className="screen-ident">
+        <span className="screen-label">{screen.label}</span>
+        <span className="screen-serial mono" title={screen.serial}>
+          {screen.serial}
+        </span>
+        {isTarget ? <span className="badge">(대상)</span> : null}
       </span>
-      {isTarget ? <span className="badge">(대상)</span> : null}
-      <button
-        type="button"
-        aria-label={`${screen.label} ${screen.serial} 대상으로`}
-        disabled={isTarget}
-        onClick={onMakeTarget}
-      >
-        대상으로
-      </button>
-      {canReconnect ? (
-        <button type="button" onClick={onReconnect}>
-          다시 연결
+      <span className="screen-actions">
+        <button
+          type="button"
+          className="btn"
+          aria-label={`${screen.label} ${screen.serial} 대상으로`}
+          disabled={isTarget}
+          onClick={onMakeTarget}
+        >
+          대상으로
         </button>
-      ) : null}
+        {canReconnect ? (
+          <button type="button" className="btn" onClick={onReconnect}>
+            다시 연결
+          </button>
+        ) : null}
+      </span>
     </header>
   )
 }
