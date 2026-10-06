@@ -56,6 +56,10 @@ interface Entry {
   session: StreamSession | null
   /** onState로 마지막에 알린 상태. 한 번도 알리지 않았으면 null이다. */
   reported: StreamLifecycle | null
+  /** jpeg 프레임을 보냈고 renderer의 frame_ack를 아직 못 받았다. */
+  awaitingAck: boolean
+  /** 확인을 기다리는 동안 들어온 가장 새 프레임. 더 새 프레임이 오면 덮어쓴다. */
+  pendingFrame: Uint8Array | null
 }
 
 const DEVICE_KEY_SET: ReadonlySet<string> = new Set(DEVICE_KEYS)
@@ -112,6 +116,11 @@ export function toControlIntent(value: unknown): ControlIntent | null {
   }
 }
 
+/** renderer가 프레임 하나를 처리했다는 확인인지. 다른 필드가 더 있어도 true다. */
+export function isFrameAck(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && (value as Record<string, unknown>).type === 'frame_ack'
+}
+
 function toToolError(thrown: unknown): ToolError {
   if (isDeviceError(thrown)) return thrown.toolError
   return {
@@ -151,6 +160,7 @@ export function createStreamManager(deps: StreamManagerDeps): StreamManager {
     // 화면이 나오고 있었거나 재시도 중이던 세션만 멈췄다고 알린다. 시작도 못 한 세션이나
     // 이미 실패로 stopped를 알린 세션은 다시 알리지 않는다.
     if (entry.reported === 'started' || entry.reported === 'reconnecting') report(entry, 'stopped')
+    entry.pendingFrame = null
     try {
       entry.port.close()
     } catch {
@@ -169,11 +179,23 @@ export function createStreamManager(deps: StreamManagerDeps): StreamManager {
 
   function handlersFor(entry: Entry): StreamSessionHandlers {
     return {
-      onSession: (info) =>
-        post(entry, { type: 'session', width: info.width, height: info.height, codec: info.codec, keys: info.keys }),
+      onSession: (info) => {
+        // 새 세션 정보가 오면 이전 확인 대기는 의미가 없다.
+        entry.awaitingAck = false
+        entry.pendingFrame = null
+        post(entry, { type: 'session', width: info.width, height: info.height, codec: info.codec, keys: info.keys })
+      },
       onPacket: (packet) =>
         post(entry, { type: 'packet', config: packet.config, key: packet.key, ptsUs: packet.ptsUs, data: packet.data }),
-      onFrame: (data) => post(entry, { type: 'frame', data }),
+      onFrame: (data) => {
+        if (current !== entry) return
+        if (entry.awaitingAck) {
+          entry.pendingFrame = data
+          return
+        }
+        entry.awaitingAck = true
+        post(entry, { type: 'frame', data })
+      },
       onEnded: (error) => void recover(entry, error.toolError)
     }
   }
@@ -202,6 +224,9 @@ export function createStreamManager(deps: StreamManagerDeps): StreamManager {
 
   async function recover(entry: Entry, reason: ToolError): Promise<void> {
     if (current !== entry) return
+    // 재연결을 기다리는 동안 늦게 온 확인이 죽은 세션의 대기 장을 내보내지 않게 한다.
+    entry.awaitingAck = false
+    entry.pendingFrame = null
     const ended = entry.session
     entry.session = null
     await ended?.close()
@@ -233,7 +258,7 @@ export function createStreamManager(deps: StreamManagerDeps): StreamManager {
       // 더 이상 current가 아니므로 post·startSession이 스스로 물러난다.
       const previous = current
       const channel = deps.createChannel()
-      const entry: Entry = { serial, sessionId: newSessionId(), port: channel.local, session: null, reported: null }
+      const entry: Entry = { serial, sessionId: newSessionId(), port: channel.local, session: null, reported: null, awaitingAck: false, pendingFrame: null }
       current = entry
       if (previous) await closeEntry(previous)
       if (current !== entry) {
@@ -243,6 +268,17 @@ export function createStreamManager(deps: StreamManagerDeps): StreamManager {
       }
 
       channel.local.on('message', (event) => {
+        if (isFrameAck(event.data)) {
+          if (current !== entry || !entry.awaitingAck) return
+          const waiting = entry.pendingFrame
+          if (waiting) {
+            entry.pendingFrame = null
+            post(entry, { type: 'frame', data: waiting })
+          } else {
+            entry.awaitingAck = false
+          }
+          return
+        }
         const intent = toControlIntent(event.data)
         if (intent && current === entry) entry.session?.sendControl(intent)
       })
