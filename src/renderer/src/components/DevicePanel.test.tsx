@@ -418,3 +418,55 @@ describe('DevicePanel', () => {
     expect(alert.textContent).toMatch(/추적/)
   })
 })
+
+describe('DevicePanel 기기 카드 배지 묶음', () => {
+  const UDID = '3F2A9C1E-5B7D-4E8A-9C6F-1A2B3C4D5E6F'
+
+  function iosSnapshot(): AppSnapshot {
+    return snapshot({
+      virtualDevices: [
+        { platform: 'ios', id: UDID, name: 'iPad Pro 13-inch (M4)', running: true, serial: UDID, osVersion: '18.0' },
+        { platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null },
+        { platform: 'android', id: 'Pixel_Tablet', name: 'Pixel_Tablet', running: false, serial: null, osVersion: null }
+      ],
+      devices: [UDID, 'emulator-5554'],
+      activeSerial: UDID
+    })
+  }
+
+  function card(name: string): HTMLElement {
+    const row = screen.getByRole('button', { name: new RegExp(`${name} (종료|부팅)`) }).closest('li')
+    if (!row) throw new Error('카드를 찾지 못했다')
+    return row
+  }
+
+  it('puts the platform badge and the target badge in one group, in that order, apart from the serial', () => {
+    render(<DevicePanel snapshot={iosSnapshot()} />)
+
+    const row = card('iPad Pro 13-inch \\(M4\\)')
+    const badges = row.querySelector('.device-badges')
+    expect(badges).not.toBeNull()
+    expect(Array.from(badges!.children).map((c) => c.textContent)).toEqual(['iOS', '(대상)'])
+
+    const serial = row.querySelector('.device-serial')
+    expect(serial).not.toBeNull()
+    expect(badges!.contains(serial)).toBe(false)
+    expect(serial!.getAttribute('title')).toBe(UDID)
+  })
+
+  it('has a single badge in a running card that is not the target', () => {
+    render(<DevicePanel snapshot={iosSnapshot()} />)
+
+    const badges = card('Pixel_7_API_34').querySelector('.device-badges')
+    expect(Array.from(badges!.children).map((c) => c.textContent)).toEqual(['Android'])
+  })
+
+  it('has a single badge, no serial and a boot button in a stopped card', () => {
+    render(<DevicePanel snapshot={iosSnapshot()} />)
+
+    const row = card('Pixel_Tablet')
+    expect(row.querySelectorAll('.device-badges > *')).toHaveLength(1)
+    expect(row.querySelector('.device-serial')).toBeNull()
+    expect(screen.getByRole('button', { name: /Pixel_Tablet 부팅/ })).toBeDefined()
+  })
+})
