@@ -97,7 +97,7 @@ iOS 세션은 `rejectingSession.ts#createIosStreamSessionFactory`가 조립한�
 **JPEG 프레임은 확인을 받고 보낸다.** `streamManager.ts`의 `createStreamManager`는 jpeg `frame`을 포트로 보낸 뒤
 renderer의 `frame_ack`가 올 때까지 다음 장을 보내지 않고, 기다리는 동안 올라온 프레임은 가장 새 한 장만 들고
 있다가 확인이 오면 보낸다. 상태(`awaitingAck`, `pendingFrame`)는 `Entry`에 있고 `session` 메시지를 보낼 때와
-`recover`, `closeEntry`에서 비운다. `isFrameAck`가 확인을 알아보며 `toControlIntent`와 달리 세션의
+`recover`에서 비우고, `closeEntry`는 기다리는 프레임을 버린다. `isFrameAck`가 확인을 알아보며 `toControlIntent`와 달리 세션의
 `sendControl`로 넘기지 않는다. renderer 쪽은 `jpegRenderer.ts`와 `useScrcpyStream.ts`가 프레임마다 확인을 보내고
 `FRAME_RESYNC_MS` 동안 프레임이 끊기면 한 번 더 보낸다. h264 `packet`은 이 규칙을 타지 않는다. 결정은
 [ADR-0018](../adr/0018-jpeg-frame-ack-flow-control.md), 측정은

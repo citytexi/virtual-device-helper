@@ -389,7 +389,7 @@ export function createStreamPortRouter(target?: MessageTarget): StreamPortRouter
 부팅하지도 끄지도 않았다. AXe 1.8.0(`/opt/homebrew/bin/axe`)이다. 앱 창은 띄우지 않았다.
 `axeStreamSession.ios.integration.test.ts`의 새 `it`이 실제 `createStreamManager`에 실제 `createAxeStreamSession`을
 물리고 포트만 최소 `PortLike` 가짜로 둔 조립이다. `createSession`은 handlers를 감싸 세션이 올린 `onFrame`을 센다.
-기다림은 시간이 아니라 장 수의 promise이고, 단언도 장 수로 건다. 아래 값은 이 호스트에서 이 날짜에 두 번 돌려
+기다림은 시간이 아니라 장 수의 promise이고, 단언도 장 수로 건다. 아래 값은 이 호스트에서 이 날짜에 세 번 돌려
 얻은 측정값이며 보장이 아니다. 세 번 모두 통합 테스트가 통과했다.
 
 | 항목 | 측정 |
@@ -401,10 +401,11 @@ export function createStreamPortRouter(target?: MessageTarget): StreamPortRouter
 비교 기준은 M4 스펙의 "M4-3 검증 결과"다. 거기서 정지 화면은 초당 15.4~16.6장, 같은 날 통합 테스트의 2초 창은 실행마다
 달랐고(초당 6~16장), 이번 실행에서 확인 없이 센 2초 창은 11장(초당 5.5장)이었고 이 창은 위 측정과 별도로 돌렸다.
 이번 기기와 화면에서는 받는 대로 확인을 올릴 때 포트로 간 장 수가 같은 동안 세션이 올린 장 수와 같았다(세 번 모두 10장).
-즉 확인은 이 조립에서 장을 더 떨어뜨리지 않았다. 다만 세션이 올리는 속도 자체가 초당 6장 안팎이라 확인이 한 장씩
-기다리게 할 만큼 빠르지 않았다.
+다만 이 조립의 가짜 포트는 `queueMicrotask`로 같은 틱 안에 확인을 돌려주므로 다음 `onFrame`이 오기 전에
+`awaitingAck`가 항상 풀린다. 그래서 "포트 10장 = 세션 10장"은 조립에서 그대로 따라 나오는 값이고, 이 값으로는 흐름 제어가
+장을 떨어뜨리는지, fps를 낮추는지 가를 수 없다.
 기기(iPhone 17, iOS 26.5 대 iPhone 16 Pro Max, iOS 18.2)와 화면이 달라 M4-3의 초당 15~16장과 이 값을 직접 견줄 수는
-없다. 확인이 fps를 깎는지는 세션이 더 빠른 조건에서 다시 재야 가려진다. 확인 왕복이 실제 fps에 주는 영향은 아래에 남겼다.
+없다. 확인이 fps를 깎는지는 확인이 실제 포트 왕복을 거치는 조건에서 다시 재야 가려진다. 확인 왕복이 실제 fps에 주는 영향은 아래에 남겼다.
 
 **사람 확인 필요** (앱 창이 있어야 한다)
 

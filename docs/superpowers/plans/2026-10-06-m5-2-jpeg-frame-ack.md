@@ -97,7 +97,7 @@ renderer를 먼저 한다. 지금 main은 모르는 포트 메시지를 `toContr
   - 새 hook 테스트는 harness의 `deliverPort`·`deliver`만 거쳐 쓴다(M5-3이 포트 수신부를 바꿀 때 harness 한 곳만 고치게).
     가짜 `setTimer`는 콜백을 잡아 두고 테스트가 `act` 안에서 부른다.
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다**
+- [x] **Step 1: 실패하는 테스트를 쓴다**
   - `jpegRenderer`: 한 장을 그리면 `ack` 한 번 / 느린 `decode` 중 셋을 push하면 `ack`가 모두 세 번이고 `draw`는 두 번, 둘째 장의
     `ack`는 셋째 `push` 호출 안에서 동기로 나간다 / `decode`가 reject하면 그 장에 `ack` 한 번이고 `draw`는 없다 / `draw`가
     던져도 `ack` 한 번 / `ack`가 던져도 실패 횟수가 늘지 않는다(그 뒤 연속 실패 한도까지의 장 수가 그대로다) / 연속 실패 한도에
@@ -109,10 +109,10 @@ renderer를 먼저 한다. 지금 main은 모르는 포트 메시지를 `toContr
     타이머가 다시 걸린다 / `reconnecting`이나 `failed` 중에 만료되면 확인이 가지 않고, 다시 `streaming`이 된 뒤의 만료에는 간다 /
     h264 세션에서는 타이머를 걸지 않고 `frame_ack`도 보내지 않는다 / jpeg→h264 전환, 포트 교체, 언마운트 뒤 타이머가 지워진다 /
     포트 교체 뒤 옛 타이머가 새 포트로 보내지 않는다.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/renderer/src/stream/jpegRenderer.test.ts src/renderer/src/hooks/useScrcpyStream.test.tsx` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(renderer): JPEG 프레임마다 확인을 보내고 프레임이 끊기면 한 번 더 보낸다"`
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/renderer/src/stream/jpegRenderer.test.ts src/renderer/src/hooks/useScrcpyStream.test.tsx` / Expected: FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "feat(renderer): JPEG 프레임마다 확인을 보내고 프레임이 끊기면 한 번 더 보낸다"`
 
 ---
 
@@ -139,7 +139,7 @@ renderer를 먼저 한다. 지금 main은 모르는 포트 메시지를 `toContr
   - (a)와 (b)가 겹쳐 비워도 대입뿐이라 해가 없다. (a)의 대가: 같은 세션이 크기 변화로 `session`을 다시 보내면 전송 중인 장이
     잠깐 둘이 된다.
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다** — 가짜 세션이 `onSession` 뒤 `onFrame`을 세 번 부르면 포트에 `frame`이 한 번만 간다(첫 장) /
+- [x] **Step 1: 실패하는 테스트를 쓴다** — 가짜 세션이 `onSession` 뒤 `onFrame`을 세 번 부르면 포트에 `frame`이 한 번만 간다(첫 장) /
   그 뒤 포트로 `{ type: 'frame_ack' }`를 올리면 셋째 장이 간다(둘째 장은 가지 않는다) / 한 번 더 올리면 아무것도 가지 않고 다음
   `onFrame`은 바로 간다 / 기다리지 않을 때 올린 확인 뒤의 `onFrame` 두 번은 첫 장만 간다 / 프레임 둘을 올린 상태에서 `onSession`을
   다시 부르면 그 뒤 첫 `onFrame`이 확인 없이 바로 가고, 이어 올린 확인은 옛 대기 장을 보내지 않는다 / 세션이 끝나 재연결을 기다리는
@@ -149,10 +149,10 @@ renderer를 먼저 한다. 지금 main은 모르는 포트 메시지를 `toContr
   올려도 포트와 `sendControl`에 변화가 없다 / `isFrameAck`가 `null`, 문자열, `{ type: 'touch' }`에 false이고
   `{ type: 'frame_ack', extra: 1 }`에 true. 회귀 고정용(구현 전에도 통과한다): `stop()` 뒤에 온 확인은 아무것도 보내지 않는다 /
   `onPacket`은 확인과 무관하게 매번 간다.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/stream/streamManager.test.ts` / Expected: 회귀 고정용 둘을 뺀 나머지가 FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(stream): JPEG 프레임을 확인 뒤에 보내고 기다리는 동안 최신 한 장만 든다"`
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/stream/streamManager.test.ts` / Expected: 회귀 고정용 둘을 뺀 나머지가 FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "feat(stream): JPEG 프레임을 확인 뒤에 보내고 기다리는 동안 최신 한 장만 든다"`
 
 ---
 
