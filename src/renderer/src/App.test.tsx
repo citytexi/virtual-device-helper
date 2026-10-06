@@ -45,6 +45,7 @@ const ready: AppSnapshot = {
   virtualDevices: [{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null }],
   devices: ['emulator-5554'],
   activeSerial: 'emulator-5554',
+  screens: [],
   timeline: [],
   trackingFailures: { android: null, ios: null }
 }

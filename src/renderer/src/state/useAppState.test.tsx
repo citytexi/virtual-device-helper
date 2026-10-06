@@ -13,6 +13,7 @@ const baseSnapshot: AppSnapshot = {
   virtualDevices: [{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: false, serial: null, osVersion: null }],
   devices: [],
   activeSerial: null,
+  screens: [],
   timeline: [],
   trackingFailures: { android: null, ios: null }
 }
@@ -169,6 +170,32 @@ describe('useAppState', () => {
     unmount()
 
     expect(unsubscribed).toBe(true)
+  })
+
+  it('applies a screens_changed event', async () => {
+    const { result } = renderHook(() => useAppState())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    const screens = [{ id: 'x', epoch: 2, serial: 'emulator-5554', label: 'Pixel' }]
+
+    act(() => listener?.({ type: 'screens_changed', screens }))
+
+    expect(result.current.snapshot?.screens).toEqual(screens)
+  })
+
+  it('applies a screens_changed event that arrived before the snapshot after the replay', async () => {
+    const pending = deferred<AppSnapshot>()
+    installApi(vi.fn(() => pending.promise))
+    const { result } = renderHook(() => useAppState())
+    const screens = [{ id: 'y', epoch: 1, serial: 'emulator-5554', label: 'Pixel' }]
+
+    act(() => listener?.({ type: 'screens_changed', screens }))
+    await act(async () => {
+      pending.resolve(baseSnapshot)
+      await pending.promise
+    })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.snapshot?.screens).toEqual(screens)
   })
 
   it('buffers an event that arrives before the initial snapshot resolves and applies it once the snapshot lands', async () => {

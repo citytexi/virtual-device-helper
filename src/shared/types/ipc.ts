@@ -144,6 +144,8 @@ export interface AppSnapshot {
   virtualDevices: VirtualDeviceEntry[]
   devices: string[]
   activeSerial: string | null
+  /** 화면 칸. 칸의 진실은 main에 있다. */
+  screens: ScreenSlot[]
   timeline: TimelineEntry[]
   /** 플랫폼별 추적 실패. 추적이 살아 있으면(또는 그 플랫폼을 조립하지 않았으면) null이다. */
   trackingFailures: Record<Platform, TrackingFailure | null>
@@ -155,6 +157,7 @@ export type MainEvent =
   | { type: 'active_changed'; serial: string | null }
   | { type: 'virtual_devices_changed'; virtualDevices: VirtualDeviceEntry[] }
   | { type: 'timeline'; entry: TimelineEntry }
+  | { type: 'screens_changed'; screens: ScreenSlot[] }
   | { type: 'server_changed'; server: ServerStatus | null }
   | { type: 'tracking_failed'; failure: TrackingFailure }
 

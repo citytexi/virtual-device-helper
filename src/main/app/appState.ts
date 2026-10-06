@@ -9,6 +9,7 @@ import type {
   DeviceTimelineEvent,
   MainEvent,
   PlatformStatuses,
+  ScreenSlot,
   TimelineEntry,
   ToolCallRecord,
   TrackingFailure
@@ -35,6 +36,8 @@ export interface AppState {
   recordDeviceEvent(serial: string | null, event: DeviceTimelineEvent): void
   /** 서버는 상태가 만들어진 뒤에 열린다. 툴 컨텍스트가 서버보다 먼저 필요하기 때문이다. */
   setServer(handle: McpServerHandle | null): void
+  /** 칸 조정자가 칸 목록이 바뀔 때마다 늦게 연결한다. */
+  setScreens(screens: ScreenSlot[]): void
   onEvent(listener: (event: MainEvent) => void): () => void
 }
 
@@ -96,6 +99,7 @@ export function createAppState(deps: AppStateDeps): AppState {
   const timeline: TimelineEntry[] = []
   const listeners = new Set<(event: MainEvent) => void>()
   let server: McpServerHandle | null = deps.server
+  let screens: ScreenSlot[] = []
   const trackingFailures: AppSnapshot['trackingFailures'] = { android: null, ios: null }
   const anyReady = deps.platforms.android.ok || deps.platforms.ios.ok
 
@@ -159,6 +163,7 @@ export function createAppState(deps: AppStateDeps): AppState {
         virtualDevices: anyReady ? await listVirtualDevicesOrEmpty() : [],
         devices: deps.registry.serials(),
         activeSerial: deps.registry.getActive(),
+        screens: [...screens],
         timeline: [...timeline],
         trackingFailures: { ...trackingFailures }
       }
@@ -173,6 +178,11 @@ export function createAppState(deps: AppStateDeps): AppState {
     setServer(handle) {
       server = handle
       emit({ type: 'server_changed', server: endpoint() })
+    },
+
+    setScreens(next) {
+      screens = next
+      emit({ type: 'screens_changed', screens: next })
     },
 
     onEvent(listener) {

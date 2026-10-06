@@ -123,6 +123,7 @@ describe('bootstrapApp without any platform', () => {
       virtualDevices: [],
       devices: [],
       activeSerial: null,
+      screens: [],
       timeline: [],
       trackingFailures: { android: null, ios: null }
     })

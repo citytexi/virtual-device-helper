@@ -66,6 +66,21 @@ describe('createAppState snapshot', () => {
     expect(snapshot.server).toBeNull()
   })
 
+  it('starts with no screen slots, and setScreens carries them into the snapshot and emits screens_changed once', async () => {
+    const p = parts()
+    const state = createAppState({ platforms: ANDROID_READY, registry: p.registry, catalog: p.catalog, server: null })
+    await expect(state.snapshot().then((snapshot) => snapshot.screens)).resolves.toEqual([])
+
+    const seen: unknown[] = []
+    state.onEvent((event) => seen.push(event))
+    const screens = [{ id: 'a', epoch: 1, serial: 'emulator-5554', label: 'Pixel' }]
+
+    state.setScreens(screens)
+
+    expect(seen.filter((event) => (event as { type: string }).type === 'screens_changed')).toEqual([{ type: 'screens_changed', screens }])
+    await expect(state.snapshot().then((snapshot) => snapshot.screens)).resolves.toEqual(screens)
+  })
+
   it('includes virtualDevices, devices, active serial and the server endpoint', async () => {
     const p = parts()
     const state = createAppState({
@@ -494,6 +509,7 @@ describe('createAppState snapshot when the catalog list fails', () => {
         virtualDevices: [],
         devices: ['emulator-5554'],
         activeSerial: 'emulator-5554',
+        screens: [],
         timeline: [],
         trackingFailures: { android: null, ios: null }
       })
