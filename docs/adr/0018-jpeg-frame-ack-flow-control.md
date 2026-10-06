@@ -11,7 +11,7 @@ superseded_by:
 related_adr: [ADR-0010, ADR-0013, ADR-0016, ADR-0017]
 related_spec: m5-multi-screen
 related_architecture: main-layers
-related_plan:
+related_plan: [m5-2-jpeg-frame-ack, m5-3-screen-slots]
 related_code: [stream.ts#StreamUp, streamManager.ts#createStreamManager, jpegRenderer.ts#createJpegRenderer, useScrcpyStream.ts#useScrcpyStream]
 tags: [adr, streaming, flow-control]
 ---

@@ -1,7 +1,7 @@
 ---
 id: m5-multi-screen
 title: M5 — 여러 기기 화면 동시 보기
-status: draft
+status: in-progress
 verified: 2026-10-06
 scope: [main, renderer, preload, shared, streaming, android, ios]
 hosts: [windows, macos]
@@ -11,7 +11,7 @@ related_adr: [ADR-0017, ADR-0018, ADR-0015, ADR-0016, ADR-0010]
 related_spec: m4-ios-simulator
 related_architecture: main-layers
 related_plan: [m5-1-device-card-badges, m5-2-jpeg-frame-ack, m5-3-screen-slots]
-related_code: [streamManager.ts#createStreamManager, bootstrap.ts#bootstrapApp, appState.ts#createAppState, ipcBridge.ts#BridgeActions, registry.ts#createDeviceRegistry, ipc.ts#AppSnapshot, stream.ts#StreamUp, stream.ts#StreamPortMeta, streamPort.ts#onStreamPort, useAppState.ts#targetSerial, App.tsx#App, DeviceScreen.tsx#DeviceScreen, useScrcpyStream.ts#useScrcpyStream, jpegRenderer.ts#createJpegRenderer, DevicePanel.tsx#DevicePanel]
+related_code: [streamManager.ts#createStreamManager, bootstrap.ts#bootstrapApp, appState.ts#createAppState, ipcBridge.ts#BridgeActions, registry.ts#createDeviceRegistry, ipc.ts#AppSnapshot, stream.ts#StreamUp, stream.ts#StreamPortMeta, streamPort.ts#createStreamPortRouter, useAppState.ts#targetSerial, App.tsx#App, DeviceScreen.tsx#DeviceScreen, useScrcpyStream.ts#useScrcpyStream, jpegRenderer.ts#createJpegRenderer, DevicePanel.tsx#DevicePanel]
 tags: [spec, streaming, multi-screen]
 ---
 
@@ -380,7 +380,8 @@ export function createStreamPortRouter(target?: MessageTarget): StreamPortRouter
 
 - h264 경로의 흐름 제어. renderer가 멈추면 `packet`은 여전히 포트에 쌓인다. 흐름 상태를 `Entry`에 둔 것은
   codec별로 규칙을 붙일 자리를 남긴 것이다.
-- 화면이 둘일 때의 실제 부하는 잰 뒤 `MAX_SCREEN_SLOTS`를 다시 본다.
+- `MAX_SCREEN_SLOTS`(지금 2). 화면 둘일 때의 부하는 "M5-3 검증 결과"에 있다. 칸을 셋 이상 둔 부하는 재지 않았으니 상한을
+  올리기 전에 그 조건에서 먼저 잰다. iOS 스트림이 `axe stream-video` 자식 프로세스 하나씩을 쓰므로 그 CPU를 함께 본다.
 - 가려진 칸의 스트림을 멈출지. 앱을 숨겨도 확인은 멈추지 않았다("M5-2 검증 결과"의 "앱 창에서 잰 것").
 
 ## M5-2 검증 결과
@@ -427,3 +428,60 @@ CDP로 붙어 쟀다. `CanvasRenderingContext2D.prototype.drawImage`와 `Message
 - 멈춘 동안 main이 든 대기 장 수는 renderer에서 볼 수 없어 재지 않았다. 그 규칙은 `streamManager.test.ts`가 고정한다.
 
 Windows 호스트는 보지 않았고 단위 테스트로만 덮는다. 안드로이드 `packet`은 흐름 제어를 타지 않으므로 보지 않았다.
+
+## M5-3 검증 결과
+
+2026-10-06에 이 호스트(macOS)에서 쟀다. 기기는 이미 부팅돼 있던 iPhone 16 Pro Max(iOS 18.2) 시뮬레이터 하나와, 이번
+확인을 위해 창 없이(`-no-window`) 띄운 Android 에뮬레이터 `Pixel_7_API_36`(`emulator-5554`, 1080x2400) 하나다.
+시뮬레이터는 끄지 않았고 에뮬레이터는 확인이 끝난 뒤 `adb emu kill`로 껐다. 아래 값은 이 호스트에서 이 날짜에 한 번씩 잰
+측정값이며 보장이 아니다. 앱 창은 `npm run dev -- --remoteDebuggingPort <port>`로 띄워 renderer에 CDP로 붙어 읽었고, 그린
+장은 `CanvasRenderingContext2D.prototype.drawImage`를 감싸 캔버스별로 셌다. 캡처는 `Page.captureScreenshot`이다.
+
+### 통합 테스트
+
+`screenSlots.integration.test.ts`가 실제 `createScreenSlots`에 칸마다 실제 `createStreamManager`를 물리고 포트만 최소
+`PortLike` 가짜로 둔 조립이다. 기기가 하나라도 있으면 도는 묶음(그 칸을 열면 포트가 `session`과 첫 미디어 메시지를 받는다 /
+낡은 세대의 `open`은 포트를 내놓지 않는다)과, Android와 iOS가 둘 다 있어야 도는 묶음(두 칸이 함께 받는다 / 한 칸을 `stop`해도
+다른 칸이 계속 받는다)이 있고 이번에 모두 통과했다. 조건이 안 되면 그 묶음은 skip이다.
+
+| 항목 | 측정 |
+|---|---|
+| 두 칸이 같은 시점부터 20개를 받는 데 걸린 시간 | Android(h264 `packet`) 659ms, iOS(jpeg `frame`) 4699ms(초당 4.3장). Android는 화면이 바뀔 때만 패킷이 오므로 재는 동안 `adb shell input swipe`를 계속 보냈다. |
+| 한 칸 `stop` 뒤 | Android 칸의 포트가 닫혔고 iOS 칸은 5장을 더 받았으며 닫히지 않았다. |
+
+이 iOS 값을 M5-2의 초당 5.6~5.8장과 견주지 않는다. 그쪽은 스트림 하나였고 이쪽은 Android 스트림과 스와이프 입력이 함께 돌았다.
+같은 조건에서 두 번 잰 것이 아니라서 둘의 차이가 칸이 둘이어서인지 판단하지 못한다.
+
+### 앱 창에서 본 것
+
+| 항목 | 상태 | 본 값 |
+|---|---|---|
+| 두 화면이 나란히 뜬다 | 봤다 | `.screens`의 `grid-template-columns`가 `350px 350px`이고 캔버스 둘의 `getBoundingClientRect()`는 Android 350x646.5(x 276), iOS 350x630.5(x 634)였다. 캔버스 버퍼는 각각 460x1024, 660x1434다. 캡처로도 두 화면이 나란히 보였다. |
+| 둘 다 실시간이다 | 봤다 | 아무것도 안 건드린 5초 동안 Android 10장(초당 2.0), iOS 28장(초당 5.6)을 그렸다. Android에 `adb shell input swipe`를 반복해 보낸 5초 동안은 Android 194장(초당 38.8), iOS 23장(초당 4.6)이었고 Android 캡처의 화면이 스와이프 전후로 달랐다. |
+| 대상이 없을 때 안내 | 봤다 | 아무도 고르지 않은 첫 화면에서 `대상 기기가 없다. 화면 머리의 "대상으로"를 누르거나 툴 호출에 serial을 넘겨라`가 보였고 두 화면 머리 모두 `대상으로` 버튼이 있었다. |
+| MCP `device_select`로 대상 이동 | 봤다 | 앱 머리의 `토큰 보기`가 보여 주는 토큰으로 `POST /mcp`에 `tools/call`을 보냈다. iOS serial을 넘기자 `{"active":"641E0D82-…"}`가 오고 iPhone 카드에 `aria-current`와 `(대상)` 뱃지가, iOS 화면 머리에 `(대상)`이 붙었으며 안내는 사라졌다. Android serial을 넘기자 같은 표시가 Android 카드와 Android 화면 머리로 옮겨 갔다. |
+| 오른쪽 탭이 대상 기기를 따른다 | 못 봤다 | 활동 탭에는 `device_select` 호출과 두 기기의 이벤트가 한 목록으로 보였고 로그·에이전트 탭은 열어 보지 않았다. |
+| `대상으로` 버튼 | 봤다 | Android가 대상인 상태에서 iOS 화면 머리의 `대상으로`를 CDP로 클릭하자 대상 뱃지와 카드의 `aria-current`가 iPhone으로 옮겨 갔다. 대상인 화면의 그 버튼은 `disabled`였다. 이것은 CDP가 건 클릭이지 사람의 마우스가 아니다. |
+| `F6` | 부분적으로 봤다 | Android 캔버스에 포커스를 둔 채 `F6` keydown을 보내자 `document.activeElement`가 iOS 캔버스로, iOS 캔버스에서 다시 보내자 Android 캔버스로 갔다. 합성한 `KeyboardEvent`이고 실제 키 입력은 아니다. 포커스 강조가 눈에 보이는지는 보지 않았다. |
+| 기기를 끄면 그 화면만 사라진다 | 봤다 | `adb emu kill` 뒤 `adb devices`가 비었고 캔버스는 1개, `.screens`는 `708px` 한 열이 됐다. 남은 iOS 화면은 5초 동안 29장(초당 5.8)을 계속 그렸다. 활동 탭에 `emulator-5554 화면 스트리밍 종료`와 `연결 끊김`이 쌓였다. |
+| 기기 하나일 때 캔버스의 크기와 자리 | 부분적으로 봤다 | iOS 하나만 남았을 때 캔버스 요소의 rect는 x 276, y 116, 708x694였다. M5 이전과 같은지는 이전 값을 재지 않았으므로 사람 확인 필요. |
+
+계획의 Task 4 Step 5(다른 기기를 고르면 화면이 바뀌는지)는 이번에도 보지 못했다. 이번 호스트에서는 Android와 iOS가 각자
+자기 칸에 있었으므로 `device_select`와 `대상으로`는 대상 표시만 옮겼고 칸의 기기는 바뀌지 않았다. 칸의 기기가 바뀌는 경우(같은
+플랫폼의 기기를 하나 더 고르는 것)는 기기를 더 부팅해야 해서 하지 않았다. 그 동작은 `screenSlots.test.ts`와 renderer 테스트로만
+덮는다.
+
+### 부하
+
+두 스트림이 함께 돌고 Android에 스와이프를 보내는 동안 `ps -o pid,pcpu,rss`를 세 번 읽은 값이다. Electron main 2.5~2.6%
+(RSS 약 190MB), GPU helper 6.6~6.9%(약 92MB), renderer 4.5~4.8%(약 176MB). `top`으로 읽은 같은 프로세스의 순간 값은
+main 1.7%, GPU helper 1.1~1.4%, renderer 1.5~4.3%였다. 같은 시점에 앱의 자식 프로세스인 `axe stream-video --format mjpeg
+--fps 30 --scale 0.5 --quality 70`은 `ps`로 98~99.8%, `top`으로 66~99%였다. Android 에뮬레이터를 끈 뒤 앱 프로세스는
+main 1.3%, GPU helper 1.0%, renderer 2.2%였다. 그 조건에서 `axe`의 CPU와 스트림 하나일 때의 `axe` CPU는 재지 않았으므로 칸이
+둘이어서 `axe`가 더 쓰는지는 이 값으로 가르지 못한다.
+
+### 사람 확인 필요
+
+화면을 실제 마우스로 누르거나 글자를 치는 것, 포커스 강조의 모양, 창을 좁혔을 때의 배치, `Cmd+R` 뒤 두 화면이 다시 뜨는지,
+창을 닫았다 다시 열었을 때, 기기 하나일 때 M5 이전과 같은 크기·자리인지, Windows 호스트의 회귀. 앞의 네 가지 가운데 CDP로
+대신 건 것은 위 표에 적었고 사람이 직접 한 것이 아니다.
