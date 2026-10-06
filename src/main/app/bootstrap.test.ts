@@ -10,7 +10,7 @@ type Handler = (event: unknown, ...args: unknown[]) => unknown
 
 const missing: BootstrapDeps['located'] = { ok: false, searched: ['/opt/sdk/platform-tools/adb'] }
 const ANDROID_HINT =
-  'Android Studio를 설치하고 Device Manager에서 AVD를 만든 뒤 앱을 다시 켜라. 이미 설치돼 있다면 ANDROID_HOME 또는 ANDROID_SDK_ROOT를 SDK 경로로 지정해라'
+  'Android Studio를 설치하고 Device Manager에서 AVD를 만든 뒤 앱을 다시 켜라. 이미 설치돼 있다면 ANDROID_HOME 또는 ANDROID_SDK_ROOT를 SDK 경로로 지정하고 앱을 다시 켜라'
 
 const iosMissing: BootstrapDeps['iosTools'] = { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', hostSupported: false }
 const iosNoXcode: BootstrapDeps['iosTools'] = { ok: false, reason: 'iOS: Xcode 개발자 디렉토리를 찾지 못했다', hostSupported: true }

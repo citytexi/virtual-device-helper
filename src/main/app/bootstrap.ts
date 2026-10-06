@@ -81,7 +81,7 @@ const STREAM_EVENTS = {
 const XCODE_HINT = 'Xcode를 설치하고 xcode-select -s로 개발자 디렉토리를 정해라'
 
 const ANDROID_SDK_HINT =
-  'Android Studio를 설치하고 Device Manager에서 AVD를 만든 뒤 앱을 다시 켜라. 이미 설치돼 있다면 ANDROID_HOME 또는 ANDROID_SDK_ROOT를 SDK 경로로 지정해라'
+  'Android Studio를 설치하고 Device Manager에서 AVD를 만든 뒤 앱을 다시 켜라. 이미 설치돼 있다면 ANDROID_HOME 또는 ANDROID_SDK_ROOT를 SDK 경로로 지정하고 앱을 다시 켜라'
 
 const AXE_MISSING_NOTE = `AXe가 없어 iOS 입력·노드·실시간 화면을 쓸 수 없다. ${AXE_HINT}`
 
