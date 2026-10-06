@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { StreamDown, StreamPortMeta } from '../../../shared/types/stream'
 import type { JpegRenderer } from '../stream/jpegRenderer'
 import type { StreamDecoder } from '../stream/streamDecoder'
-import { useScrcpyStream, type ScrcpyStreamDeps, type StreamDecoderHandlers } from './useScrcpyStream'
+import { FRAME_RESYNC_MS, useScrcpyStream, type ScrcpyStreamDeps, type StreamDecoderHandlers } from './useScrcpyStream'
 
 interface FakePort {
   onmessage: ((event: MessageEvent) => void) | null
@@ -25,8 +25,11 @@ function harness(startResult: Awaited<ReturnType<ScrcpyStreamDeps['startStream']
       close: ReturnType<typeof vi.fn>
       draw: (bitmap: ImageBitmap) => void
       onError: (error: Error) => void
+      ack: () => void
     }
   > = []
+  // 가짜 타이머: 콜백을 잡아 두고 테스트가 act 안에서 부른다.
+  const timers: Array<{ id: number; callback: () => void; ms: number; cleared: boolean }> = []
   const deps: ScrcpyStreamDeps = {
     startStream: vi.fn(async () => startResult),
     stopStream: vi.fn(async () => ({ ok: true as const, value: undefined })),
@@ -41,12 +44,30 @@ function harness(startResult: Awaited<ReturnType<ScrcpyStreamDeps['startStream']
       decoders.push(decoder)
       return decoder
     }),
-    createJpegRenderer: vi.fn(({ draw, onError }) => {
-      const renderer = { push: vi.fn(), close: vi.fn(), draw, onError }
+    createJpegRenderer: vi.fn(({ draw, onError, ack }) => {
+      const renderer = { push: vi.fn(), close: vi.fn(), draw, onError, ack }
       jpegRenderers.push(renderer)
       return renderer
-    })
+    }),
+    setTimer: ((callback: () => void, ms: number) => {
+      const timer = { id: timers.length + 1, callback, ms, cleared: false }
+      timers.push(timer)
+      return timer.id
+    }) as unknown as typeof setTimeout,
+    clearTimer: ((id: number) => {
+      const timer = timers.find((t) => t.id === id)
+      if (timer) timer.cleared = true
+    }) as unknown as typeof clearTimeout
   }
+  const liveTimers = () => timers.filter((t) => !t.cleared)
+  /** 살아 있는 타이머를 모두 만료시킨다. 콜백이 새로 거는 타이머는 건드리지 않는다. */
+  const fireTimers = () =>
+    act(() => {
+      for (const t of liveTimers()) {
+        t.cleared = true
+        t.callback()
+      }
+    })
   const canvasRef: { current: HTMLCanvasElement | null } = { current: null }
   const deliverPort = (serial: string, port: FakePort) =>
     act(() => portCallback?.({ serial, sessionId: 'x' }, port as unknown as MessagePort))
@@ -57,7 +78,7 @@ function harness(startResult: Awaited<ReturnType<ScrcpyStreamDeps['startStream']
     deliver(port, { type: 'session', width: 472, height: 1024, codec: 'h264', keys: [] })
     return port
   }
-  return { deps, canvasRef, decoders, jpegRenderers, deliverPort, deliver, openH264 }
+  return { deps, canvasRef, decoders, jpegRenderers, timers, liveTimers, fireTimers, deliverPort, deliver, openH264 }
 }
 
 describe('useScrcpyStream', () => {
@@ -533,6 +554,153 @@ describe('useScrcpyStream', () => {
       unmount()
 
       expect(h.jpegRenderers[0]?.close).toHaveBeenCalled()
+    })
+  })
+
+  describe('jpeg 프레임 확인과 재동기', () => {
+    const jpegSession = (h: ReturnType<typeof harness>, port: FakePort) =>
+      h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: [] })
+    const ackCalls = (port: FakePort) => port.postMessage.mock.calls.filter((c) => c[0]?.type === 'frame_ack')
+
+    it('renderer의 ack가 그 포트로 frame_ack를 보낸다', () => {
+      const h = harness()
+      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const port = fakePort()
+      h.deliverPort('sim-1', port)
+      jpegSession(h, port)
+
+      h.jpegRenderers[0]?.ack()
+
+      expect(port.postMessage).toHaveBeenCalledWith({ type: 'frame_ack' })
+    })
+
+    it('포트가 바뀐 뒤에는 옛 경로의 ack가 옛 포트에도 새 포트에도 가지 않는다', () => {
+      const h = harness()
+      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const a = fakePort()
+      const b = fakePort()
+      h.deliverPort('sim-1', a)
+      jpegSession(h, a)
+      const staleAck = h.jpegRenderers[0]?.ack
+      h.deliverPort('sim-1', b)
+
+      staleAck?.()
+
+      expect(a.postMessage).not.toHaveBeenCalled()
+      expect(b.postMessage).not.toHaveBeenCalled()
+    })
+
+    it('streaming 전에 frame이 오고 나중에 streaming이 된 뒤 프레임 없이 FRAME_RESYNC_MS가 지나면 확인이 한 번 간다', () => {
+      const h = harness()
+      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const port = fakePort()
+      h.deliverPort('sim-1', port)
+      jpegSession(h, port)
+      h.deliver(port, { type: 'frame', data: new Uint8Array([1]) })
+      h.deliver(port, { type: 'status', status: { state: 'streaming' } })
+      expect(h.liveTimers()).toHaveLength(1)
+      expect(h.liveTimers()[0]?.ms).toBe(FRAME_RESYNC_MS)
+
+      h.fireTimers()
+
+      expect(ackCalls(port)).toHaveLength(1)
+      // 만료 뒤에도 타이머는 다시 걸린다.
+      expect(h.liveTimers()).toHaveLength(1)
+    })
+
+    it('frame이 오면 재동기 타이머가 다시 걸린다', () => {
+      const h = harness()
+      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const port = fakePort()
+      h.deliverPort('sim-1', port)
+      jpegSession(h, port)
+      const before = h.liveTimers()[0]
+
+      h.deliver(port, { type: 'frame', data: new Uint8Array([1]) })
+
+      expect(before?.cleared).toBe(true)
+      expect(h.liveTimers()).toHaveLength(1)
+      expect(h.liveTimers()[0]).not.toBe(before)
+    })
+
+    it('reconnecting이나 failed 중 만료에는 확인이 가지 않고 다시 streaming이 된 뒤의 만료에는 간다', () => {
+      const h = harness()
+      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const port = fakePort()
+      h.deliverPort('sim-1', port)
+      jpegSession(h, port)
+      h.deliver(port, { type: 'status', status: { state: 'streaming' } })
+
+      h.deliver(port, { type: 'status', status: { state: 'reconnecting', attempt: 1 } })
+      h.fireTimers()
+      expect(ackCalls(port)).toHaveLength(0)
+
+      h.deliver(port, {
+        type: 'status',
+        status: { state: 'failed', error: { kind: 'command_failed', message: 'x', hint: 'y' } }
+      })
+      h.fireTimers()
+      expect(ackCalls(port)).toHaveLength(0)
+
+      h.deliver(port, { type: 'status', status: { state: 'streaming' } })
+      h.fireTimers()
+      expect(ackCalls(port)).toHaveLength(1)
+    })
+
+    it('h264 세션에서는 타이머를 걸지 않고 frame_ack도 보내지 않는다', () => {
+      const h = harness()
+      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const port = h.openH264('sim-1')
+      h.deliver(port, { type: 'status', status: { state: 'streaming' } })
+      h.deliver(port, { type: 'packet', config: false, key: true, ptsUs: null, data: new Uint8Array([1]) })
+
+      expect(h.timers).toHaveLength(0)
+      expect(ackCalls(port)).toHaveLength(0)
+    })
+
+    it('jpeg에서 h264로 바뀌면 타이머를 지운다', () => {
+      const h = harness()
+      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const port = fakePort()
+      h.deliverPort('sim-1', port)
+      jpegSession(h, port)
+      expect(h.liveTimers()).toHaveLength(1)
+
+      h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'h264', keys: [] })
+
+      expect(h.liveTimers()).toHaveLength(0)
+    })
+
+    it('포트가 교체되면 옛 타이머를 지우고 옛 타이머가 새 포트로 보내지 않는다', () => {
+      const h = harness()
+      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const a = fakePort()
+      const b = fakePort()
+      h.deliverPort('sim-1', a)
+      jpegSession(h, a)
+      h.deliver(a, { type: 'status', status: { state: 'streaming' } })
+      const old = h.liveTimers()[0]
+      h.deliverPort('sim-1', b)
+
+      expect(old?.cleared).toBe(true)
+      // 지워지지 않고 늦게 불린다 해도 새 포트로 가지 않는다.
+      act(() => old?.callback())
+      h.deliver(b, { type: 'status', status: { state: 'streaming' } })
+      expect(ackCalls(a)).toHaveLength(0)
+      expect(ackCalls(b)).toHaveLength(0)
+    })
+
+    it('unmount하면 타이머를 지운다', () => {
+      const h = harness()
+      const { unmount } = renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const port = fakePort()
+      h.deliverPort('sim-1', port)
+      jpegSession(h, port)
+      expect(h.liveTimers()).toHaveLength(1)
+
+      unmount()
+
+      expect(h.liveTimers()).toHaveLength(0)
     })
   })
 })

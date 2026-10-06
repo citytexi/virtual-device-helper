@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { Outcome } from '../../../shared/types/ipc'
-import type { ControlIntent, DeviceKey, SessionStatus, StreamDown, StreamPortMeta } from '../../../shared/types/stream'
+import type { ControlIntent, DeviceKey, SessionStatus, StreamDown, StreamPortMeta, StreamUp } from '../../../shared/types/stream'
 import type { VideoSize } from '../stream/inputMapper'
 import { createJpegRenderer, decodeJpeg, type JpegRenderer, type JpegRendererDeps } from '../stream/jpegRenderer'
 import { createStreamDecoder, type StreamDecoder } from '../stream/streamDecoder'
@@ -19,7 +19,17 @@ export interface ScrcpyStreamDeps {
   createDecoder(handlers: StreamDecoderHandlers): StreamDecoder
   /** `session.codec`이 jpeg일 때 쓴다. draw는 bitmap을 닫는 책임을 진다. onError는 연속 실패로 포기할 때 한 번 불린다. */
   createJpegRenderer(handlers: Omit<JpegRendererDeps, 'decode'>): JpegRenderer
+  /** jpeg 재동기 타이머용. 기본은 전역 setTimeout. */
+  setTimer?: typeof setTimeout
+  /** 기본은 전역 clearTimeout. */
+  clearTimer?: typeof clearTimeout
 }
+
+/**
+ * jpeg 세션에서 프레임이 이만큼 끊기면 확인을 한 번 더 보낸다. main이 확인을 기다리다 멈춘 경우
+ * (확인이 유실됐거나 main이 재연결로 흐름 상태를 비운 경우)를 되살리는 안전망이다.
+ */
+export const FRAME_RESYNC_MS = 2000
 
 export interface ScrcpyStream {
   status: SessionStatus
@@ -128,6 +138,8 @@ export function useScrcpyStream(
     let path: FramePath | null = null
     // 가장 나중 session의 크기. 캔버스 크기는 두 경로 모두 이것만 따른다.
     let size: VideoSize | null = null
+    // 가장 나중 status가 streaming인가. 재동기 타이머가 React state 대신 이것을 읽는다.
+    let streaming = false
     setStatus(CONNECTING)
     setVideo(null)
     setKeys(NO_KEYS)
@@ -181,21 +193,51 @@ export function useScrcpyStream(
       return created
     }
 
-    function jpegPath(): FramePath {
+    /** 확인을 owner 포트로 보낸다. 포트가 바뀌었거나 effect가 끝났으면 보내지 않는다. */
+    function sendAck(owner: MessagePort): void {
+      if (!active || port !== owner) return
+      owner.postMessage({ type: 'frame_ack' } satisfies StreamUp)
+    }
+
+    function jpegPath(owner: MessagePort): FramePath {
+      const setTimer = d.setTimer ?? setTimeout
+      const clearTimer = d.clearTimer ?? clearTimeout
+      let timer: ReturnType<typeof setTimeout> | null = null
+      let closed = false
+      // 재동기 타이머는 이 경로가 소유한다. 프레임이 올 때마다 다시 걸고, 만료되면 streaming인
+      // 동안만 확인을 보낸 뒤 항상 다시 건다.
+      const arm = (): void => {
+        if (closed) return
+        if (timer !== null) clearTimer(timer)
+        timer = setTimer(() => {
+          if (closed) return
+          if (streaming) sendAck(owner)
+          arm()
+        }, FRAME_RESYNC_MS)
+      }
       const renderer = d.createJpegRenderer({
         draw: (bitmap) => {
           restartCountRef.current = 0
           drawBitmap(canvasRef.current, bitmap, size)
         },
-        onError: (error) => onPathError(created, error)
+        onError: (error) => onPathError(created, error),
+        ack: () => sendAck(owner)
       })
       const created: FramePath = {
         codec: 'jpeg',
         push: (message) => {
-          if (message.type === 'frame') renderer.push(message.data)
+          if (message.type !== 'frame') return
+          arm()
+          renderer.push(message.data)
         },
-        close: () => renderer.close()
+        close: () => {
+          closed = true
+          if (timer !== null) clearTimer(timer)
+          timer = null
+          renderer.close()
+        }
       }
+      arm()
       return created
     }
 
@@ -215,11 +257,11 @@ export function useScrcpyStream(
     }
 
     /** session이 알린 codec에 맞는 경로로 바꾼다. 같은 codec이면 그대로 둔다. */
-    function useCodec(codec: 'h264' | 'jpeg'): void {
+    function useCodec(codec: 'h264' | 'jpeg', owner: MessagePort): void {
       if (path?.codec === codec) return
       path?.close()
       path = null
-      path = codec === 'jpeg' ? jpegPath() : h264Path()
+      path = codec === 'jpeg' ? jpegPath(owner) : h264Path()
     }
 
     function adopt(next: MessagePort): void {
@@ -228,11 +270,15 @@ export function useScrcpyStream(
       // 만들면 JPEG 세션도 VideoDecoder를 만들었다 닫게 된다.
       port = next
       portRef.current = next
+      streaming = false
       next.onmessage = (event: MessageEvent) => {
         if (!active || port !== next) return
         const message = event.data as StreamDown
         try {
-          if (message.type === 'status') setStatus(message.status)
+          if (message.type === 'status') {
+            streaming = message.status.state === 'streaming'
+            setStatus(message.status)
+          }
           else if (message.type === 'session') {
             size = { width: message.width, height: message.height }
             setVideo(size)
@@ -241,13 +287,13 @@ export function useScrcpyStream(
             // 새 크기와 어긋나지 않는다.
             const canvas = canvasRef.current
             if (canvas) sizeCanvas(canvas, size.width, size.height)
-            useCodec(message.codec)
+            useCodec(message.codec, next)
           } else if (message.type === 'packet') {
             // session 전에 온 packet은 기존 동작대로 h264로 받는다.
             if (!path) path = h264Path()
             path.push(message)
           } else if (message.type === 'frame') {
-            if (!path) path = jpegPath()
+            if (!path) path = jpegPath(next)
             path.push(message)
           }
         } catch (error) {

@@ -6,6 +6,8 @@ export interface JpegRendererDeps {
   draw(bitmap: ImageBitmap): void
   /** 연속 실패가 한도에 닿아 포기할 때 한 번 불린다. 이후 renderer는 아무것도 그리지 않는다. */
   onError(error: Error): void
+  /** 프레임 한 장의 처리가 끝났다(그렸거나, 실패했거나, 최신 장에 밀려 버려졌다). 닫힌 뒤에는 불리지 않는다. */
+  ack(): void
 }
 
 /** 연속 decode/draw 실패 한도. 한 장 깨진 것은 건너뛰지만 계속 깨지면 사람이 알아야 한다. */
@@ -31,6 +33,15 @@ export function createJpegRenderer(deps: JpegRendererDeps): JpegRenderer {
   let busy = false
   let latest: Uint8Array | null = null
   let failures = 0
+
+  /** ack가 던져도 흐름을 깨지 않는다 — 프레임 실패로 세지도, 루프를 멈추지도 않는다. */
+  function ack(): void {
+    try {
+      deps.ack()
+    } catch {
+      // 확인은 최선 노력이다. main은 재동기 타이머로 되살아난다.
+    }
+  }
 
   async function run(first: Uint8Array): Promise<void> {
     busy = true
@@ -59,6 +70,8 @@ export function createJpegRenderer(deps: JpegRendererDeps): JpegRenderer {
           deps.onError(error instanceof Error ? error : new Error(String(error)))
         }
       }
+      // 닫힌 뒤(바깥 close, 연속 실패로 포기)에는 확인하지 않는다. try 밖이라 ack 실패가 프레임 실패로 세지 않는다.
+      if (!closed) ack()
       next = latest
     }
     busy = false
@@ -67,8 +80,11 @@ export function createJpegRenderer(deps: JpegRendererDeps): JpegRenderer {
   return {
     push(jpeg) {
       if (closed) return
-      if (busy) latest = jpeg
-      else void run(jpeg)
+      if (busy) {
+        // 덮이는 장은 더 처리되지 않는다 — 그 장의 확인은 지금 낸다.
+        if (latest) ack()
+        latest = jpeg
+      } else void run(jpeg)
     },
     close() {
       closed = true
