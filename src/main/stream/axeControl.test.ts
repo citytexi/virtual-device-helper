@@ -36,6 +36,28 @@ function setup(over: { handlers?: Record<string, ExecResult | Error>; now?: () =
   return { axe, errors, inputText, displayFrame, control }
 }
 
+/** 손으로 돌리는 타이머. fire()가 걸려 있는 타이머를 모두 터뜨린다. */
+function manualTimer() {
+  const pending = new Map<number, { callback: () => void; ms: number }>()
+  let next = 1
+  return {
+    pending,
+    setTimer: ((callback: () => void, ms: number) => {
+      const id = next++
+      pending.set(id, { callback, ms })
+      return id
+    }) as unknown as typeof setTimeout,
+    clearTimer: ((id: number) => {
+      pending.delete(id)
+    }) as unknown as typeof clearTimeout,
+    fire(): void {
+      const due = [...pending.values()]
+      pending.clear()
+      for (const t of due) t.callback()
+    }
+  }
+}
+
 /** 호출마다 deferred를 쥐고 있는 가짜 axe. */
 function deferredAxe() {
   const calls: string[][] = []
@@ -230,10 +252,12 @@ describe('createAxeControl', () => {
     const inputText = vi.fn(async (t: string) => {
       order.push(`text:${t}`)
     })
-    const control = createAxeControl({ udid: 'U', axe, displayFrame: async () => FRAME, inputText })
+    const timer = manualTimer()
+    const control = createAxeControl({ udid: 'U', axe, displayFrame: async () => FRAME, inputText, ...timer })
     control.send(touch('down', 10, 10), VIDEO)
     control.send(touch('up', 10, 10), VIDEO)
     control.send({ type: 'text', text: '안녕' }, VIDEO)
+    timer.fire()
     await flush()
     expect(inputText).not.toHaveBeenCalled()
     resolvers[0]?.()
@@ -433,5 +457,195 @@ describe('createAxeControl', () => {
     await flush()
     expect(calls).toHaveLength(1)
     expect(inputText).not.toHaveBeenCalled()
+  })
+
+  describe('text 모으기', () => {
+    function textSetup(handlers: Record<string, ExecResult | Error> = {}) {
+      const timer = manualTimer()
+      const axe = fakeAxe(handlers)
+      const order: string[] = []
+      const inputText = vi.fn(async (t: string) => {
+        order.push(`text:${t}`)
+      })
+      const exec = axe.exec
+      axe.exec = vi.fn(async (u: string, args: string[], opts?: never) => {
+        order.push(args.join(' '))
+        return exec(u, args, opts)
+      })
+      const control = createAxeControl({ udid: 'U', axe, displayFrame: async () => FRAME, inputText, ...timer })
+      return { timer, axe, order, inputText, control }
+    }
+    const text = (t: string): ControlIntent => ({ type: 'text', text: t })
+
+    it('연달아 온 a·b·c는 타이머가 끝난 뒤 inputText 한 번으로 간다', async () => {
+      const { timer, inputText, control } = textSetup()
+      control.send(text('a'), VIDEO)
+      control.send(text('b'), VIDEO)
+      control.send(text('c'), VIDEO)
+      await flush()
+      expect(inputText).not.toHaveBeenCalled()
+      // 새 글자가 올 때마다 다시 잰다. 걸려 있는 타이머는 하나다.
+      expect([...timer.pending.values()].map((t) => t.ms)).toEqual([250])
+      timer.fire()
+      await flush()
+      expect(inputText.mock.calls).toEqual([['abc']])
+    })
+
+    it('글자 하나도 기다린 뒤에 나간다', async () => {
+      const { timer, inputText, control } = textSetup()
+      control.send(text('가'), VIDEO)
+      await flush()
+      expect(inputText).not.toHaveBeenCalled()
+      timer.fire()
+      await flush()
+      expect(inputText.mock.calls).toEqual([['가']])
+    })
+
+    it('text 뒤에 key가 오면 타이머를 기다리지 않고 inputText가 key보다 먼저 돈다', async () => {
+      const { timer, order, control } = textSetup({ 'key 40': execOk() })
+      control.send(text('a'), VIDEO)
+      control.send(text('b'), VIDEO)
+      control.send({ type: 'key', key: 'enter' }, VIDEO)
+      await flush()
+      expect(order).toEqual(['text:ab', 'key 40'])
+      expect(timer.pending.size).toBe(0)
+      timer.fire()
+      await flush()
+      expect(order).toEqual(['text:ab', 'key 40'])
+    })
+
+    it('text 뒤에 터치가 오면 inputText가 탭보다 먼저 돈다', async () => {
+      const { order, control } = textSetup({ 'tap -x 50 -y 100': execOk() })
+      control.send(text('a'), VIDEO)
+      control.send(touch('down', 25, 50), VIDEO)
+      control.send(touch('up', 25, 50), VIDEO)
+      await flush()
+      expect(order).toEqual(['text:a', 'tap -x 50 -y 100'])
+    })
+
+    it('타이머로 갈린 두 묶음은 inputText 두 번이다', async () => {
+      const { timer, inputText, control } = textSetup()
+      control.send(text('a'), VIDEO)
+      control.send(text('b'), VIDEO)
+      timer.fire()
+      control.send(text('c'), VIDEO)
+      timer.fire()
+      await flush()
+      expect(inputText.mock.calls).toEqual([['ab'], ['c']])
+    })
+
+    it('close는 모아 둔 글자를 버리고 타이머를 지운다', async () => {
+      const { timer, inputText, control } = textSetup()
+      control.send(text('a'), VIDEO)
+      expect(timer.pending.size).toBe(1)
+      control.close()
+      expect(timer.pending.size).toBe(0)
+      timer.fire()
+      await flush()
+      expect(inputText).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('가로 화면', () => {
+    const LANDSCAPE = { width: 800, height: 400 }
+    const swipeKey = 'swipe --start-x 20 --start-y 40 --end-x 100 --end-y 200 --duration 0.05'
+
+    function orientationSetup(handlers: Record<string, ExecResult | Error>) {
+      let frame = LANDSCAPE
+      const axe = fakeAxe(handlers)
+      const errors: DeviceError[] = []
+      const inputText = vi.fn(async (_t: string) => {})
+      const control = createAxeControl({
+        udid: 'U',
+        axe,
+        displayFrame: async () => frame,
+        inputText,
+        now: () => 1,
+        onError: (e) => errors.push(e),
+        ...manualTimer()
+      })
+      return { axe, errors, inputText, control, setFrame: (f: { width: number; height: number }) => (frame = f) }
+    }
+    function tapAt(control: { send(i: ControlIntent, v: typeof VIDEO): void }, x: number, y: number): void {
+      control.send(touch('down', x, y), VIDEO)
+      control.send(touch('up', x, y), VIDEO)
+    }
+
+    it('세로 프레임에 가로 displayFrame이면 탭·스와이프·scroll을 보내지 않고 unsupported를 한 번만 알린다', async () => {
+      const { axe, errors, control } = orientationSetup({})
+      tapAt(control, 25, 50)
+      control.send(touch('down', 10, 20), VIDEO)
+      control.send(touch('up', 50, 100), VIDEO)
+      await flush()
+      control.send({ type: 'scroll', point: pt(50, 100), hScroll: 0, vScroll: 1 }, VIDEO)
+      await flush()
+      control.send({ type: 'scroll', point: pt(50, 100), hScroll: 0, vScroll: 1 }, VIDEO)
+      await flush()
+      expect(axe.calls).toEqual([])
+      expect(errors).toHaveLength(1)
+      expect(errors[0]?.toolError).toMatchObject({ kind: 'unsupported', details: { platform: 'ios', action: '가로 화면 입력' } })
+    })
+
+    it('가로 프레임에 세로 displayFrame도 막는다', async () => {
+      const { axe, errors, control, setFrame } = orientationSetup({})
+      setFrame(FRAME)
+      const wide = { width: 400, height: 200 }
+      const p = { x: 10, y: 10, ...wide }
+      control.send({ type: 'touch', action: 'down', point: p }, wide)
+      control.send({ type: 'touch', action: 'up', point: p }, wide)
+      await flush()
+      expect(axe.calls).toEqual([])
+      expect(errors.map((e) => e.toolError.kind)).toEqual(['unsupported'])
+    })
+
+    it('가로 화면에서도 key와 text는 간다', async () => {
+      const { axe, errors, inputText, control } = orientationSetup({ 'button home': execOk() })
+      tapAt(control, 25, 50)
+      control.send({ type: 'text', text: 'a' }, VIDEO)
+      control.send({ type: 'key', key: 'home' }, VIDEO)
+      await flush()
+      expect(inputText).toHaveBeenCalledWith('a')
+      expect(axe.calls).toEqual([{ args: ['button', 'home'] }])
+      expect(errors).toHaveLength(1)
+    })
+
+    it('방향이 다시 맞으면 제스처가 가고, 그 뒤 다시 어긋나면 다시 알린다', async () => {
+      const { axe, errors, control, setFrame } = orientationSetup({ 'tap -x 50 -y 100': execOk(), [swipeKey]: execOk() })
+      tapAt(control, 25, 50)
+      await flush()
+      expect(errors).toHaveLength(1)
+
+      setFrame(FRAME)
+      tapAt(control, 25, 50)
+      control.send(touch('down', 10, 20), VIDEO)
+      control.send(touch('up', 50, 100), VIDEO)
+      await flush()
+      expect(axe.calls.map((c) => c.args.join(' '))).toEqual(['tap -x 50 -y 100', swipeKey])
+      expect(errors).toHaveLength(1)
+
+      setFrame(LANDSCAPE)
+      tapAt(control, 25, 50)
+      tapAt(control, 25, 50)
+      await flush()
+      expect(axe.calls).toHaveLength(2)
+      expect(errors).toHaveLength(2)
+    })
+
+    it('정사각형 화면이나 프레임은 어긋난 것으로 보지 않는다', async () => {
+      const { axe, errors, control, setFrame } = orientationSetup({ 'tap -x 100 -y 50 ': execOk(), 'tap -x 100 -y 50': execOk() })
+      // displayFrame이 정사각형
+      setFrame({ width: 800, height: 800 })
+      tapAt(control, 25, 25)
+      await flush()
+      // 프레임이 정사각형
+      setFrame(LANDSCAPE)
+      const square = { width: 200, height: 200 }
+      const p = { x: 25, y: 25, ...square }
+      control.send({ type: 'touch', action: 'down', point: p }, square)
+      control.send({ type: 'touch', action: 'up', point: p }, square)
+      await flush()
+      expect(errors).toEqual([])
+      expect(axe.calls.map((c) => c.args.join(' '))).toEqual(['tap -x 100 -y 50', 'tap -x 100 -y 50'])
+    })
   })
 })

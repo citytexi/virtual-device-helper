@@ -138,7 +138,7 @@ describe('createIosStreamSessionFactory', () => {
 
   function setup() {
     const stream = fakeStream()
-    const axe = fakeAxe({ 'tap -x 100 -y 200': execOk() })
+    const axe = fakeAxe({ 'tap -x 100 -y 200': execOk(), 'button home': execOk() })
     vi.mocked(axe.stream).mockReturnValue(stream)
     const device = { displayFrame: vi.fn(async () => frame), inputText: vi.fn(async () => {}) }
     const deviceOf = vi.fn(() => device)
@@ -197,7 +197,7 @@ describe('createIosStreamSessionFactory', () => {
   })
 
   it('기기 큐에서 앞선 작업이 끝나기 전에는 text를 넣지 않는다', async () => {
-    const { session, stream, device, run } = setup()
+    const { session, stream, axe, device, run } = setup()
     const started = session.start()
     stream.emit(mjpegPart(200, 400))
     await started
@@ -205,9 +205,12 @@ describe('createIosStreamSessionFactory', () => {
     let release: () => void = () => {}
     const earlier = run('SIM-UDID', () => new Promise<void>((resolve) => (release = resolve)))
 
+    // 뒤따르는 key가 모아 둔 글자를 곧바로 줄에 세운다. 타이머를 기다리지 않는다.
     session.sendControl({ type: 'text', text: 'a' })
+    session.sendControl({ type: 'key', key: 'home' })
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(device.inputText).not.toHaveBeenCalled()
+    expect(axe.calls).toEqual([])
 
     release()
     await earlier
