@@ -9,7 +9,7 @@ related_adr: [ADR-0005, ADR-0001, ADR-0010, ADR-0013, ADR-0016, ADR-0017]
 related_spec: [m1-device-core-mcp-server, m2-live-streaming, m3-node-control-logs-events, m4-ios-simulator, m5-multi-screen]
 related_architecture:
 related_plan:
-related_code: [processClient.ts#createProcessClient, adbClient.ts#createAdbClient, simctlClient.ts#createSimctlClient, axeClient.ts#createAxeClient, locateAxe.ts#locateAxe, androidDevice.ts#createAndroidDevice, iosDevice.ts#createIosDevice, trackSimulators.ts#trackSimulators, platformLogDeps.ts#createPlatformLogDeps, registry.ts#createDeviceRegistry, registerTools.ts#registerTools, httpServer.ts#startMcpHttpServer, ipcBridge.ts#registerIpcBridge, appState.ts#createAppState, streamManager.ts#createStreamManager, streamSession.ts#StreamSession, rejectingSession.ts#createPlatformStreamSession, rejectingSession.ts#createIosStreamSessionFactory, scrcpySession.ts#createScrcpySession, axeStreamSession.ts#createAxeStreamSession, axeControl.ts#createAxeControl, screenSlots.ts#createScreenSlots, streamPort.ts#createStreamPortRouter, logManager.ts#createLogManager, bootstrap.ts#bootstrapApp, layering.test.ts]
+related_code: [processClient.ts#createProcessClient, adbClient.ts#createAdbClient, simctlClient.ts#createSimctlClient, axeClient.ts#createAxeClient, locateAxe.ts#locateAxe, androidDevice.ts#createAndroidDevice, iosDevice.ts#createIosDevice, trackSimulators.ts#trackSimulators, platformLogDeps.ts#createPlatformLogDeps, registry.ts#createDeviceRegistry, registerTools.ts#registerTools, httpServer.ts#startMcpHttpServer, ipcBridge.ts#registerIpcBridge, appState.ts#createAppState, streamManager.ts#createStreamManager, streamSession.ts#StreamSession, rejectingSession.ts#createPlatformStreamSession, rejectingSession.ts#createIosStreamSessionFactory, scrcpySession.ts#createScrcpySession, axeStreamSession.ts#createAxeStreamSession, axeControl.ts#createAxeControl, screenSlots.ts#createScreenSlots, streamPort.ts#createStreamPortRouter, useScrcpyStream.ts#useScrcpyStream, logManager.ts#createLogManager, bootstrap.ts#bootstrapApp, layering.test.ts]
 tags: [architecture, main, layers]
 ---
 
@@ -101,8 +101,8 @@ iOS 세션은 `rejectingSession.ts#createIosStreamSessionFactory`가 조립한�
 붙인다(`SessionPortMeta`에서 `StreamPortMeta`로). 그 칸에 그 기기가 없으면 포트는 건네지 않고 닫는다.
 칸 id의 뜻과 어느 플랫폼을 어느 칸에 놓을지는 `bootstrap.ts#bootstrapApp`의 배정 함수(`createPlaceByPlatform`)에만
 있고, 조정자는 `Platform`을 import하지 않는다. renderer의 `stream/streamPort.ts#createStreamPortRouter`는 받은 포트를
-`slotId`와 `epoch`가 맞는 구독자 하나에게만 넘기고, 받을 구독자가 없는 포트는 닫는다. 화면(`DeviceScreen.tsx`)은 구독을 먼저 하고 그다음
-`SlotRef`로 스트림을 요청한다. 결정은 [ADR-0017](../adr/0017-screen-slots-separate-from-target.md), 설계는
+`slotId`와 `epoch`가 맞는 구독자 하나에게만 넘기고, 받을 구독자가 없는 포트는 닫는다. 화면 훅(`hooks/useScrcpyStream.ts`의 `useScrcpyStream`)은 구독(`subscribePort`)을 먼저 하고 그다음
+`SlotRef`로 스트림을 요청한다(`startStream`). 결정은 [ADR-0017](../adr/0017-screen-slots-separate-from-target.md), 설계는
 [M5 스펙](../superpowers/specs/2026-10-06-m5-multi-screen.md)에 있다.
 
 **JPEG 프레임은 확인을 받고 보낸다.** `streamManager.ts`의 `createStreamManager`는 jpeg `frame`을 포트로 보낸 뒤
