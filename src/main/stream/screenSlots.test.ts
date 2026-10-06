@@ -11,8 +11,7 @@ interface FakeManager extends StreamManager {
 function fakeManager(): FakeManager {
   return {
     open: vi.fn<(serial: string) => Promise<void>>(async () => {}),
-    stop: vi.fn<() => Promise<void>>(async () => {}),
-    handleDisconnect: vi.fn(async () => {})
+    stop: vi.fn<() => Promise<void>>(async () => {})
   }
 }
 

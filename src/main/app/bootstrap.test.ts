@@ -4,7 +4,10 @@ import type { DeviceRegistry } from '../device/registry'
 import type { McpServerHandle } from '../mcp/httpServer'
 import { deviceError } from '../../shared/types/errors'
 import { IPC_CHANNELS, type AppSnapshot, type Outcome } from '../../shared/types/ipc'
-import { bootstrapApp, rendererSender, type BootstrapDeps } from './bootstrap'
+import { createDeviceRegistry } from '../device/registry'
+import type { Platform } from '../../shared/types/device'
+import type { Occupancy } from '../stream/screenSlots'
+import { bootstrapApp, createPlaceByPlatform, rendererSender, type BootstrapDeps } from './bootstrap'
 
 type Handler = (event: unknown, ...args: unknown[]) => unknown
 
@@ -53,11 +56,10 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
   ;(stack.registry.start as ReturnType<typeof vi.fn>).mockImplementation(() => {
     registryListeners.forEach((listener) => listener({ type: 'device_connected', serial: 'emulator-5554' }))
   })
-  const stream = {
-    open: vi.fn(async () => {}),
-    stop: vi.fn(async () => {}),
-    handleDisconnect: vi.fn(async () => {})
-  }
+  // 칸마다 관리자가 하나씩 만들어진다(a, b). createStreamManager는 부른 순서대로 이 둘을 준다.
+  const fakeManager = () => ({ open: vi.fn(async () => {}), stop: vi.fn(async () => {}) })
+  const managers = { a: fakeManager(), b: fakeManager() }
+  const stream = managers.a
   const logs = {
     handleConnect: vi.fn(),
     handleDisconnect: vi.fn(),
@@ -82,8 +84,9 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
     ipcMain: ipcMain as never,
     send: vi.fn(),
     createDeviceStack: vi.fn(() => ({ registry: stack.registry, catalog: stack.catalog })),
-    createStreamManager: vi.fn(() => stream),
+    createStreamManager: vi.fn(() => [managers.a, managers.b][vi.mocked(deps.createStreamManager).mock.calls.length - 1]!),
     createLogManager: vi.fn(() => logs),
+    postStreamPort: vi.fn(),
     startServer: vi.fn(async () => server),
     ...overrides
   }
@@ -101,6 +104,7 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
     stack,
     server,
     stream,
+    managers,
     logs,
     fireRegistry: (event: unknown) => registryListeners.forEach((listener) => listener(event))
   }
@@ -196,12 +200,14 @@ describe('bootstrapApp with an SDK: logs', () => {
 
   it('stops all tails on app stop even if the stream stop throws', async () => {
     const h = harness()
-    h.stream.stop.mockRejectedValueOnce(new Error('boom'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const app = await bootstrapApp(h.deps)
+    h.stream.stop.mockRejectedValueOnce(new Error('boom'))
 
-    await expect(app.stop()).rejects.toThrow('boom')
+    await expect(app.stop()).resolves.toBeUndefined()
 
     expect(h.logs.stopAll).toHaveBeenCalled()
+    consoleError.mockRestore()
   })
 
   it('opens logs for a known serial', async () => {
@@ -407,33 +413,38 @@ describe('bootstrapApp with an SDK', () => {
     expect(h.stream.open).not.toHaveBeenCalled()
   })
 
-  it('closes the stream when its device disconnects', async () => {
+  it('closes the stream of its slot when its device disconnects', async () => {
     const h = harness()
     await bootstrapApp(h.deps)
+    h.stream.stop.mockClear()
 
     h.fireRegistry({ type: 'device_disconnected', serial: 'emulator-5554' })
 
-    expect(h.stream.handleDisconnect).toHaveBeenCalledWith('emulator-5554')
+    expect(h.stream.stop).toHaveBeenCalledTimes(1)
   })
 
-  it('stops the stream on shutdown', async () => {
+  it('stops every slot manager on shutdown', async () => {
     const h = harness()
     const app = await bootstrapApp(h.deps)
+    h.managers.a.stop.mockClear()
 
     await app.stop()
 
-    expect(h.stream.stop).toHaveBeenCalled()
+    expect(h.managers.a.stop).toHaveBeenCalled()
+    expect(h.managers.b.stop).toHaveBeenCalled()
   })
 
   it('still stops tracking and closes the server when stopping the stream throws', async () => {
     const h = harness()
-    h.stream.stop.mockRejectedValueOnce(new Error('boom'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const app = await bootstrapApp(h.deps)
+    h.stream.stop.mockRejectedValueOnce(new Error('boom'))
 
-    await expect(app.stop()).rejects.toThrow('boom')
+    await expect(app.stop()).resolves.toBeUndefined()
 
     expect(h.stack.registry.stop).toHaveBeenCalled()
     expect(h.server.close).toHaveBeenCalled()
+    consoleError.mockRestore()
   })
 
   it('refuses a stream without an SDK and never builds a stream manager', async () => {
@@ -536,6 +547,201 @@ describe('bootstrapApp with both platforms', () => {
     expect(h.deps.createDeviceStack).toHaveBeenCalledWith(expect.objectContaining({ sdkRoot: '/opt/sdk' }), true)
     expect(snapshot.platforms.android.ok).toBe(true)
     expect(snapshot.platforms.ios.ok).toBe(true)
+  })
+})
+
+describe('createPlaceByPlatform', () => {
+  const platforms: Record<string, Platform> = { A1: 'android', A2: 'android', I1: 'ios' }
+  const place = createPlaceByPlatform((serial) => platforms[serial] ?? null)
+  const empty: Occupancy = [{ slotId: 'a', serial: null }, { slotId: 'b', serial: null }]
+
+  it('gives Android the first slot and iOS the second', () => {
+    expect(place('A1', empty, 'connected')).toBe('a')
+    expect(place('I1', empty, 'connected')).toBe('b')
+  })
+
+  it('gives no slot on connected when the slot is taken, but always on selected and vacated', () => {
+    const taken: Occupancy = [{ slotId: 'a', serial: 'A1' }, { slotId: 'b', serial: null }]
+
+    expect(place('A2', taken, 'connected')).toBeNull()
+    expect(place('A2', taken, 'selected')).toBe('a')
+    expect(place('A2', taken, 'vacated')).toBe('a')
+  })
+
+  it('gives no slot to a device of unknown platform', () => {
+    expect(place('X9', empty, 'connected')).toBeNull()
+    expect(place('X9', empty, 'selected')).toBeNull()
+  })
+})
+
+describe('bootstrapApp screen slots', () => {
+  /** 실제 registry에 손으로 track을 쏜다. 처음부터 붙어 있는 기기는 track이 불리는 순간 알린다. */
+  function slotHarness(initial: Array<{ serial: string; platform: Platform }> = []) {
+    let fire: (serial: string, connected: boolean, platform: Platform) => void = () => {}
+    const registry = createDeviceRegistry({
+      track: (onChange) => {
+        fire = onChange
+        for (const d of initial) onChange(d.serial, true, d.platform)
+        return () => {}
+      },
+      createDevice: (serial, platform) => ({ serial, platform }) as never
+    })
+    const base = harness()
+    const h = harness({ createDeviceStack: vi.fn(() => ({ registry, catalog: base.stack.catalog })) })
+    const hooksBySlot = () => vi.mocked(h.deps.createStreamManager).mock.calls.map((call) => call[2])
+    return {
+      ...h,
+      registry,
+      attach: (serial: string, platform: Platform) => fire(serial, true, platform),
+      detach: (serial: string, platform: Platform) => fire(serial, false, platform),
+      hooksBySlot,
+      screens: async () => (await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)).screens
+    }
+  }
+
+  it('puts a device attached before registry.start into slot a', async () => {
+    const h = slotHarness([{ serial: 'emulator-5554', platform: 'android' }])
+    await bootstrapApp(h.deps)
+
+    expect(await h.screens()).toEqual([
+      { id: 'a', epoch: 1, serial: 'emulator-5554', label: 'Android' },
+      { id: 'b', epoch: 0, serial: null, label: '' }
+    ])
+  })
+
+  it('fills both slots when an Android and an iOS device attach without anyone choosing', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+
+    h.attach('emulator-5554', 'android')
+    h.attach('SIM-1', 'ios')
+    const screens = await h.screens()
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(screens.map((s) => [s.id, s.serial, s.label])).toEqual([
+      ['a', 'emulator-5554', 'Android'],
+      ['b', 'SIM-1', 'iOS']
+    ])
+    expect(snapshot.activeSerial).toBeNull()
+  })
+
+  it('moves activeSerial and the slot together on selectDevice', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    h.attach('emulator-5556', 'android')
+
+    await h.invoke(IPC_CHANNELS.selectDevice, 'emulator-5556')
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(snapshot.activeSerial).toBe('emulator-5556')
+    expect(snapshot.screens[0]?.serial).toBe('emulator-5556')
+  })
+
+  it('moves the slot when the target is set through registry.setActive (MCP device_select)', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    h.attach('emulator-5556', 'android')
+
+    h.registry.setActive('emulator-5556')
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(snapshot.activeSerial).toBe('emulator-5556')
+    expect(snapshot.screens[0]?.serial).toBe('emulator-5556')
+  })
+
+  it('clears the target but hands the slot to another device of the platform when the target disconnects', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    h.attach('emulator-5556', 'android')
+    h.registry.setActive('emulator-5556')
+
+    h.detach('emulator-5556', 'android')
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(snapshot.activeSerial).toBeNull()
+    expect(snapshot.screens[0]?.serial).toBe('emulator-5554')
+  })
+
+  it('opens only the manager of the slot the device sits in', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    h.attach('SIM-1', 'ios')
+
+    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, 'SIM-1')
+
+    expect(result.ok).toBe(true)
+    expect(h.managers.b.open).toHaveBeenCalledWith('SIM-1')
+    expect(h.managers.a.open).not.toHaveBeenCalled()
+  })
+
+  it('does nothing for a serial that sits in no slot', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    h.attach('emulator-5556', 'android')
+
+    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, 'emulator-5556')
+
+    expect(result.ok).toBe(true)
+    expect(h.managers.a.open).not.toHaveBeenCalled()
+    expect(h.managers.b.open).not.toHaveBeenCalled()
+  })
+
+  it('fails startStream for a serial the registry does not know', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+
+    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, 'emulator-9999')
+
+    expect(result.ok).toBe(false)
+  })
+
+  it('stopStream closes every slot manager', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+    h.managers.a.stop.mockClear()
+
+    await h.invoke(IPC_CHANNELS.stopStream)
+
+    expect(h.managers.a.stop).toHaveBeenCalledTimes(1)
+    expect(h.managers.b.stop).toHaveBeenCalledTimes(1)
+  })
+
+  it('tags a manager port with its slot and epoch, and gives null once the device left the slot', async () => {
+    const postStreamPort = vi.fn()
+    const h = slotHarness()
+    h.deps.postStreamPort = postStreamPort
+    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    const [hooksA] = h.hooksBySlot()
+    const remote = {}
+
+    hooksA!.postPort({ serial: 'emulator-5554', sessionId: 's1' }, remote)
+    h.detach('emulator-5554', 'android')
+    hooksA!.postPort({ serial: 'emulator-5554', sessionId: 's1' }, remote)
+
+    expect(postStreamPort).toHaveBeenNthCalledWith(
+      1,
+      { serial: 'emulator-5554', sessionId: 's1', slotId: 'a', epoch: 1 },
+      remote
+    )
+    expect(postStreamPort).toHaveBeenNthCalledWith(2, null, remote)
+  })
+
+  it('resolves app.stop even when a manager throws on close', async () => {
+    const h = slotHarness()
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const app = await bootstrapApp(h.deps)
+    h.managers.b.stop.mockRejectedValueOnce(new Error('boom'))
+
+    await expect(app.stop()).resolves.toBeUndefined()
+
+    expect(h.managers.a.stop).toHaveBeenCalled()
+    consoleError.mockRestore()
   })
 })
 

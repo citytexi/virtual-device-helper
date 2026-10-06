@@ -44,8 +44,6 @@ export interface StreamManager {
   /** 이전 세션을 닫고 serial로 새 세션을 연다. 실패는 던지지 않고 포트의 status로 알린다. */
   open(serial: string): Promise<void>
   stop(): Promise<void>
-  /** 기기가 사라졌을 때. 그 기기의 세션이면 재시도 없이 닫는다. */
-  handleDisconnect(serial: string): Promise<void>
 }
 
 interface Entry {
@@ -304,10 +302,6 @@ export function createStreamManager(deps: StreamManagerDeps): StreamManager {
       const entry = current
       current = null
       if (entry) await closeEntry(entry)
-    },
-
-    async handleDisconnect(serial) {
-      if (current?.serial === serial) await closeIfCurrent(current)
     }
   }
 }

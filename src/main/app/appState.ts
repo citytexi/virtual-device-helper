@@ -58,7 +58,7 @@ function toMainEvent(event: RegistryEvent): MainEvent {
 }
 
 /** 추적 실패 안내가 어느 플랫폼인지 말할 때 쓰는 이름. 문구는 main이 정하고 renderer는 그대로 보인다. */
-const PLATFORM_LABELS: Record<Platform, string> = { android: 'Android', ios: 'iOS' }
+export const PLATFORM_LABELS: Record<Platform, string> = { android: 'Android', ios: 'iOS' }
 
 /** registry 이벤트 중 타임라인에 남길 것. tracking_failed는 스냅샷의 trackingFailures가 따로 말한다. */
 function deviceEventOf(event: RegistryEvent): { serial: string | null; event: DeviceTimelineEvent } | null {
