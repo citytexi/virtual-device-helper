@@ -263,7 +263,7 @@ Run: `npm test && npm run typecheck` / Expected: PASS.
 
 Run: `npm run test:integration -- src/main/stream/axeStreamSession.ios.integration.test.ts` / Expected: PASS.
 
-- [ ] **Step 3: 앱으로 완료 기준을 확인한다** — 실제 모듈로 확인했다. 영문 한 글자씩 입력은 글자를 모아 붙이게 고쳐 다시 확인했고(R11), 가로 화면은 따라가지 않고 터치를 막는 것으로 정했다(R12). 앱 창에서 보는 항목은 사람 확인이 남았다. 스펙 "M4-3 검증 결과".
+- [ ] **Step 3: 앱으로 완료 기준을 확인한다** — 실제 모듈로 확인했다. 영문 한 글자씩 입력은 글자를 모아 붙이게 고쳐 다시 확인했고(R11), 가로 화면은 따라가지 않고 터치를 막는 것으로 정했다(R12). 앱 창에서 보는 항목은 사람 확인이 남았다. 화면 키보드 입력은 ASCII만 간다(`inputMapper.ts`의 `keyToIntent`). main의 `text` 경로는 한글을 받지만 renderer 조합 입력(IME)은 후속 과제다. 스펙 "M4-3 검증 결과".
 
 앱에서 iOS 기기를 골라: 실시간 화면이 뜬다 / Settings 셀을 클릭하면 들어간다 / 목록을 드래그·휠로
 스크롤한다 / 검색 필드에 키보드로 영문·한글을 친다 / 홈 버튼이 동작하고 뒤로 버튼은 없다 /

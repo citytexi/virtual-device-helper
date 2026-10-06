@@ -70,6 +70,8 @@ iOS(`iosLogTail.ts`의 `log stream` tail, `iosLogDeps.ts`)로 나눈다. 준비�
 **화면 스트림도 플랫폼 라우터를 거친다.** `streamManager`는 `streamSession.ts`의 `StreamSession` 하나만 다루고
 플랫폼을 모른다. `stream/rejectingSession.ts#createPlatformStreamSession`이 기기의 `platform`으로 세션을 고른다.
 코덱은 세션이 `session` 메시지로 알린다([ADR-0016](../adr/0016-stream-codec-per-session.md)).
+도구가 없는 플랫폼의 기기는 그 이유(`sdk_not_found`, `ios_tool_not_found`)로 `start()`가 거절되는 세션을 받고,
+renderer는 스크린샷으로 강등한다.
 
 | 갈래 | 세션 | 화면 | 화면 입력 |
 |---|---|---|---|
@@ -79,13 +81,18 @@ iOS(`iosLogTail.ts`의 `log stream` tail, `iosLogDeps.ts`)로 나눈다. 준비�
 iOS 세션은 `rejectingSession.ts#createIosStreamSessionFactory`가 조립한다. `axeControl`은 좌표 환산용 화면 크기와
 문자열 입력을 그 기기의 `IosDevice`(`displayFrame`, `inputText`)에 맡기고, 문자열 입력만 기기 관리 층의 `run`
 큐에 세운다. 시뮬레이터 클립보드를 MCP `ui_text`와 함께 쓰기 때문이다. 그래서 화면에서 친 글자는 긴 MCP
-작업(`app_install` 등)이 끝날 때까지 기다리고, 탭·스와이프·키는 기다리지 않는다.
+작업(`app_install` 등)이 끝날 때까지 기다린다. 탭·스와이프·키는 스스로는 기기 큐에 서지 않는다. 다만
+`axeControl`은 직렬 체인 하나로 돌고 텍스트가 아닌 입력은 모아 둔 글자를 먼저 보내므로, 보내지 않은 글자가
+앞에 있으면 탭·스와이프·키도 그 글자 뒤에서 기다린다. 긴 `app_install` 중에 글자 하나를 치고 클릭하면 클릭은
+설치가 끝날 때까지 밀린다.
 
 알려진 한계: 글자를 치다가 잠깐 멈추면 붙여 넣기가 갈리고 그 경계에 iOS가 공백을 넣을 수 있다. 시뮬레이터를
-가로로 돌리면 스트림 프레임이 따라 돌지 않아 탭·스와이프·scroll을 보내지 않는다(`unsupported`). 관찰은
+가로로 돌리면 스트림 프레임이 따라 돌지 않아 탭·스와이프·scroll을 보내지 않는다(`unsupported`). 이 알림은
+`axeControl`의 `onError`로 가는데 `createIosStreamSessionFactory`가 `onError`를 잇지 않으므로 main 프로세스
+콘솔에만 남고 앱 창에는 아무것도 뜨지 않는다. 그래서 사람에게는 가로 화면의 클릭이 그냥 먹히지 않는 것으로
+보인다. 화면 키보드 입력은 ASCII만 간다(renderer의 `inputMapper.ts#keyToIntent`). main의 `text` 경로는 한글도
+받지만 renderer의 조합 입력(IME)은 아직 보내지 않는다. 관찰은
 [M4 스펙](../superpowers/specs/2026-09-29-m4-ios-simulator.md)의 "M4-3 검증 결과"에 있다.
- 도구가 없는 플랫폼의 기기는 그 이유
-(`sdk_not_found`, `ios_tool_not_found`)로 `start()`가 거절되는 세션을 받고, renderer는 스크린샷으로 강등한다.
 
 ## 조립
 

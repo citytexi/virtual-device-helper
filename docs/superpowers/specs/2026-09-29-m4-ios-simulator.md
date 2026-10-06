@@ -367,11 +367,17 @@ export type StreamDown =
   `close`는 모아 둔 글자를 버린다.
 - `createIosStreamSessionFactory`가 `inputText` 호출을 `registry.run` 기기 큐에 세운다. MCP `ui_text`와 같은
   줄이라 한쪽의 `pbcopy`와 ⌘V 사이에 다른 쪽이 끼어들지 못한다. 그 대신 화면에서 친 글자는 `app_install`
-  같은 긴 MCP 작업이 끝날 때까지 기다린다. 탭·스와이프·키는 공유 상태가 없어 기기 큐에 세우지 않으므로
-  기다리지 않는다.
+  같은 긴 MCP 작업이 끝날 때까지 기다린다. 탭·스와이프·키는 스스로는 기기 큐에 서지 않는다. 다만
+  `axeControl`의 직렬 체인은 하나이고 텍스트가 아닌 입력은 모아 둔 글자를 먼저 보내므로, 보내지 않은 글자가
+  앞에 있으면 탭·스와이프·키도 그 글자 뒤에서 기다린다. 긴 `app_install` 중에 글자 하나를 치고 클릭하면
+  클릭은 설치가 끝날 때까지 밀린다.
 - 알려진 한계: 글자가 화면에 약 250ms 늦게 나타난다. 낱말을 치다가 250ms 넘게 멈추면 붙여 넣기가 갈리고
   그 경계에 iOS가 공백을 넣을 수 있다. 시뮬레이터를 가로로 돌리면 화면이 누워 보이고 터치 입력이 꺼진다.
-  관찰은 "M4-3 검증 결과"에 있다.
+  이때의 `unsupported`는 `onError`로만 가고 `createIosStreamSessionFactory`가 `onError`를 잇지 않아 main 프로세스
+  콘솔에만 남는다. 앱 창에는 아무것도 뜨지 않으므로 사람에게는 가로 화면의 클릭이 그냥 먹히지 않는 것으로
+  보인다. 화면 키보드 입력은 ASCII만 간다(renderer의 `inputMapper.ts#keyToIntent`는 조합 중이면 보내지 않고
+  0x20~0x7e만 `text`로 바꾸며 `compositionend` 처리가 없다). main의 `text` 경로는 한글을 받지만 renderer의
+  조합 입력(IME)은 후속 과제다. 관찰은 "M4-3 검증 결과"에 있다.
 - 입력 뒤 시뮬레이터 클립보드를 되돌리지 않는다. 복원을 검토했으나 만들지 않았다. ⌘V는 `key-combo`가
   돌아온 뒤에 비동기로 처리되므로 곧바로 되돌리면 이전 내용이 붙을 수 있다.
 - `key`는 `iosKeys.ts`의 `IOS_KEY_ARGS` 표 하나를 쓴다(HID keycode, `home`은 `button home`, `power`는
@@ -502,6 +508,15 @@ SwiftUI와 UIKit의 차이를 가를 서드파티 앱은 이번에 쓰지 못했
   방법이 필요하다("M4-3 검증 결과").
 - 탭·드래그 지연의 절반이 제스처마다 재는 `describe-ui`다. 캐시하려면 회전을 알아채는 방법과 함께 정해야 한다.
 - 글자를 치다가 멈춘 경계의 공백. 붙여 넣기를 쓰는 한 남는다.
+- 화면 키보드로 한글을 칠 수 없다. `inputMapper.ts`의 `keyToIntent`는 조합 중(`isComposing`)이면 보내지 않고
+  ASCII만 `text`로 바꾸며 renderer에 `compositionend` 처리가 없다. main의 `text` 경로는 한글을 받으므로 조합이
+  끝난 문자열을 `text`로 보내는 renderer 쪽 작업이 필요하다.
+- 가로 화면 차단 알림이 앱 창에 보이지 않는다. `unsupported`는 main 콘솔에만 남는다. 앱 창에 알리려면
+  `StreamDown` 메시지나 타임라인 항목이 필요하다.
+- `axeControl`의 `displayFrame`에 짧은 TTL 캐시를 두는 방안. 제스처마다 재는 `describe-ui`가 탭 지연의 절반이다.
+  회전을 알아채는 방법과 함께 정한다.
+- `rejectingSession.ts`는 이제 플랫폼 라우터와 iOS 세션 조립까지 담고 있어 파일 이름이 내용과 맞지 않는다.
+  이름을 바꾼다.
 
 ## M4-1 검증 결과
 
@@ -604,7 +619,7 @@ SwiftUI와 UIKit의 차이를 가를 서드파티 앱은 이번에 쓰지 못했
 | 2. Settings 셀 클릭 | 확인 | 설정 첫 화면의 `일반` 셀 중심을 `touch` down·up으로 보내자 `tap -x 201 -y 319`가 나가고 일반 화면으로 들어갔다(세 번). |
 | 3. 드래그로 스크롤 | 확인 | 약 0.3초 동안 `down`→`move`→`up`을 보내면 `swipe` 한 번이 나가고 목록이 움직였다. 목록 끝에서는 더 움직이지 않았다. |
 | 4. 휠로 스크롤 | 확인 | 16ms 간격 `scroll`(`vScroll: -1`) 서른 번이 `swipe` 두 번으로 합쳐졌고 목록이 아래로 내려갔다. 손가락은 `vScroll > 0`에서 아래로, `hScroll > 0`에서 왼쪽으로 갔고 거리는 `displayFrame`의 0.15배였다. |
-| 5. 한글 입력 | 확인 | 검색 필드에 `text` `한글`, 한 글자씩 `한`·`글`을 보내면 `한글`로 들어갔다. renderer의 조합 입력(IME)이 이 모양으로 보내는지는 사람 확인 필요. |
+| 5. 한글 입력 | 확인 | 검색 필드에 `text` `한글`, 한 글자씩 `한`·`글`을 보내면 `한글`로 들어갔다. 이는 포트에서 `text` 의도를 직접 넣은 결과로 main의 `text` 경로가 한글을 받는다는 뜻이다. 화면 키보드로 치는 입력은 ASCII만 간다(`inputMapper.ts`의 `keyToIntent`가 조합 중이면 보내지 않고 0x20~0x7e만 `text`로 바꾼다). renderer 조합 입력(IME)은 후속 과제다. |
 | 6. 영문 입력 | 고친 뒤 확인 | 처음에는 한 글자씩 `a`·`b`·`c`를 보내면 `a b c`가 됐다(`1`·`2` → `1 2`, `ab`·`cd` → `ab cd`). 글자를 모아 붙이게 고친 뒤에는 간격 없이, 또 120ms 간격으로 보낸 `a`·`b`·`c`가 붙여 넣기 한 번으로 `abc`가 됐다. 80ms 간격의 `hello wo`, `1`·`2`(→ `12`), `한`·`글`(→ `한글`)도 같다. 400ms 간격으로 보내면 글자마다 따로 붙어 여전히 `a b c`다(알려진 한계). 아래 "실제 기기로 잡은 것" 참고. |
 | 7. 홈 버튼, 지원하지 않는 키 | 확인 | `key: 'home'`이 `button home`으로 나가 홈 화면이 됐다. `backspace`는 `key 42`로 한 글자를 지웠다. `back`·`app_switch`·`volume_up`·`volume_down`은 AXe 호출이 없었고 스트림은 이어졌다. 뒤로 버튼이 그려지지 않는 것은 `DeviceScreen.test.tsx`가 덮고, 앱 창에서는 사람 확인 필요. |
 | 8. 가로 회전 | **따라가지 않는다** | Simulator.app의 Device 메뉴로 왼쪽 회전했다(Safari). `displayFrame`은 874×402로 바뀌지만 스트림 프레임은 603×1311 그대로이고 내용만 옆으로 누워 온다. 새 `session`도 오지 않는다. 그 뒤 방향이 어긋나면 터치 입력을 막게 했다. 막는 동작은 미검증 — 회전을 CLI로 걸 수 없어 단위 테스트(`axeControl.test.ts`)로만 확인. 아래 참고. |

@@ -84,8 +84,10 @@ export function createIosStreamSessionFactory(input: IosStreamSessionInput): Cre
           axe: input.axe,
           displayFrame: async () => input.deviceOf(udid).displayFrame(),
           // 문자열 입력은 시뮬레이터 클립보드를 거친다. MCP ui_text와 같은 기기 큐에 세워
-          // 한쪽의 pbcopy와 ⌘V 사이에 다른 쪽이 끼어들지 못하게 한다. 탭·스와이프·키는 공유 상태가
-          // 없어 세우지 않는다 — 세우면 사람 입력이 app_install 같은 긴 MCP 작업 뒤에서 기다린다.
+          // 한쪽의 pbcopy와 ⌘V 사이에 다른 쪽이 끼어들지 못하게 한다. 탭·스와이프·키는 스스로는
+          // 기기 큐에 서지 않는다. 다만 axeControl의 직렬 체인에서 보내지 않은 텍스트가 앞에 있으면
+          // (비텍스트 입력은 텍스트를 먼저 flush한다) 그 텍스트 뒤에서 기다린다. 긴 app_install 중에
+          // 글자 하나를 치고 클릭하면 클릭은 설치가 끝날 때까지 밀린다.
           inputText: (text) => input.run(udid, async () => input.deviceOf(udid).inputText(text))
         })
       },
