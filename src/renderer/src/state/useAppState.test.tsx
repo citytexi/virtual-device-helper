@@ -14,7 +14,7 @@ const baseSnapshot: AppSnapshot = {
   devices: [],
   activeSerial: null,
   timeline: [],
-  trackingFailure: null
+  trackingFailures: { android: null, ios: null }
 }
 
 function toolCallEntry(id: string, at: number): TimelineEntry {
@@ -152,11 +152,14 @@ describe('useAppState', () => {
     act(() =>
       listener?.({
         type: 'tracking_failed',
-        failure: { error: null, exitCode: 1 }
+        failure: { platform: 'ios', label: 'iOS', error: null, exitCode: 1 }
       })
     )
 
-    expect(result.current.snapshot?.trackingFailure).toEqual({ error: null, exitCode: 1 })
+    expect(result.current.snapshot?.trackingFailures).toEqual({
+      android: null,
+      ios: { platform: 'ios', label: 'iOS', error: null, exitCode: 1 }
+    })
   })
 
   it('unsubscribes on unmount so events do not hit a dead component', async () => {

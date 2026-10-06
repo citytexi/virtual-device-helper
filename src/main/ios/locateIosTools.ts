@@ -66,14 +66,14 @@ export async function locateIosTools(deps: LocateIosToolsDeps): Promise<IosTools
   try {
     developerDir = (await withTimeout(deps.execFile('xcode-select', ['-p']), timeoutMs)).stdout.trim()
   } catch {
-    return { ok: false, reason: 'Xcode 개발자 디렉토리를 찾지 못했다', hostSupported: true }
+    return { ok: false, reason: 'iOS: Xcode 개발자 디렉토리를 찾지 못했다', hostSupported: true }
   }
-  if (developerDir === '') return { ok: false, reason: 'Xcode 개발자 디렉토리를 찾지 못했다', hostSupported: true }
+  if (developerDir === '') return { ok: false, reason: 'iOS: Xcode 개발자 디렉토리를 찾지 못했다', hostSupported: true }
 
   try {
     await withTimeout(deps.execFile('xcrun', ['simctl', 'help']), timeoutMs)
   } catch (thrown) {
-    return { ok: false, reason: isTimeout(thrown) ? 'xcrun simctl이 응답하지 않는다' : 'xcrun simctl을 실행할 수 없다', hostSupported: true }
+    return { ok: false, reason: isTimeout(thrown) ? 'iOS: xcrun simctl이 응답하지 않는다' : 'iOS: xcrun simctl을 실행할 수 없다', hostSupported: true }
   }
   return { ok: true, developerDir }
 }

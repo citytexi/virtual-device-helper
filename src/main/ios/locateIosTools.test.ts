@@ -67,7 +67,7 @@ describe('locateIosTools', () => {
       const pending = locateIosTools({ platform: 'darwin', execFile, timeoutMs: 10_000 })
       await vi.advanceTimersByTimeAsync(10_000)
 
-      await expect(pending).resolves.toEqual({ ok: false, reason: 'xcrun simctl이 응답하지 않는다', hostSupported: true })
+      await expect(pending).resolves.toEqual({ ok: false, reason: 'iOS: xcrun simctl이 응답하지 않는다', hostSupported: true })
     } finally {
       vi.useRealTimers()
     }
@@ -81,7 +81,7 @@ describe('locateIosTools', () => {
 
     const result = await locateIosTools({ platform: 'darwin', execFile })
 
-    expect(result).toEqual({ ok: false, reason: 'xcrun simctl이 응답하지 않는다', hostSupported: true })
+    expect(result).toEqual({ ok: false, reason: 'iOS: xcrun simctl이 응답하지 않는다', hostSupported: true })
   })
 
   it('기본 제한 시간은 10초다', () => {

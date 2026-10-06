@@ -250,7 +250,7 @@ describe('createAppState events', () => {
     p.fire({ type: 'active_changed', serial: 'emulator-5554' })
     p.fire({ type: 'active_changed', serial: null })
     p.fire({ type: 'device_disconnected', serial: 'emulator-5554' })
-    p.fire({ type: 'tracking_failed', failure: { error: null, exitCode: 1 } })
+    p.fire({ type: 'tracking_failed', platform: 'android', failure: { error: null, exitCode: 1 } })
 
     const timeline = (await state.snapshot()).timeline
     expect(timeline.map((entry) => (entry.kind === 'device' ? [entry.event, entry.serial] : null))).toEqual([
@@ -340,7 +340,7 @@ describe('createAppState tracking failures', () => {
 
     const snapshot = await state.snapshot()
 
-    expect(snapshot.trackingFailure).toBeNull()
+    expect(snapshot.trackingFailures).toEqual({ android: null, ios: null })
   })
 
   it('flattens the DeviceError into a plain ToolError so it survives IPC', async () => {
@@ -357,6 +357,7 @@ describe('createAppState tracking failures', () => {
 
     p.fire({
       type: 'tracking_failed',
+      platform: 'android',
       failure: {
         error: deviceError('adb_not_found', 'adb를 실행할 수 없다', 'SDK 경로를 확인해라'),
         exitCode: null
@@ -364,6 +365,8 @@ describe('createAppState tracking failures', () => {
     })
 
     const expected = {
+      platform: 'android',
+      label: 'Android',
       error: { kind: 'adb_not_found', message: 'adb를 실행할 수 없다', hint: 'SDK 경로를 확인해라', details: undefined },
       exitCode: null
     }
@@ -371,7 +374,7 @@ describe('createAppState tracking failures', () => {
     // 클래스 인스턴스가 아니라 평평한 객체여야 structured clone을 버틴다.
     const event = seen[0] as { failure: { error: object } }
     expect(Object.getPrototypeOf(event.failure.error)).toBe(Object.prototype)
-    await expect(state.snapshot().then((snapshot) => snapshot.trackingFailure)).resolves.toEqual(expected)
+    await expect(state.snapshot().then((snapshot) => snapshot.trackingFailures)).resolves.toEqual({ android: expected, ios: null })
   })
 
   it('keeps a null error when the tracker exited without one', async () => {
@@ -383,12 +386,39 @@ describe('createAppState tracking failures', () => {
       server: p.server
     })
 
-    p.fire({ type: 'tracking_failed', failure: { error: null, exitCode: 1 } })
+    p.fire({ type: 'tracking_failed', platform: 'android', failure: { error: null, exitCode: 1 } })
 
-    await expect(state.snapshot().then((snapshot) => snapshot.trackingFailure)).resolves.toEqual({
+    await expect(state.snapshot().then((snapshot) => snapshot.trackingFailures.android)).resolves.toEqual({
+      platform: 'android',
+      label: 'Android',
       error: null,
       exitCode: 1
     })
+  })
+
+  it('플랫폼마다 따로 기억한다 — iOS 추적만 죽어도 Android 칸은 비어 있다', async () => {
+    const p = parts()
+    const state = createAppState({
+      platforms: ANDROID_READY,
+      registry: p.registry,
+      catalog: p.catalog,
+      server: p.server
+    })
+    const seen: MainEvent[] = []
+    state.onEvent((event) => seen.push(event))
+
+    p.fire({ type: 'tracking_failed', platform: 'ios', failure: { error: null, exitCode: null } })
+
+    const failures = (await state.snapshot()).trackingFailures
+    expect(failures.android).toBeNull()
+    expect(failures.ios).toEqual({ platform: 'ios', label: 'iOS', error: null, exitCode: null })
+    expect(seen).toEqual([{ type: 'tracking_failed', failure: failures.ios }])
+
+    p.fire({ type: 'tracking_failed', platform: 'android', failure: { error: null, exitCode: 1 } })
+
+    const both = (await state.snapshot()).trackingFailures
+    expect(both.android?.exitCode).toBe(1)
+    expect(both.ios?.platform).toBe('ios')
   })
 
   it('does not refresh the catalog list for a tracking failure', async () => {
@@ -403,7 +433,7 @@ describe('createAppState tracking failures', () => {
     const seen: Array<{ type: string }> = []
     state.onEvent((event) => seen.push(event))
 
-    p.fire({ type: 'tracking_failed', failure: { error: null, exitCode: 1 } })
+    p.fire({ type: 'tracking_failed', platform: 'android', failure: { error: null, exitCode: 1 } })
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(p.catalog.list).not.toHaveBeenCalled()
@@ -465,7 +495,7 @@ describe('createAppState snapshot when the catalog list fails', () => {
         devices: ['emulator-5554'],
         activeSerial: 'emulator-5554',
         timeline: [],
-        trackingFailure: null
+        trackingFailures: { android: null, ios: null }
       })
       expect(errors).toHaveBeenCalled()
     } finally {

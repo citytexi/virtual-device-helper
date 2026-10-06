@@ -1,10 +1,10 @@
 ---
 id: m4-1-ios-foundation
 title: M4-1 — iOS 기반: simctl, 기기 목록, 앱, 스크린샷, 로그
-status: draft
+status: done
 type: work-order
 created: 2026-09-29
-updated: 2026-09-29
+updated: 2026-10-06
 owner: virtual-device-helper 팀
 scope: [main, renderer, preload, mcp, shared, ios, android]
 hosts: [macos]

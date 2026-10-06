@@ -34,7 +34,7 @@ function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
     devices: ['emulator-5554'],
     activeSerial: 'emulator-5554',
     timeline: [],
-    trackingFailure: null,
+    trackingFailures: { android: null, ios: null },
     ...overrides
   }
 }
@@ -56,7 +56,7 @@ describe('DevicePanel platform notices', () => {
     expect(note.className).toContain('notice-info')
   })
 
-  it('shows a one-line Android notice when only iOS is ready', () => {
+  it('shows the Android reason when only iOS is ready', () => {
     render(
       <DevicePanel
         snapshot={snapshot({
@@ -68,10 +68,25 @@ describe('DevicePanel platform notices', () => {
       />
     )
 
-    expect(screen.getByText('Android SDK를 찾지 못해 AVD는 쓸 수 없다.')).toBeDefined()
+    expect(screen.getByText('Android SDK를 찾지 못했다')).toBeDefined()
   })
 
-  it('shows a one-line iOS notice with the reason when only Android is ready', () => {
+  it('shows the hint main sent next to the reason of the missing platform', () => {
+    render(
+      <DevicePanel
+        snapshot={snapshot({
+          platforms: {
+            android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: [], hint: 'ANDROID_HOME을 지정해라' },
+            ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: [] }
+          }
+        })}
+      />
+    )
+
+    expect(screen.getByText(/Android SDK를 찾지 못했다/).textContent).toContain('ANDROID_HOME을 지정해라')
+  })
+
+  it('shows the iOS reason when only Android is ready', () => {
     render(
       <DevicePanel
         snapshot={snapshot({
@@ -83,7 +98,7 @@ describe('DevicePanel platform notices', () => {
       />
     )
 
-    expect(screen.getByText('macOS에서만 iOS 시뮬레이터를 쓸 수 있다 — iOS 시뮬레이터는 쓸 수 없다.')).toBeDefined()
+    expect(screen.getByText('macOS에서만 iOS 시뮬레이터를 쓸 수 있다')).toBeDefined()
   })
 
   it('shows the notice even when there are no virtual devices', () => {
@@ -99,13 +114,13 @@ describe('DevicePanel platform notices', () => {
       />
     )
 
-    expect(screen.getByText('Android SDK를 찾지 못해 AVD는 쓸 수 없다.')).toBeDefined()
+    expect(screen.getByText('Android SDK를 찾지 못했다')).toBeDefined()
   })
 
   it('shows no platform notice when both are ready', () => {
     render(<DevicePanel snapshot={snapshot()} />)
 
-    expect(screen.queryByText(/쓸 수 없다\./)).toBeNull()
+    expect(screen.queryByText(/찾지 못했다|쓸 수 있다/)).toBeNull()
   })
 })
 
@@ -268,13 +283,18 @@ describe('DevicePanel', () => {
   })
 
   it('shows a tracking failure alert with the error message and hint when tracking stopped with an error', () => {
-    // R1: trackingFailure가 있으면 목록이 오래됐을 수 있다는 경고를 role="alert"로 보여준다.
+    // R1: trackingFailures에 항목이 있으면 목록이 오래됐을 수 있다는 경고를 role="alert"로 보여준다.
     render(
       <DevicePanel
         snapshot={snapshot({
-          trackingFailure: {
-            error: { kind: 'command_failed', message: 'adb 서버가 죽었다', hint: 'adb를 재시작해라' },
-            exitCode: null
+          trackingFailures: {
+            android: {
+              platform: 'android',
+              label: 'Android',
+              error: { kind: 'command_failed', message: 'adb 서버가 죽었다', hint: 'adb를 재시작해라' },
+              exitCode: null
+            },
+            ios: null
           }
         })}
       />
@@ -287,11 +307,29 @@ describe('DevicePanel', () => {
     expect(trackingAlert?.textContent).toMatch(/추적/)
   })
 
+  it('어느 플랫폼의 추적이 죽었는지 main이 준 label로 말하고, 둘 다 죽으면 각각 알린다', () => {
+    render(
+      <DevicePanel
+        snapshot={snapshot({
+          trackingFailures: {
+            android: null,
+            ios: { platform: 'ios', label: 'iOS', error: null, exitCode: null }
+          }
+        })}
+      />
+    )
+
+    const alerts = screen.getAllByRole('alert')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.textContent).toContain('iOS')
+    expect(alerts[0]?.textContent).not.toContain('Android')
+  })
+
   it('shows a tracking failure alert with the exit code when tracking stopped without an error', () => {
     render(
       <DevicePanel
         snapshot={snapshot({
-          trackingFailure: { error: null, exitCode: 137 }
+          trackingFailures: { android: { platform: 'android', label: 'Android', error: null, exitCode: 137 }, ios: null }
         })}
       />
     )
@@ -305,7 +343,7 @@ describe('DevicePanel', () => {
     render(
       <DevicePanel
         snapshot={snapshot({
-          trackingFailure: { error: null, exitCode: null }
+          trackingFailures: { android: { platform: 'android', label: 'Android', error: null, exitCode: null }, ios: null }
         })}
       />
     )
@@ -369,7 +407,7 @@ describe('DevicePanel', () => {
           virtualDevices: [],
           devices: [],
           activeSerial: null,
-          trackingFailure: { error: null, exitCode: 1 }
+          trackingFailures: { android: { platform: 'android', label: 'Android', error: null, exitCode: 1 }, ios: null }
         })}
       />
     )

@@ -11,7 +11,7 @@ superseded_by:
 related_adr: [ADR-0002, ADR-0010, ADR-0014, ADR-0015]
 related_spec: m4-ios-simulator
 related_architecture:
-related_plan:
+related_plan: m4-3-ios-streaming
 related_code: [stream.ts#StreamDown, streamManager.ts#StreamManagerDeps, scrcpySession.ts, axeStreamSession.ts, streamDecoder.ts, jpegRenderer.ts]
 tags: [adr, streaming]
 ---

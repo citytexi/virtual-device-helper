@@ -1,4 +1,4 @@
-import type { ScreenshotResult, VirtualDeviceEntry } from './device'
+import type { Platform, ScreenshotResult, VirtualDeviceEntry } from './device'
 import type { ToolError, ToolErrorKind } from './errors'
 
 /**
@@ -116,6 +116,10 @@ export interface ServerStatus {
  * 함께 사라진다. 그래서 여기서는 이미 평평한 ToolError로 바꿔 담는다.
  */
 export interface TrackingFailure {
+  /** 어느 플랫폼의 추적이 죽었는지. renderer는 이 값으로 문구를 가르지 않고 label을 그대로 보인다. */
+  platform: Platform
+  /** 사람이 읽는 플랫폼 이름. main이 정한다. */
+  label: string
   error: ToolError | null
   exitCode: number | null
 }
@@ -127,7 +131,8 @@ export interface AppSnapshot {
   devices: string[]
   activeSerial: string | null
   timeline: TimelineEntry[]
-  trackingFailure: TrackingFailure | null
+  /** 플랫폼별 추적 실패. 추적이 살아 있으면(또는 그 플랫폼을 조립하지 않았으면) null이다. */
+  trackingFailures: Record<Platform, TrackingFailure | null>
 }
 
 export type MainEvent =

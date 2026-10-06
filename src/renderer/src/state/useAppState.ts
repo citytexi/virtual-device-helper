@@ -32,7 +32,10 @@ function reduce(snapshot: AppSnapshot, event: MainEvent): AppSnapshot {
     case 'server_changed':
       return { ...snapshot, server: event.server }
     case 'tracking_failed':
-      return { ...snapshot, trackingFailure: event.failure }
+      return {
+        ...snapshot,
+        trackingFailures: { ...snapshot.trackingFailures, [event.failure.platform]: event.failure }
+      }
   }
 }
 

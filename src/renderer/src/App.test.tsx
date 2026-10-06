@@ -46,7 +46,7 @@ const ready: AppSnapshot = {
   devices: ['emulator-5554'],
   activeSerial: 'emulator-5554',
   timeline: [],
-  trackingFailure: null
+  trackingFailures: { android: null, ios: null }
 }
 
 beforeEach(() => {
@@ -73,7 +73,7 @@ describe('App', () => {
     mockApi({
       ...ready,
       platforms: {
-        android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/a/adb'], hint: null },
+        android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/a/adb'], hint: 'Android Studio를 설치해라' },
         ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [], hint: null }
       },
       server: null,
@@ -98,7 +98,7 @@ describe('App', () => {
     render(<App />)
 
     await waitFor(() => expect(screen.getByRole('region', { name: '기기' })).toBeDefined())
-    expect(screen.getByText('Android SDK를 찾지 못해 AVD는 쓸 수 없다.')).toBeDefined()
+    expect(screen.getByText('Android SDK를 찾지 못했다')).toBeDefined()
     expect(screen.queryByRole('main', { name: '기기 도구를 찾지 못했다' })).toBeNull()
   })
 

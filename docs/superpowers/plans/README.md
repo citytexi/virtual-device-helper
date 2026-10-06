@@ -13,9 +13,9 @@
 <!-- index:start -->
 | 계획 | 상태 | 내용 |
 |------|------|------|
-| [m4-1-ios-foundation](2026-09-29-m4-1-ios-foundation.md) | draft | simctl·IosDevice·시뮬레이터 목록과 추적·iOS 로그·플랫폼별 조립 |
-| [m4-2-ios-input-nodes](2026-09-30-m4-2-ios-input-nodes.md) | draft | axeClient·describe-ui 파서·IosDevice 입력과 노드·계약 테스트 |
-| [m4-3-ios-streaming](2026-09-30-m4-3-ios-streaming.md) | draft | StreamSession·MJPEG 분할·AxeStreamSession·axeControl·renderer JPEG 경로 |
+| [m4-1-ios-foundation](2026-09-29-m4-1-ios-foundation.md) | done | simctl·IosDevice·시뮬레이터 목록과 추적·iOS 로그·플랫폼별 조립 |
+| [m4-2-ios-input-nodes](2026-09-30-m4-2-ios-input-nodes.md) | done | axeClient·describe-ui 파서·IosDevice 입력과 노드·계약 테스트 |
+| [m4-3-ios-streaming](2026-09-30-m4-3-ios-streaming.md) | in-progress | StreamSession·MJPEG 분할·AxeStreamSession·axeControl·renderer JPEG 경로 |
 <!-- index:end -->
 
 ## 아카이브

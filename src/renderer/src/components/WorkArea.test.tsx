@@ -52,7 +52,7 @@ const snapshot: AppSnapshot = {
   devices: ['emulator-5554'],
   activeSerial: 'emulator-5554',
   timeline: [],
-  trackingFailure: null
+  trackingFailures: { android: null, ios: null }
 }
 
 describe('WorkArea', () => {

@@ -27,7 +27,7 @@ import { startMcpHttpServer } from './mcp/httpServer'
 import { defaultLocateSdkDeps, locateSdk } from './sdk/locateSdk'
 import { resolveScrcpyJar } from './stream/scrcpyJar'
 import { connectLoopback, createScrcpySession } from './stream/scrcpySession'
-import { createPlatformStreamSession } from './stream/rejectingSession'
+import { createIosStreamSessionFactory, createPlatformStreamSession } from './stream/rejectingSession'
 import { createStreamManager } from './stream/streamManager'
 import { bootstrapApp, rendererSender, type BootstrappedApp } from './app/bootstrap'
 import { createPortChannel } from './app/portChannel'
@@ -121,9 +121,9 @@ app
         const axe = axePath ? createAxeClient(axePath) : null
         const registry = createDeviceRegistry({
           track: (onChange, onFailure) => {
-            const stopAdb = adb ? trackDevices(adb, (serial, connected) => onChange(serial, connected, 'android'), onFailure) : () => {}
+            const stopAdb = adb ? trackDevices(adb, (serial, connected) => onChange(serial, connected, 'android'), (failure) => onFailure('android', failure)) : () => {}
             const stopSimulators = simctl
-              ? trackSimulators(simctl, (serial, connected) => onChange(serial, connected, 'ios'), onFailure)
+              ? trackSimulators(simctl, (serial, connected) => onChange(serial, connected, 'ios'), (failure) => onFailure('ios', failure))
               : () => {}
             return () => {
               stopAdb()
@@ -149,12 +149,21 @@ app
           resourcesPath: process.resourcesPath,
           appPath: app.getAppPath()
         })
+        // axe 클라이언트는 상태가 없어 스트림용으로 따로 만들어도 된다.
+        const axe = axePath ? createAxeClient(axePath) : null
         return createStreamManager({
-          // iOS 기기는 M4-3 전까지 unsupported로 거절하는 세션을 받는다. 판단은 라우터가 한다.
+          // 플랫폼별 세션은 라우터가 고른다. 도구가 없는 플랫폼은 그 이유로 거절하는 세션을 받는다.
           createSession: createPlatformStreamSession({
             platformOf: (serial) => registry.resolve(serial).platform,
             android: adb
               ? (serial, handlers) => createScrcpySession({ serial, adb, jarPath, connect: connectLoopback }, handlers)
+              : null,
+            ios: axe
+              ? createIosStreamSessionFactory({
+                  axe,
+                  deviceOf: (serial) => registry.resolve(serial),
+                  run: (serial, task) => registry.run(serial, task)
+                })
               : null
           }),
           createChannel: () => createPortChannel<StreamDown>(),

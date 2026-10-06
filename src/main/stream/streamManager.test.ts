@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, type Mock } from 'vitest'
 import { deviceError } from '../../shared/types/errors'
-import type { ControlIntent, StreamDown } from '../../shared/types/stream'
-import type { ScrcpySession, SessionHandlers } from './scrcpySession'
+import type { ControlIntent, DeviceKey, StreamDown } from '../../shared/types/stream'
+import type { StreamSession, StreamSessionHandlers } from './streamSession'
 import { createStreamManager, RECONNECT_DELAYS_MS, toControlIntent, type PortLike } from './streamManager'
 
 class FakePort implements PortLike {
@@ -31,8 +31,8 @@ class FakePort implements PortLike {
   }
 }
 
-interface FakeSession extends ScrcpySession {
-  handlers: SessionHandlers
+interface FakeSession extends StreamSession {
+  handlers: StreamSessionHandlers
   start: Mock<() => Promise<void>>
   close: Mock<() => Promise<void>>
   sendControl: Mock<(intent: ControlIntent) => void>
@@ -117,14 +117,25 @@ describe('createStreamManager', () => {
     const h = harness()
     await h.manager.open('emulator-5554')
     const data = new Uint8Array([1, 2, 3])
+    const keys: DeviceKey[] = ['home', 'enter']
 
-    h.sessions[0]?.handlers.onSession(472, 1024)
+    h.sessions[0]?.handlers.onSession({ width: 472, height: 1024, codec: 'jpeg', keys })
     h.sessions[0]?.handlers.onPacket({ config: false, key: true, ptsUs: 10, data })
 
     expect(h.ports[0]?.sent.slice(-2)).toEqual([
-      { type: 'session', width: 472, height: 1024 },
+      { type: 'session', width: 472, height: 1024, codec: 'jpeg', keys },
       { type: 'packet', config: false, key: true, ptsUs: 10, data }
     ])
+  })
+
+  it('relays jpeg frames to the port as frame messages', async () => {
+    const h = harness()
+    await h.manager.open('emulator-5554')
+    const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9])
+
+    h.sessions[0]?.handlers.onFrame(bytes)
+
+    expect(h.ports[0]?.sent.at(-1)).toEqual({ type: 'frame', data: bytes })
   })
 
   it('closes the previous port and session when opening another device', async () => {
@@ -319,7 +330,7 @@ describe('createStreamManager', () => {
     const stale = h.sessions[0]
     await h.manager.open('B')
 
-    stale?.handlers.onSession(1, 1)
+    stale?.handlers.onSession({ width: 1, height: 1, codec: 'h264', keys: [] })
 
     expect(h.ports[0]?.sent.some((m) => m.type === 'session')).toBe(false)
     expect(h.ports[1]?.sent.some((m) => m.type === 'session')).toBe(false)
