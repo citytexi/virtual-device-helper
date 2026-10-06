@@ -5,7 +5,7 @@ import {
   type ControlIntent,
   type DeviceKey,
   type StreamDown,
-  type StreamPortMeta,
+  type SessionPortMeta,
   type VideoPoint
 } from '../../shared/types/stream'
 import type { StreamSession, StreamSessionHandlers } from './streamSession'
@@ -27,7 +27,7 @@ export interface StreamManagerDeps {
   createSession(serial: string, handlers: StreamSessionHandlers): StreamSession
   /** remote는 renderer로 건넬 반대쪽 포트다. 매니저는 그 내용을 모른다. */
   createChannel(): { local: PortLike; remote: unknown }
-  postPort(meta: StreamPortMeta, remote: unknown): void
+  postPort(meta: SessionPortMeta, remote: unknown): void
   isConnected(serial: string): boolean
   sleep?: (ms: number) => Promise<void>
   newSessionId?: () => string

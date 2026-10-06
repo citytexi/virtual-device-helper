@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { StreamDown, StreamPortMeta } from '../../../shared/types/stream'
+import type { StreamDown, SessionPortMeta } from '../../../shared/types/stream'
 import type { JpegRenderer } from '../stream/jpegRenderer'
 import type { StreamDecoder } from '../stream/streamDecoder'
 import { FRAME_RESYNC_MS, useScrcpyStream, type ScrcpyStreamDeps, type StreamDecoderHandlers } from './useScrcpyStream'
@@ -17,7 +17,7 @@ function fakePort(): FakePort {
 }
 
 function harness(startResult: Awaited<ReturnType<ScrcpyStreamDeps['startStream']>> = { ok: true, value: undefined }) {
-  let portCallback: ((meta: StreamPortMeta, port: MessagePort) => void) | null = null
+  let portCallback: ((meta: SessionPortMeta, port: MessagePort) => void) | null = null
   const decoders: Array<StreamDecoder & { push: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn>; handlers: StreamDecoderHandlers }> = []
   const jpegRenderers: Array<
     JpegRenderer & {

@@ -7,7 +7,7 @@ import {
   type RendererApi
 } from '../shared/types/ipc'
 import type { ScreenshotResult } from '../shared/types/device'
-import type { StreamPortMeta } from '../shared/types/stream'
+import type { SessionPortMeta } from '../shared/types/stream'
 import type { LogPortMeta } from '../shared/types/logs'
 
 /**
@@ -40,7 +40,7 @@ const api: RendererApi = {
  * main world에 건넨다. renderer의 streamPort.ts가 channel·출처·포트 개수를 보고 받는다.
  * 여기서는 포트가 정확히 하나일 때만 넘긴다 — 이 채널이 범용 포트 통로가 되지 않게 한다.
  */
-ipcRenderer.on(IPC_CHANNELS.streamPort, (event: IpcRendererEvent, meta: StreamPortMeta) => {
+ipcRenderer.on(IPC_CHANNELS.streamPort, (event: IpcRendererEvent, meta: SessionPortMeta) => {
   if (event.ports.length !== 1) return
   window.postMessage({ channel: IPC_CHANNELS.streamPort, serial: meta.serial, sessionId: meta.sessionId }, '*', [...event.ports])
 })

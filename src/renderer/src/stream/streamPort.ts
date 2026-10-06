@@ -1,5 +1,5 @@
 import { IPC_CHANNELS } from '../../../shared/types/ipc'
-import type { StreamPortMeta } from '../../../shared/types/stream'
+import type { SessionPortMeta } from '../../../shared/types/stream'
 
 /** window에서 이 모듈이 쓰는 부분. 테스트는 가짜를 넘긴다. */
 export interface MessageTarget {
@@ -13,7 +13,7 @@ export interface MessageTarget {
  * 하나인 것만 받는다.
  */
 export function onStreamPort(
-  callback: (meta: StreamPortMeta, port: MessagePort) => void,
+  callback: (meta: SessionPortMeta, port: MessagePort) => void,
   target: MessageTarget = window
 ): () => void {
   const listener = (event: MessageEvent): void => {

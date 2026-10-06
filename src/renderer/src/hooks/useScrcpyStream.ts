@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { Outcome } from '../../../shared/types/ipc'
-import type { ControlIntent, DeviceKey, SessionStatus, StreamDown, StreamPortMeta, StreamUp } from '../../../shared/types/stream'
+import type { ControlIntent, DeviceKey, SessionStatus, StreamDown, SessionPortMeta, StreamUp } from '../../../shared/types/stream'
 import type { VideoSize } from '../stream/inputMapper'
 import { createJpegRenderer, decodeJpeg, type JpegRenderer, type JpegRendererDeps } from '../stream/jpegRenderer'
 import { createStreamDecoder, type StreamDecoder } from '../stream/streamDecoder'
@@ -15,7 +15,7 @@ export interface StreamDecoderHandlers {
 export interface ScrcpyStreamDeps {
   startStream(serial: string): Promise<Outcome<void>>
   stopStream(): Promise<Outcome<void>>
-  onStreamPort(callback: (meta: StreamPortMeta, port: MessagePort) => void): () => void
+  onStreamPort(callback: (meta: SessionPortMeta, port: MessagePort) => void): () => void
   createDecoder(handlers: StreamDecoderHandlers): StreamDecoder
   /** `session.codec`이 jpeg일 때 쓴다. draw는 bitmap을 닫는 책임을 진다. onError는 연속 실패로 포기할 때 한 번 불린다. */
   createJpegRenderer(handlers: Omit<JpegRendererDeps, 'decode'>): JpegRenderer

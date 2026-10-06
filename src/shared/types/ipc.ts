@@ -124,6 +124,20 @@ export interface TrackingFailure {
   exitCode: number | null
 }
 
+/** 화면 한 칸. epoch는 칸의 기기가 바뀔 때마다 오른다. */
+export interface ScreenSlot {
+  id: string
+  epoch: number
+  serial: string | null
+  label: string
+}
+
+/** 칸과 세대로 가리키는 스트림 요청 대상. */
+export interface SlotRef {
+  slotId: string
+  epoch: number
+}
+
 export interface AppSnapshot {
   platforms: PlatformStatuses
   server: ServerStatus | null
