@@ -18,6 +18,7 @@
 | 스펙 | 상태 | 내용 |
 |------|------|------|
 | [m4-ios-simulator](2026-09-29-m4-ios-simulator.md) | in-progress | iOS 시뮬레이터를 Android와 거의 같은 수준으로. simctl + AXe, M4-1 기반·M4-2 입력과 노드·M4-3 스트리밍 |
+| [m5-multi-screen](2026-10-06-m5-multi-screen.md) | draft | Android·iOS 화면을 나란히 실시간으로 보인다. 화면 칸을 MCP 대상과 분리하고 JPEG 흐름 제어를 넣는다 |
 <!-- index:end -->
 
 ## 아카이브
