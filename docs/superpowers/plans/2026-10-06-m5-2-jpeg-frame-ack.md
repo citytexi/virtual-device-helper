@@ -162,7 +162,7 @@ renderer를 먼저 한다. 지금 main은 모르는 포트 메시지를 `toContr
 - Modify: `src/main/stream/axeStreamSession.ios.integration.test.ts`, `docs/superpowers/specs/2026-10-06-m5-multi-screen.md`,
   `docs/architecture/main-layers.md`, 이 계획 문서
 
-- [ ] **Step 1: 통합 테스트에 흐름 제어를 태운다**
+- [x] **Step 1: 통합 테스트에 흐름 제어를 태운다**
 
 같은 파일에 `it`을 더한다. 실제 `createStreamManager`를 조립한다: `createSession`은 실제 `createAxeStreamSession`(control은
 `{ send() {}, close() {} }` 스텁)을 만들되 handlers를 감싸 세션이 올린 `onFrame` 수를 세고, 포트는 이 파일에 새로 두는 최소
@@ -172,7 +172,7 @@ renderer를 먼저 한다. 지금 main은 모르는 포트 메시지를 `toContr
 
 Run: `npm run test:integration -- src/main/stream/axeStreamSession.ios.integration.test.ts` / Expected: PASS(또는 skip).
 
-- [ ] **Step 2: 실제 시뮬레이터에서 잰다**
+- [x] **Step 2: 실제 시뮬레이터에서 잰다**
 
 이미 부팅된 시뮬레이터가 있으면 그것을 쓰고 끄지 않는다. 없으면 `xcrun simctl boot`로 하나 부팅하고 끝나면 그것만 끈다. 먼저
 Step 1의 통합 테스트가 통과하는지로 `stream-video`가 도는지 확인한다. 같은 조립으로 잰다: 받는 대로 확인을 올릴 때 포트로 가는
@@ -181,7 +181,7 @@ fps(M4-3 검증 결과와 비교) / 확인을 멈춘 동안 세션이 올린 장
 renderer에 있다), 확인 왕복이 실제 fps에 주는 영향(가짜 포트의 확인은 프로세스 안 호출이다), 창을 가렸을 때 확인이 멈추는지.
 Windows 호스트는 단위 테스트로만 덮는다.
 
-- [ ] **Step 3: 문서를 고치고 커밋한다**
+- [x] **Step 3: 문서를 고치고 커밋한다**
 
 스펙 끝에 "M5-2 검증 결과" 절을 만들어 잰 값과 못 본 것을 적는다. `main-layers.md`의 스트림 절에 흐름 제어를 한 문단 더하고
 `verified`를 갱신한다. 이 계획의 체크박스를 채운다.

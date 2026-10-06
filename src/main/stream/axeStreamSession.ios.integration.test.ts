@@ -8,7 +8,9 @@ import { locateAxe } from '../ios/locateAxe'
 import { createSimctlClient } from '../ios/simctlClient'
 import { createAxeControl } from './axeControl'
 import { createAxeStreamSession } from './axeStreamSession'
-import type { SessionInfo } from './streamSession'
+import { createStreamManager, type PortLike } from './streamManager'
+import type { SessionInfo, StreamSessionHandlers } from './streamSession'
+import type { StreamDown } from '../../shared/types/stream'
 
 /** 부팅된 첫 시뮬레이터의 UDID. xcrun이 없거나 부팅된 기기가 없으면 null이다. */
 function firstBootedUdid(): string | null {
@@ -100,5 +102,105 @@ describe.skipIf(udid === null || axePath === null)('AxeStreamSession (실제 시
       await session.close()
     }
     expect(onEnded).not.toHaveBeenCalled()
+  })
+
+  it('확인을 올려야 다음 프레임이 포트로 가고, 기다리는 동안엔 최신 한 장만 든다', async () => {
+    const axe = createAxeClient(axePath as string)
+    const device = createIosDevice({
+      udid: udid as string,
+      simctl: createSimctlClient(),
+      axe,
+      resizeImage: (png) => ({ png, width: 1, height: 1 })
+    })
+    const control = { send() {}, close() {} }
+
+    // 세션이 올린 장을 센다. 장 수를 기다리는 promise는 waiters로 푼다.
+    const offered: Uint8Array[] = []
+    const offerWaiters: Array<{ count: number; resolve: () => void }> = []
+    const portFrames: Uint8Array[] = []
+    const portWaiters: Array<{ count: number; resolve: () => void }> = []
+    const resolveWaiters = (waiters: typeof offerWaiters, n: number): void => {
+      for (const w of [...waiters]) {
+        if (n >= w.count) {
+          waiters.splice(waiters.indexOf(w), 1)
+          w.resolve()
+        }
+      }
+    }
+    const offeredAtLeast = (count: number): Promise<void> =>
+      offered.length >= count ? Promise.resolve() : new Promise((resolve) => offerWaiters.push({ count, resolve }))
+    const portAtLeast = (count: number): Promise<void> =>
+      portFrames.length >= count ? Promise.resolve() : new Promise((resolve) => portWaiters.push({ count, resolve }))
+
+    let ackListener: ((event: { data: unknown }) => void) | null = null
+    let autoAck = false
+    const sendAck = (): void => ackListener?.({ data: { type: 'frame_ack' } })
+    const port: PortLike = {
+      postMessage(message: StreamDown) {
+        if (message.type !== 'frame') return
+        portFrames.push(message.data)
+        resolveWaiters(portWaiters, portFrames.length)
+        if (autoAck) queueMicrotask(sendAck)
+      },
+      on(event: string, listener: unknown) {
+        if (event === 'message') ackListener = listener as (event: { data: unknown }) => void
+      },
+      start() {},
+      close() {}
+    }
+
+    const manager = createStreamManager({
+      createSession: (serial: string, handlers: StreamSessionHandlers) =>
+        createAxeStreamSession(
+          { udid: serial, axe, control },
+          {
+            ...handlers,
+            onFrame: (jpeg) => {
+              offered.push(jpeg)
+              resolveWaiters(offerWaiters, offered.length)
+              handlers.onFrame(jpeg)
+            }
+          }
+        ),
+      createChannel: () => ({ local: port, remote: {} }),
+      postPort: () => {},
+      isConnected: () => true
+    })
+
+    try {
+      await manager.open(udid as string)
+
+      // 1) 확인을 올리지 않는다. 세션이 여러 장 올려도 포트로는 한 장만 간다.
+      await offeredAtLeast(5)
+      await portAtLeast(1)
+      const offeredWhileStopped = offered.length
+      const portWhileStopped = portFrames.length
+      expect(portWhileStopped).toBe(1)
+
+      // 2) 푼다. 바로 오는 장은 확인 시점에 세션이 가장 나중에 올린 장이다.
+      const newest = offered[offered.length - 1]!
+      sendAck()
+      await portAtLeast(2)
+      const released = portFrames[1]!
+      const releasedIsNewest = Buffer.from(released).equals(Buffer.from(newest))
+      console.info(
+        `[frame ack] 확인을 멈춘 동안 세션 ${offeredWhileStopped}장 / 포트 ${portWhileStopped}장, 풀었을 때 온 장이 가장 나중 장과 같은가: ${releasedIsNewest}`
+      )
+      expect(releasedIsNewest).toBe(true)
+
+      // 3) 받는 대로 확인을 올린다. 포트가 여러 장을 받는다.
+      autoAck = true
+      const portBefore = portFrames.length
+      const startedAt = Date.now()
+      sendAck()
+      await portAtLeast(portBefore + 10)
+      const elapsedMs = Date.now() - startedAt
+      const delivered = portFrames.length - portBefore
+      console.info(`[frame ack] 받는 대로 확인: 포트 ${delivered}장 / ${elapsedMs}ms (${((delivered * 1000) / elapsedMs).toFixed(1)}fps)`)
+      expect(delivered).toBeGreaterThanOrEqual(10)
+    } finally {
+      autoAck = false
+      await manager.stop()
+    }
   })
 })
