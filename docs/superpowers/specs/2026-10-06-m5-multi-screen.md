@@ -10,7 +10,7 @@ superseded_by:
 related_adr: [ADR-0017, ADR-0018, ADR-0015, ADR-0016, ADR-0010]
 related_spec: m4-ios-simulator
 related_architecture: main-layers
-related_plan:
+related_plan: [m5-1-device-card-badges, m5-2-jpeg-frame-ack, m5-3-screen-slots]
 related_code: [streamManager.ts#createStreamManager, bootstrap.ts#bootstrapApp, appState.ts#createAppState, ipcBridge.ts#BridgeActions, registry.ts#createDeviceRegistry, ipc.ts#AppSnapshot, stream.ts#StreamUp, stream.ts#StreamPortMeta, streamPort.ts#onStreamPort, useAppState.ts#targetSerial, App.tsx#App, DeviceScreen.tsx#DeviceScreen, useScrcpyStream.ts#useScrcpyStream, jpegRenderer.ts#createJpegRenderer, DevicePanel.tsx#DevicePanel]
 tags: [spec, streaming, multi-screen]
 ---
