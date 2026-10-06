@@ -185,7 +185,7 @@ export interface StreamPortMeta extends SessionPortMeta {
 export type StreamUp = ControlIntent | { type: 'frame_ack' }
 ```
 
-- `preload/index.ts`와 `streamPort.ts`의 `onStreamPort`가 새 필드를 그대로 나른다. 지금은 `serial`과
+- `preload/index.ts`와 `streamPort.ts`의 `createStreamPortRouter`가 새 필드를 그대로 나른다. 지금은 `serial`과
   `sessionId`를 손으로 옮겨 적는다.
 - `frame_ack`는 `jpeg` 세션에서 쓴다. 규칙은 [ADR-0018](../../adr/0018-jpeg-frame-ack-flow-control.md)에 있다.
 
@@ -447,7 +447,7 @@ Windows 호스트는 보지 않았고 단위 테스트로만 덮는다. 안드�
 | 항목 | 측정 |
 |---|---|
 | 두 칸이 같은 시점부터 20개를 받는 데 걸린 시간 | Android(h264 `packet`) 659ms, iOS(jpeg `frame`) 4699ms(초당 4.3장). Android는 화면이 바뀔 때만 패킷이 오므로 재는 동안 `adb shell input swipe`를 계속 보냈다. |
-| 한 칸 `stop` 뒤 | Android 칸의 포트가 닫혔고 iOS 칸은 5장을 더 받았으며 닫히지 않았다. |
+| 한 칸 `stop` 뒤 | Android 칸의 포트가 닫혔고, iOS 칸은 5장이 더 올 때까지 기다리는 동안 계속 받았으며 포트가 닫히지 않았다. |
 
 이 iOS 값을 M5-2의 초당 5.6~5.8장과 견주지 않는다. 그쪽은 스트림 하나였고 이쪽은 Android 스트림과 스와이프 입력이 함께 돌았다.
 같은 조건에서 두 번 잰 것이 아니라서 둘의 차이가 칸이 둘이어서인지 판단하지 못한다.
@@ -456,13 +456,13 @@ Windows 호스트는 보지 않았고 단위 테스트로만 덮는다. 안드�
 
 | 항목 | 상태 | 본 값 |
 |---|---|---|
-| 두 화면이 나란히 뜬다 | 봤다 | `.screens`의 `grid-template-columns`가 `350px 350px`이고 캔버스 둘의 `getBoundingClientRect()`는 Android 350x646.5(x 276), iOS 350x630.5(x 634)였다. 캔버스 버퍼는 각각 460x1024, 660x1434다. 다만 두 열일 때 화면 머리가 한 줄에 들어가지 않는다(아래 "알려진 문제"). |
-| 둘 다 실시간이다 | 봤다 | 아무것도 안 건드린 5초 동안 Android 10장(초당 2.0), iOS 28장(초당 5.6)을 그렸다. Android에 `adb shell input swipe`를 반복해 보낸 5초 동안은 Android 194장(초당 38.8), iOS 23장(초당 4.6)이었고 |
+| 두 화면이 나란히 뜬다 | 봤다 | `.screens`의 `grid-template-columns`가 `350px 350px`이고 캔버스 둘의 `getBoundingClientRect()`는 Android 350x646.5(x 276), iOS 350x630.5(x 634)였다. 캔버스 버퍼는 각각 460x1024, 660x1434다. 다만 화면 머리는 처음 확인에서 두 열일 때 한 줄에 들어가지 않아 고쳤다(아래 "두 열일 때 화면 머리"). |
+| 둘 다 실시간이다 | 봤다 | 아무것도 안 건드린 5초 동안 Android 10장(초당 2.0), iOS 28장(초당 5.6)을 그렸다. Android에 `adb shell input swipe`를 반복해 보낸 5초 동안은 Android 194장(초당 38.8), iOS 23장(초당 4.6)이었다. Android를 끈 뒤 iOS만 남은 5초에는 29장(초당 5.8)을 그렸다. |
 | 대상이 없을 때 안내 | 봤다 | 아무도 고르지 않은 첫 화면에서 `대상 기기가 없다. 화면 머리의 "대상으로"를 누르거나 툴 호출에 serial을 넘겨라`가 보였고 두 화면 머리 모두 `대상으로` 버튼이 있었다. |
 | MCP `device_select`로 대상 이동 | 봤다 | 앱 머리의 `토큰 보기`가 보여 주는 토큰으로 `POST /mcp`에 `tools/call`을 보냈다. iOS serial을 넘기자 `{"active":"641E0D82-…"}`가 오고 iPhone 카드에 `aria-current`와 `(대상)` 뱃지가, iOS 화면 머리에 `(대상)`이 붙었으며 안내는 사라졌다. Android serial을 넘기자 같은 표시가 Android 카드와 Android 화면 머리로 옮겨 갔다. |
 | 오른쪽 탭이 대상 기기를 따른다 | 못 봤다 | 활동 탭이 선택된 채였고(`aria-selected`) 로그·에이전트 탭은 열어 보지 않았다. |
 | `대상으로` 버튼 | 봤다 | Android가 대상인 상태에서 iOS 화면 머리의 `대상으로`를 CDP로 클릭하자 대상 뱃지와 카드의 `aria-current`가 iPhone으로 옮겨 갔다. 대상인 화면의 그 버튼은 `disabled`였다. 이것은 CDP가 건 클릭이지 사람의 마우스가 아니다. |
-| `F6` | 부분적으로 봤다 | Android 캔버스에 포커스를 둔 채 `F6` keydown을 보내자 `document.activeElement`가 iOS 캔버스로, iOS 캔버스에서 다시 보내자 Android 캔버스로 갔다. 합성한 `KeyboardEvent`이고 실제 키 입력은 아니다. 포커스 강조가 눈에 보이는지는 보지 않았다. |
+| `F6` | 부분적으로 봤다 | Android 캔버스에 포커스를 둔 채 `F6` keydown을 보내자 `document.activeElement`가 iOS 캔버스로, iOS 캔버스에서 다시 보내자 Android 캔버스로 갔다. 합성한 `KeyboardEvent`이고 실제 키 입력은 아니다. 포커스 강조는 이 표에서는 보지 않았고, 2026-10-07에 아래 소절에서 한 화면으로 봤다. |
 | 기기를 끄면 그 화면만 사라진다 | 봤다 | `adb emu kill` 뒤 `adb devices`가 비었고 캔버스는 1개, `.screens`는 `708px` 한 열이 됐다. 남은 iOS 화면은 5초 동안 29장(초당 5.8)을 계속 그렸다. |
 | 기기 하나일 때 캔버스의 크기와 자리 | 부분적으로 봤다 | iOS 하나만 남았을 때 캔버스 요소의 rect는 x 276, y 116, 708x694였다. M5 이전과 같은지는 이전 값을 재지 않았으므로 사람 확인 필요. |
 
@@ -471,12 +471,31 @@ Windows 호스트는 보지 않았고 단위 테스트로만 덮는다. 안드�
 플랫폼의 기기를 하나 더 고르는 것)는 기기를 더 부팅해야 해서 하지 않았다. 그 동작은 `screenSlots.test.ts`와 renderer 테스트로만
 덮는다.
 
-### 알려진 문제 — 두 열일 때 화면 머리가 깨진다
+### 두 열일 때 화면 머리 (고침, 일부는 사람 확인 필요)
 
-이 호스트에서 내가 읽은 값이 아니라 검토자(controller)가 캡처 `t8-select-ios.png`를 보고 관찰한 내용이다. `.screens`가 두 열일 때
-iOS 화면 머리에서 serial `641E0D82-2F10-4EEC-8153-A2197CB6F75C`가 두 줄로 꺾였고, `(대상)` 뱃지가 두 줄로 갈라졌으며,
-`대상으로` 버튼 글자도 두 줄로 갈라졌다. Android 화면 머리(`Android`, `emulator-5554`, `대상으로`)는 한 줄에 들어갔다.
-이 문제는 `ScreenHeader.tsx`의 `ScreenHeader`와 `app.css`에 있고, 알려진 문제로 남겨 고쳐야 한다. 이번 계획에서는 고치지 않았다.
+처음 확인(2026-10-06)에서 검토자(controller)가 캡처를 보고, `.screens`가 두 열일 때 iOS 화면 머리의 serial `641E0D82-…`가 두 줄로
+꺾이고 `(대상)` 뱃지와 `대상으로` 버튼 글자도 두 줄로 갈라진다고 관찰했다. `ScreenHeader.tsx`의 `ScreenHeader`와 `app.css`의
+`.screen-header` 규칙을 고쳤다. 이름·serial·뱃지는 `.screen-ident`, 버튼은 `.screen-actions`로 묶고, serial만 한 줄로 줄여
+말줄임표로 자르며(`title`에 전체 값), 좁으면 버튼 묶음이 통째로 다음 줄로 내려간다. 버튼은 앱의 다른 버튼과 같은 `.btn`이다.
+
+2026-10-07에 다시 봤지만 **두 화면을 실제로 띄워서 본 것은 아니다.** 이 호스트에는 부팅된 iOS 시뮬레이터가 없었고, 이번 확인에서는
+시뮬레이터를 새로 부팅하지 않기로 했다. 칸은 플랫폼마다 하나씩 배정되므로(`bootstrap.ts`의 `createPlaceByPlatform`) 물려 있던
+실제 Android 기기와 띄운 Android 에뮬레이터는 둘이 한 화면에 나란히 놓이지 않고 칸 하나만 찼다. 그래서 화면 하나를 연 채
+CDP로 `.screens`의 폭을 350px, 180px로 고정하고 serial 글자를 `641E0D82-2F10-4EEC-8153-A2197CB6F75C`로 바꿔 넣어 읽었다.
+`(대상)` 뱃지는 `selectDevice`로 붙였다. 이 값은 두 열의 폭과 같은 폭의 한 화면에서 읽은 것이다.
+
+| 열 폭 | 화면 머리 높이 | serial | `(대상)` 뱃지 | `대상으로` 버튼 |
+|---|---|---|---|---|
+| 350px | 36px (한 줄) | 높이 18.8px, `line-height` 18.75px, `scrollWidth` 271 > `clientWidth` 161로 말줄임표 | 높이 18.5px | 높이 26px, 같은 줄(y 72) |
+| 180px | 61px | 높이 18.8px, `scrollWidth` 271 > `clientWidth` 66로 말줄임표 | 높이 18.5px | 높이 26px, 다음 줄(y 97)로 내려감 |
+
+두 폭 모두 머리가 열 밖으로 넘치지 않았고(`scrollWidth`가 `clientWidth`를 넘지 않음) 캡처에서 겹침도 없었다. 창을 실제 최소 폭
+1100으로 줄인 두 열은 보지 못했다. CDP의 `Emulation.setDeviceMetricsOverride`는 호출을 끝내면 풀려 값 읽기와 이어 쓸 수 없었다.
+
+포커스 강조(머리 밑줄, 이름 색에 더해 칸 둘레의 2px 테두리)는 같은 화면의 캔버스에 `focus()`를 준 뒤 읽었다. `.device-screen`의
+`outline-style`이 `solid`, `outline-width`가 `2px`, 색이 `rgb(96, 165, 250)`, `outline-offset`이 `2px`였고 캡처에서 칸 둘레에 잘림 없이
+보였다. 폭 180px로 줄인 채에서도 같았다. 다만 이 좁은 폭에서는 화면 아래 조작 버튼 줄이 열 밖으로 삐져나왔다(이번에 건드리지 않은 부분이다).
+iOS 화면 머리의 실제 모양과 두 화면이 동시에 있을 때 옆 칸과 테두리가 겹치는지는 사람 확인 필요.
 
 ### 부하
 
@@ -484,11 +503,12 @@ iOS 화면 머리에서 serial `641E0D82-2F10-4EEC-8153-A2197CB6F75C`가 두 줄
 (RSS 약 190MB), GPU helper 6.6~6.9%(약 92MB), renderer 4.5~4.8%(약 176MB). `top`으로 읽은 같은 프로세스의 순간 값은
 main 1.7%, GPU helper 1.1~1.4%, renderer 1.5~4.3%였다. 같은 시점에 앱의 자식 프로세스인 `axe stream-video --format mjpeg
 --fps 30 --scale 0.5 --quality 70`은 `ps`로 98~99.8%, `top`으로 66~99%였다. Android 에뮬레이터를 끈 뒤 앱 프로세스는
-main 1.3%, GPU helper 1.0%, renderer 2.2%였다. 그 조건에서 `axe`의 CPU와 스트림 하나일 때의 `axe` CPU는 재지 않았으므로 칸이
+main 1.3%, GPU helper 1.0%, renderer 2.2%였다. 이 마지막 값을 `ps`와 `top` 가운데 어느 것으로 읽었는지 확인 기록에 남아 있지 않다.
+그래서 끈 뒤의 값은 끄기 전의 `ps` 값과도 `top` 값과도 견줄 수 없다. 그 조건에서 `axe`의 CPU와 스트림 하나일 때의 `axe` CPU는 재지 않았으므로 칸이
 둘이어서 `axe`가 더 쓰는지는 이 값으로 가르지 못한다.
 
 ### 사람 확인 필요
 
-두 열일 때 화면 머리가 꺾이는 문제(위 "알려진 문제")가 고쳐진 뒤의 모양, 화면을 실제 마우스로 누르거나 글자를 치는 것, 포커스 강조의 모양, 창을 좁혔을 때의 배치, `Cmd+R` 뒤 두 화면이 다시 뜨는지,
+iOS와 Android 두 화면이 실제로 나란히 있을 때의 화면 머리와 포커스 테두리(위 소절은 폭을 흉내 낸 값이다), 화면을 실제 마우스로 누르거나 글자를 치는 것, 창을 실제로 1100으로 좁혔을 때의 배치, `Cmd+R` 뒤 두 화면이 다시 뜨는지,
 창을 닫았다 다시 열었을 때, 기기 하나일 때 M5 이전과 같은 크기·자리인지, Windows 호스트의 회귀. 앞의 네 가지 가운데 CDP로
 대신 건 것은 위 표에 적었고 사람이 직접 한 것이 아니다.

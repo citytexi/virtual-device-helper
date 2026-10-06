@@ -98,7 +98,7 @@ iOS 세션은 `rejectingSession.ts#createIosStreamSessionFactory`가 조립한�
 화면 칸 조정자다. 기기가 붙고 끊기고 선택될 때 어느 칸에 놓을지를 `PlaceFn`에 묻고, 칸의 기기가 바뀔 때마다 그 칸의
 세대(`epoch`)를 올리고 `onChange`로 `AppSnapshot.screens`를 낸다. 칸마다 `createStreamManager`가 따로 하나씩 있어
 세션·재연결·포트 수명은 칸 안에서만 돈다. 관리자는 칸을 모르고, 포트가 나올 때 조정자의 `tagPort`가 칸과 세대를
-붙인다(`SessionPortMeta`에서 `StreamPortMeta`로). 그 칸에 그 기기가 없으면 포트는 건네지 않고 닫는다.
+붙인다(`SessionPortMeta`에서 `StreamPortMeta`로). 그 칸에 그 기기가 없으면(`tagPort`가 `null`) `index.ts`의 `postStreamPort`가 포트를 건네지 않고 닫는다.
 칸 id의 뜻과 어느 플랫폼을 어느 칸에 놓을지는 `bootstrap.ts#bootstrapApp`의 배정 함수(`createPlaceByPlatform`)에만
 있고, 조정자는 `Platform`을 import하지 않는다. renderer의 `stream/streamPort.ts#createStreamPortRouter`는 받은 포트를
 `slotId`와 `epoch`가 맞는 구독자 하나에게만 넘기고, 받을 구독자가 없는 포트는 닫는다. 화면 훅(`hooks/useScrcpyStream.ts`의 `useScrcpyStream`)은 구독(`subscribePort`)을 먼저 하고 그다음
