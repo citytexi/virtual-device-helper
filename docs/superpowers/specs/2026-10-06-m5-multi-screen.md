@@ -381,12 +381,12 @@ export function createStreamPortRouter(target?: MessageTarget): StreamPortRouter
 - h264 경로의 흐름 제어. renderer가 멈추면 `packet`은 여전히 포트에 쌓인다. 흐름 상태를 `Entry`에 둔 것은
   codec별로 규칙을 붙일 자리를 남긴 것이다.
 - 화면이 둘일 때의 실제 부하는 잰 뒤 `MAX_SCREEN_SLOTS`를 다시 본다.
-- 가려진 칸의 스트림을 멈출지. 창을 가렸을 때 확인이 멈추는지부터 잰다.
+- 가려진 칸의 스트림을 멈출지. 앱을 숨겨도 확인은 멈추지 않았다("M5-2 검증 결과"의 "앱 창에서 잰 것").
 
 ## M5-2 검증 결과
 
 2026-10-06에 이 호스트(macOS)에서 이미 부팅돼 있던 iPhone 16 Pro Max(iOS 18.2) 시뮬레이터 하나를 그대로 썼다.
-부팅하지도 끄지도 않았다. AXe 1.8.0(`/opt/homebrew/bin/axe`)이다. 앱 창은 띄우지 않았다.
+부팅하지도 끄지도 않았다. AXe 1.8.0(`/opt/homebrew/bin/axe`)이다. 통합 테스트는 앱 창 없이 돌렸다.
 `axeStreamSession.ios.integration.test.ts`의 새 `it`이 실제 `createStreamManager`에 실제 `createAxeStreamSession`을
 물리고 포트만 최소 `PortLike` 가짜로 둔 조립이다. `createSession`은 handlers를 감싸 세션이 올린 `onFrame`을 센다.
 기다림은 시간이 아니라 장 수의 promise이고, 단언도 장 수로 건다. 아래 값은 이 호스트에서 이 날짜에 세 번 돌려
@@ -405,13 +405,25 @@ export function createStreamPortRouter(target?: MessageTarget): StreamPortRouter
 `awaitingAck`가 항상 풀린다. 그래서 "포트 10장 = 세션 10장"은 조립에서 그대로 따라 나오는 값이고, 이 값으로는 흐름 제어가
 장을 떨어뜨리는지, fps를 낮추는지 가를 수 없다.
 기기(iPhone 17, iOS 26.5 대 iPhone 16 Pro Max, iOS 18.2)와 화면이 달라 M4-3의 초당 15~16장과 이 값을 직접 견줄 수는
-없다. 확인이 fps를 깎는지는 확인이 실제 포트 왕복을 거치는 조건에서 다시 재야 가려진다. 확인 왕복이 실제 fps에 주는 영향은 아래에 남겼다.
+없다. 확인이 fps를 깎는지는 확인이 실제 포트 왕복을 거치는 조건에서 다시 재야 가려진다. 그 조건에서 잰 값은 아래
+"앱 창에서 잰 것"에 있다.
 
-**사람 확인 필요** (앱 창이 있어야 한다)
+### 앱 창에서 잰 것
 
-- 재동기로 다시 흐르는지. 타이머(`FRAME_RESYNC_MS`)가 renderer에 있어 이 조립에 없다.
-- 확인 왕복이 실제 fps에 주는 영향. 가짜 포트의 확인은 프로세스 안 호출이라 `MessagePort` 왕복과 canvas 그리기
-  시간이 들어 있지 않다.
-- 창을 가렸을 때 확인이 멈추는지.
+같은 날 같은 시뮬레이터를 대상으로 고른 채 `npm run dev -- --remoteDebuggingPort <port>`로 앱을 띄우고, renderer에
+CDP로 붙어 쟀다. `CanvasRenderingContext2D.prototype.drawImage`와 `MessagePort.prototype.postMessage`를 감싸 그린
+장과 올린 `frame_ack`를 셌다. 화면은 홈 화면 그대로 두었다. 한 번씩 잰 값이며 보장이 아니다.
+
+| 항목 | 측정 |
+|---|---|
+| 확인 왕복이 있는 fps | 10초 동안 58장을 그렸고 `frame_ack`도 58번 올렸다. 초당 5.8장이다. 위 통합 테스트에서 세션이 올린 속도(초당 5.6~5.8장)와 같은 범위다. |
+| 재동기 | `frame_ack` 하나를 renderer에서 버리자 화면이 멈췄고, 1999ms 뒤 확인이 한 번 더 나가 2002ms 뒤 다음 장을 그렸다. 그 뒤로 끊김 없이 흘렀다. |
+| renderer를 멈췄다 풀 때 | 디버거로 5초 멈춘 동안 그린 장은 없었다. 풀자 2ms 뒤 첫 장을 그렸고 그 뒤 6초 동안 37장(초당 6.2장)이었다. 그린 장 수와 올린 확인 수가 같았다 — 멈춘 동안의 프레임이 밀려 들어오지 않았다. |
+| 창을 가렸을 때 | 앱을 숨겨 `document.visibilityState`가 `hidden`인 동안에도 10초에 60장을 그리고 확인을 60번 올렸다. **확인은 멈추지 않는다.** |
+
+- 이 화면에서는 세션이 올리는 속도가 초당 6장 안팎이라, 확인 왕복이 그보다 빠른 세션의 fps를 깎는지는 이 값으로 가를
+  수 없다. 화면이 움직여 세션이 더 빨리 올리는 조건에서는 재지 않았다.
+- 숨기는 방법은 앱 숨기기 하나만 봤다. 최소화와 다른 창에 완전히 덮인 경우는 재지 않았다.
+- 멈춘 동안 main이 든 대기 장 수는 renderer에서 볼 수 없어 재지 않았다. 그 규칙은 `streamManager.test.ts`가 고정한다.
 
 Windows 호스트는 보지 않았고 단위 테스트로만 덮는다. 안드로이드 `packet`은 흐름 제어를 타지 않으므로 보지 않았다.
