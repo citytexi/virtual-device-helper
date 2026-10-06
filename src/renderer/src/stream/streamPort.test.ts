@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { IPC_CHANNELS } from '../../../shared/types/ipc'
-import { createStreamPortRouter, onStreamPort, type MessageTarget } from './streamPort'
+import { createStreamPortRouter, type MessageTarget } from './streamPort'
 
 function fakeTarget() {
   let listener: ((event: MessageEvent) => void) | null = null
@@ -17,45 +17,6 @@ function fakeTarget() {
 }
 
 const data = { channel: IPC_CHANNELS.streamPort, serial: 'emulator-5554', sessionId: 's1' }
-
-describe('onStreamPort', () => {
-  it('hands over the port and meta posted by our preload', () => {
-    const t = fakeTarget()
-    const callback = vi.fn()
-    const port = {} as MessagePort
-    onStreamPort(callback, t.target)
-
-    t.dispatch({ source: t.target as unknown as Window, data, ports: [port] })
-
-    expect(callback).toHaveBeenCalledWith({ serial: 'emulator-5554', sessionId: 's1' }, port)
-  })
-
-  it.each([
-    ['another source', { source: {} as Window, data, ports: [{} as MessagePort] }],
-    ['another channel', { data: { ...data, channel: 'x' }, ports: [{} as MessagePort] }],
-    ['no port', { data, ports: [] }],
-    ['two ports', { data, ports: [{} as MessagePort, {} as MessagePort] }],
-    ['a missing serial', { data: { channel: data.channel, sessionId: 's1' }, ports: [{} as MessagePort] }],
-    ['a non-object payload', { data: 'hello', ports: [{} as MessagePort] }]
-  ])('ignores a message from %s', (_name, event) => {
-    const t = fakeTarget()
-    const callback = vi.fn()
-    onStreamPort(callback, t.target)
-
-    t.dispatch({ source: t.target as unknown as Window, ...event })
-
-    expect(callback).not.toHaveBeenCalled()
-  })
-
-  it('stops listening when unsubscribed', () => {
-    const t = fakeTarget()
-    const stop = onStreamPort(vi.fn(), t.target)
-
-    stop()
-
-    expect(t.isListening()).toBe(false)
-  })
-})
 
 describe('createStreamPortRouter', () => {
   const routed = (slotId: string, epoch: number) => ({ ...data, slotId, epoch })
@@ -169,6 +130,26 @@ describe('createStreamPortRouter', () => {
       slotId: 'x',
       epoch: 3
     })
+  })
+
+  it.each([
+    ['another channel', { ...routed('x', 1), channel: 'x' }, 1],
+    ['a missing serial', { channel: data.channel, sessionId: 's1', slotId: 'x', epoch: 1 }, 1],
+    ['a missing slotId', { ...data, epoch: 1 }, 1],
+    ['a non-numeric epoch', { ...data, slotId: 'x', epoch: '1' }, 1],
+    ['a non-object payload', 'hello', 1],
+    ['no port', routed('x', 1), 0],
+    ['two ports', routed('x', 1), 2]
+  ])('hands nothing over for %s', (_name, payload, portCount) => {
+    const t = fakeTarget()
+    const router = createStreamPortRouter(t.target)
+    const onX = vi.fn()
+    router.subscribe({ slotId: 'x', epoch: 1 }, onX)
+    const ports = Array.from({ length: portCount }, () => fakePort())
+
+    t.dispatch({ source: t.target as unknown as Window, data: payload, ports })
+
+    expect(onX).not.toHaveBeenCalled()
   })
 
   it('does not throw when created without a target and never subscribed', () => {

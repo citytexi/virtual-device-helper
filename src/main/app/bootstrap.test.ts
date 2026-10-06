@@ -390,29 +390,6 @@ describe('bootstrapApp with an SDK', () => {
     expect(h.server.close).toHaveBeenCalled()
   })
 
-  it('starts a stream for a known serial', async () => {
-    const h = harness()
-    await bootstrapApp(h.deps)
-
-    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, 'emulator-5554')
-
-    expect(result.ok).toBe(true)
-    expect(h.stream.open).toHaveBeenCalledWith('emulator-5554')
-  })
-
-  it('refuses a stream for a serial the registry does not know', async () => {
-    const h = harness()
-    ;(h.stack.registry.resolve as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      throw deviceError('no_device', 'gone', 'x')
-    })
-    await bootstrapApp(h.deps)
-
-    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, 'emulator-9999')
-
-    expect(result.ok).toBe(false)
-    expect(h.stream.open).not.toHaveBeenCalled()
-  })
-
   it('closes the stream of its slot when its device disconnects', async () => {
     const h = harness()
     await bootstrapApp(h.deps)
@@ -447,13 +424,16 @@ describe('bootstrapApp with an SDK', () => {
     consoleError.mockRestore()
   })
 
-  it('refuses a stream without an SDK and never builds a stream manager', async () => {
+  it('does nothing for stream requests without an SDK and never builds a stream manager', async () => {
     const h = harness({ located: missing })
     await bootstrapApp(h.deps)
 
-    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, 'emulator-5554')
+    const start = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, { slotId: 'a', epoch: 1 })
+    const stop = await h.invoke<Outcome<void>>(IPC_CHANNELS.stopStream, { slotId: 'a', epoch: 1 })
 
-    expect(result.ok).toBe(false)
+    // SDK가 없으면 칸도 관리자도 없다. 두 액션은 성공하고 아무것도 하지 않는다.
+    expect(start.ok).toBe(true)
+    expect(stop.ok).toBe(true)
     expect(h.deps.createStreamManager).not.toHaveBeenCalled()
   })
 })
@@ -665,50 +645,62 @@ describe('bootstrapApp screen slots', () => {
     expect(snapshot.screens[0]?.serial).toBe('emulator-5554')
   })
 
-  it('opens only the manager of the slot the device sits in', async () => {
+  it('opens only the manager of the slot the ref names', async () => {
     const h = slotHarness()
     await bootstrapApp(h.deps)
     h.attach('emulator-5554', 'android')
     h.attach('SIM-1', 'ios')
+    const b = (await h.screens()).find((s) => s.id === 'b')!
 
-    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, 'SIM-1')
+    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, { slotId: 'b', epoch: b.epoch })
 
     expect(result.ok).toBe(true)
     expect(h.managers.b.open).toHaveBeenCalledWith('SIM-1')
     expect(h.managers.a.open).not.toHaveBeenCalled()
   })
 
-  it('does nothing for a serial that sits in no slot', async () => {
+  it('succeeds without opening any manager for a stale epoch', async () => {
     const h = slotHarness()
     await bootstrapApp(h.deps)
     h.attach('emulator-5554', 'android')
-    h.attach('emulator-5556', 'android')
+    const a = (await h.screens()).find((s) => s.id === 'a')!
 
-    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, 'emulator-5556')
+    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, { slotId: 'a', epoch: a.epoch - 1 })
 
     expect(result.ok).toBe(true)
     expect(h.managers.a.open).not.toHaveBeenCalled()
     expect(h.managers.b.open).not.toHaveBeenCalled()
   })
 
-  it('fails startStream for a serial the registry does not know', async () => {
+  it('does not stop the new session when the old screen stops with its stale ref after the device changed', async () => {
     const h = slotHarness()
     await bootstrapApp(h.deps)
-
-    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, 'emulator-9999')
-
-    expect(result.ok).toBe(false)
-  })
-
-  it('stopStream closes every slot manager', async () => {
-    const h = slotHarness()
-    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    h.attach('emulator-5556', 'android')
+    const before = (await h.screens()).find((s) => s.id === 'a')!
+    const oldRef = { slotId: 'a', epoch: before.epoch }
+    await h.invoke(IPC_CHANNELS.selectDevice, 'emulator-5556')
+    const after = (await h.screens()).find((s) => s.id === 'a')!
+    expect(after.epoch).toBeGreaterThan(before.epoch)
     h.managers.a.stop.mockClear()
 
-    await h.invoke(IPC_CHANNELS.stopStream)
+    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.stopStream, oldRef)
+
+    expect(result.ok).toBe(true)
+    expect(h.managers.a.stop).not.toHaveBeenCalled()
+  })
+
+  it('stops the manager of the slot for the current ref', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    const a = (await h.screens()).find((s) => s.id === 'a')!
+    h.managers.a.stop.mockClear()
+
+    await h.invoke(IPC_CHANNELS.stopStream, { slotId: 'a', epoch: a.epoch })
 
     expect(h.managers.a.stop).toHaveBeenCalledTimes(1)
-    expect(h.managers.b.stop).toHaveBeenCalledTimes(1)
+    expect(h.managers.b.stop).not.toHaveBeenCalled()
   })
 
   it('tags a manager port with its slot and epoch, and gives null once the device left the slot', async () => {

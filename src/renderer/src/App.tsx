@@ -1,11 +1,11 @@
 import type { JSX } from 'react'
 import { DevicePanel } from './components/DevicePanel'
-import { DeviceScreen } from './components/DeviceScreen'
+import { DeviceScreen, type OccupiedScreen } from './components/DeviceScreen'
 import { EndpointCard } from './components/EndpointCard'
 import { SdkMissing } from './components/SdkMissing'
 import { ThemeToggle } from './components/ThemeToggle'
 import { WorkArea } from './components/WorkArea'
-import { targetSerial, useAppState } from './state/useAppState'
+import { useAppState } from './state/useAppState'
 
 export function App(): JSX.Element {
   const { snapshot, loading, error } = useAppState()
@@ -31,6 +31,9 @@ export function App(): JSX.Element {
     return <SdkMissing platforms={snapshot.platforms} />
   }
 
+  // 여러 화면은 아직 그리지 않는다. 기기가 놓인 첫 칸 하나만 그린다.
+  const screen = snapshot.screens.find((s): s is OccupiedScreen => s.serial !== null)
+
   return (
     <main className="app-shell">
       <header className="app-header">
@@ -44,7 +47,14 @@ export function App(): JSX.Element {
       </aside>
 
       <div className="pane pane-screen">
-        <DeviceScreen serial={targetSerial(snapshot)} />
+        {screen ? (
+          // 세대가 key를 대신한다. 칸의 기기가 바뀌면 새 캔버스·새 스트림으로 다시 마운트된다.
+          <DeviceScreen key={`${screen.id}:${screen.epoch}`} screen={screen} />
+        ) : (
+          <section aria-label="기기 화면" className="device-screen">
+            <p className="empty">연결된 기기가 없다. 왼쪽 목록에서 기기를 부팅해라</p>
+          </section>
+        )}
       </div>
 
       <WorkArea snapshot={snapshot} />

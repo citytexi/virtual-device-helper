@@ -169,8 +169,8 @@ export interface RendererApi {
   shutdownDevice(serial: string): Promise<Outcome<void>>
   captureScreenshot(serial: string): Promise<Outcome<ScreenshotResult>>
   /** 이 기기로 스트림을 연다. 이전 스트림은 main이 닫는다. 포트는 IPC_CHANNELS.streamPort로 따로 온다. */
-  startStream(serial: string): Promise<Outcome<void>>
-  stopStream(): Promise<Outcome<void>>
+  startStream(ref: SlotRef): Promise<Outcome<void>>
+  stopStream(ref: SlotRef): Promise<Outcome<void>>
   /** 이 기기의 로그를 연다. 이전 로그 포트는 main이 닫는다. 포트는 IPC_CHANNELS.logPort로 따로 온다. */
   openLogs(serial: string): Promise<Outcome<void>>
   closeLogs(): Promise<Outcome<void>>

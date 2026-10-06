@@ -159,7 +159,7 @@ function assembleWithoutPlatforms(platforms: PlatformStatuses): { state: AppStat
     bootVirtualDevice: reject,
     shutdownDevice: reject,
     captureScreenshot: reject,
-    startStream: reject,
+    startStream: async () => {},
     stopStream: async () => {},
     openLogs: () => {
       throw sdkMissingError()
@@ -270,14 +270,9 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
         const device = registry.resolve(serial)
         return registry.run(device.serial, () => device.screenshot())
       },
-      startStream: async (serial) => {
-        // 모르는 serial이면 여기서 no_device로 끝낸다. 세션을 열어 adb가 실패하기를 기다리지 않는다.
-        registry.resolve(serial)
-        // 임시 연결(칸을 직접 요청하는 IPC로 바뀐다): serial이 놓인 칸을 찾아 그 칸으로 연다. 칸에 없으면 열지 않는다.
-        const slot = slots.screens().find((s) => s.serial === serial)
-        if (slot) await slots.open({ slotId: slot.id, epoch: slot.epoch })
-      },
-      stopStream: () => slots.closeAll(),
+      // 낡은 세대의 요청은 칸 조정자가 성공으로 끝내고 아무것도 하지 않는다.
+      startStream: (ref) => slots.open(ref),
+      stopStream: (ref) => slots.stop(ref),
       openLogs: (serial) => {
         // 모르는 serial이면 여기서 no_device로 끝낸다. logs.open은 serial을 검증하지 않는다.
         registry.resolve(serial)

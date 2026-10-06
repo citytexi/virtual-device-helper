@@ -2,13 +2,18 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MainEvent, RendererApi } from '../../../shared/types/ipc'
+import type { MainEvent, RendererApi, ScreenSlot } from '../../../shared/types/ipc'
 import { DEVICE_KEYS, type DeviceKey, type SessionStatus } from '../../../shared/types/stream'
 import type { ScrcpyStream } from '../hooks/useScrcpyStream'
 import { useScrcpyStream } from '../hooks/useScrcpyStream'
 import { DeviceScreen } from './DeviceScreen'
 
 vi.mock('../hooks/useScrcpyStream', () => ({ useScrcpyStream: vi.fn() }))
+
+/** 임의의 칸 id로 돈다. 화면은 칸 id를 해석하지 않는다. */
+function slot(id: string, epoch: number, serial: string): ScreenSlot & { serial: string } {
+  return { id, epoch, serial, label: serial }
+}
 
 const send = vi.fn()
 const reconnect = vi.fn()
@@ -52,19 +57,18 @@ beforeEach(() => {
 })
 
 describe('DeviceScreen', () => {
-  it('asks to pick a device when there is none and opens no stream', () => {
+  it('opens the stream with the ref of its slot', () => {
     streamWith({ state: 'streaming' })
 
-    render(<DeviceScreen serial={null} />)
+    render(<DeviceScreen screen={slot('x', 3, 'emulator-5554')} />)
 
-    expect(screen.getByText(/기기를 선택해라/)).toBeDefined()
-    expect(useScrcpyStream).not.toHaveBeenCalled()
+    expect(vi.mocked(useScrcpyStream).mock.calls[0]?.[0]).toEqual({ slotId: 'x', epoch: 3 })
   })
 
   it('shows the live canvas and takes no screenshot while streaming', () => {
     streamWith({ state: 'streaming' })
 
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<DeviceScreen screen={slot('x', 1, 'emulator-5554')} />)
 
     expect(screen.getByLabelText('emulator-5554의 실시간 화면')).toBeDefined()
     expect(captureScreenshot).not.toHaveBeenCalled()
@@ -73,7 +77,7 @@ describe('DeviceScreen', () => {
   it('says it is connecting', () => {
     streamWith({ state: 'connecting' }, null)
 
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<DeviceScreen screen={slot('x', 1, 'emulator-5554')} />)
 
     expect(screen.getByRole('status').textContent).toContain('연결 중')
   })
@@ -81,7 +85,7 @@ describe('DeviceScreen', () => {
   it('says which reconnect attempt it is on', () => {
     streamWith({ state: 'reconnecting', attempt: 2 })
 
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<DeviceScreen screen={slot('x', 1, 'emulator-5554')} />)
 
     expect(screen.getByRole('status').textContent).toContain('2/3')
   })
@@ -89,7 +93,7 @@ describe('DeviceScreen', () => {
   it('falls back to the screenshot view with the reason and a reconnect button when the stream fails', async () => {
     streamWith({ state: 'failed', error: { kind: 'device_unresponsive', message: '서버가 안 뜬다', hint: '다시 연결해라' } })
 
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<DeviceScreen screen={slot('x', 1, 'emulator-5554')} />)
 
     expect(screen.getByText(/서버가 안 뜬다/)).toBeDefined()
     expect(screen.queryByLabelText('emulator-5554의 실시간 화면')).toBeNull()
@@ -100,7 +104,7 @@ describe('DeviceScreen', () => {
 
   it('sends a hardware key from the toolbar', async () => {
     streamWith({ state: 'streaming' })
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<DeviceScreen screen={slot('x', 1, 'emulator-5554')} />)
 
     await userEvent.click(screen.getByRole('button', { name: '홈' }))
 
@@ -110,7 +114,7 @@ describe('DeviceScreen', () => {
   it('세션이 준 keys에 없는 버튼은 그리지 않는다', () => {
     streamWith({ state: 'streaming' }, { width: 590, height: 1278 }, ['home', 'power'])
 
-    render(<DeviceScreen serial="sim-1" />)
+    render(<DeviceScreen screen={slot('x', 1, 'sim-1')} />)
 
     expect(screen.queryByRole('button', { name: '뒤로' })).toBeNull()
     expect(screen.queryByRole('button', { name: '최근 앱' })).toBeNull()
@@ -121,7 +125,7 @@ describe('DeviceScreen', () => {
   it('첫 session 전(keys가 빈 배열)에는 툴바에 키 버튼이 없다', () => {
     streamWith({ state: 'connecting' }, null, [])
 
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<DeviceScreen screen={slot('x', 1, 'emulator-5554')} />)
 
     expect(within(screen.getByRole('toolbar', { name: '기기 버튼' })).queryAllByRole('button')).toHaveLength(0)
   })
@@ -129,14 +133,14 @@ describe('DeviceScreen', () => {
   it('disables the toolbar until the stream is live', () => {
     streamWith({ state: 'connecting' }, null)
 
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<DeviceScreen screen={slot('x', 1, 'emulator-5554')} />)
 
     expect(screen.getByRole('button', { name: '뒤로' })).toHaveProperty('disabled', true)
   })
 
   it('turns a drag into touch down, move and up in video coordinates', () => {
     streamWith({ state: 'streaming' })
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<DeviceScreen screen={slot('x', 1, 'emulator-5554')} />)
     const canvas = screen.getByLabelText('emulator-5554의 실시간 화면')
 
     fireEvent.pointerDown(canvas, { clientX: 50, clientY: 100, button: 0, pointerId: 1 })
@@ -154,7 +158,7 @@ describe('DeviceScreen', () => {
 
   it('does not send a move without a pressed pointer', () => {
     streamWith({ state: 'streaming' })
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<DeviceScreen screen={slot('x', 1, 'emulator-5554')} />)
 
     fireEvent.pointerMove(screen.getByLabelText('emulator-5554의 실시간 화면'), { clientX: 60, clientY: 150 })
 
@@ -163,7 +167,7 @@ describe('DeviceScreen', () => {
 
   it('sends the wheel as a scroll at the pointer', () => {
     streamWith({ state: 'streaming' })
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<DeviceScreen screen={slot('x', 1, 'emulator-5554')} />)
 
     fireEvent.wheel(screen.getByLabelText('emulator-5554의 실시간 화면'), { clientX: 50, clientY: 100, deltaY: 100, deltaMode: 0 })
 
@@ -177,7 +181,7 @@ describe('DeviceScreen', () => {
 
   it('sends typed ascii as text and leaves Cmd shortcuts alone', () => {
     streamWith({ state: 'streaming' })
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<DeviceScreen screen={slot('x', 1, 'emulator-5554')} />)
     const canvas = screen.getByLabelText('emulator-5554의 실시간 화면')
 
     fireEvent.keyDown(canvas, { key: 'a' })
@@ -188,7 +192,7 @@ describe('DeviceScreen', () => {
 
   it('lets Shift+Tab pass through so focus can leave the canvas (no keyboard trap)', () => {
     streamWith({ state: 'streaming' })
-    render(<DeviceScreen serial="emulator-5554" />)
+    render(<DeviceScreen screen={slot('x', 1, 'emulator-5554')} />)
     const canvas = screen.getByLabelText('emulator-5554의 실시간 화면')
 
     const notPrevented = fireEvent.keyDown(canvas, { key: 'Tab', shiftKey: true })
@@ -200,7 +204,7 @@ describe('DeviceScreen', () => {
 
   it('draws an agent tap over the live canvas', () => {
     streamWith({ state: 'streaming' }, { width: 540, height: 1200 })
-    const { container } = render(<DeviceScreen serial="emulator-5554" />)
+    const { container } = render(<DeviceScreen screen={slot('x', 1, 'emulator-5554')} />)
 
     act(() =>
       eventListeners.forEach((listener) =>

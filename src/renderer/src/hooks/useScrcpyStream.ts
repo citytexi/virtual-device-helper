@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
-import type { Outcome } from '../../../shared/types/ipc'
-import type { ControlIntent, DeviceKey, SessionStatus, StreamDown, SessionPortMeta, StreamUp } from '../../../shared/types/stream'
+import type { Outcome, SlotRef } from '../../../shared/types/ipc'
+import type { ControlIntent, DeviceKey, SessionStatus, StreamDown, StreamPortMeta, StreamUp } from '../../../shared/types/stream'
 import type { VideoSize } from '../stream/inputMapper'
 import { createJpegRenderer, decodeJpeg, type JpegRenderer, type JpegRendererDeps } from '../stream/jpegRenderer'
 import { createStreamDecoder, type StreamDecoder } from '../stream/streamDecoder'
-import { onStreamPort } from '../stream/streamPort'
+import { streamPortRouter } from '../stream/streamPort'
 
 export interface StreamDecoderHandlers {
   onFrame(frame: VideoFrame): void
@@ -13,9 +13,10 @@ export interface StreamDecoderHandlers {
 
 /** 브라우저 전역에 닿는 부분. 테스트는 이것을 통째로 넘긴다. */
 export interface ScrcpyStreamDeps {
-  startStream(serial: string): Promise<Outcome<void>>
-  stopStream(): Promise<Outcome<void>>
-  onStreamPort(callback: (meta: SessionPortMeta, port: MessagePort) => void): () => void
+  startStream(ref: SlotRef): Promise<Outcome<void>>
+  stopStream(ref: SlotRef): Promise<Outcome<void>>
+  /** 이 칸·세대의 포트를 받겠다고 등록한다. 포트를 닫는 곳은 라우터뿐이다. 돌려준 함수로 해제한다. */
+  subscribePort(ref: SlotRef, onPort: (meta: StreamPortMeta, port: MessagePort) => void): () => void
   createDecoder(handlers: StreamDecoderHandlers): StreamDecoder
   /** `session.codec`이 jpeg일 때 쓴다. draw는 bitmap을 닫는 책임을 진다. onError는 연속 실패로 포기할 때 한 번 불린다. */
   createJpegRenderer(handlers: Omit<JpegRendererDeps, 'decode'>): JpegRenderer
@@ -44,9 +45,9 @@ export interface ScrcpyStream {
 
 function browserDeps(): ScrcpyStreamDeps {
   return {
-    startStream: (serial) => window.api.startStream(serial),
-    stopStream: () => window.api.stopStream(),
-    onStreamPort: (callback) => onStreamPort(callback),
+    startStream: (ref) => window.api.startStream(ref),
+    stopStream: (ref) => window.api.stopStream(ref),
+    subscribePort: (ref, onPort) => streamPortRouter.subscribe(ref, onPort),
     createDecoder: (handlers) =>
       createStreamDecoder({
         createDecoder: (init) => new VideoDecoder(init),
@@ -109,15 +110,17 @@ interface FramePath {
 }
 
 /**
- * serial의 실시간 화면을 canvasRef에 그린다. 스트림은 main이 열고, 포트는 따로 온다.
- * 같은 serial의 포트 중 가장 나중에 온 것을 쓴다 — main은 새 포트를 만들기 전에 이전 포트를
- * 닫고, IPC는 순서대로 도착하므로 가장 나중 것이 살아 있는 세션이다.
+ * 칸 하나의 실시간 화면을 canvasRef에 그린다. 스트림은 main이 열고, 포트는 라우터가 이 칸·세대
+ * 구독자에게 따로 넘긴다. 같은 칸·세대의 포트 중 가장 나중에 온 것을 쓴다 — main은 새 포트를
+ * 만들기 전에 이전 포트를 닫고, IPC는 순서대로 도착하므로 가장 나중 것이 살아 있는 세션이다.
+ * 훅은 받은 포트만 다룬다. 남의 포트를 닫는 곳은 라우터뿐이다.
  */
 export function useScrcpyStream(
-  serial: string,
+  ref: SlotRef,
   canvasRef: RefObject<HTMLCanvasElement | null>,
   deps?: ScrcpyStreamDeps
 ): ScrcpyStream {
+  const { slotId, epoch } = ref
   const depsRef = useRef<ScrcpyStreamDeps | null>(deps ?? null)
   if (!depsRef.current) depsRef.current = browserDeps()
 
@@ -134,6 +137,8 @@ export function useScrcpyStream(
   useEffect(() => {
     const d = depsRef.current as ScrcpyStreamDeps
     let active = true
+    // effect는 원시값(slotId, epoch)만 의존성으로 본다. 이 effect의 칸 지정은 그 값으로 한 번 굳힌다.
+    const slotRef: SlotRef = { slotId, epoch }
     let port: MessagePort | null = null
     let path: FramePath | null = null
     // 가장 나중 session의 크기. 캔버스 크기는 두 경로 모두 이것만 따른다.
@@ -167,7 +172,7 @@ export function useScrcpyStream(
         // main은 이 실패를 모른다 — 포트를 놓아 늦게 온 status가 failed를 덮어쓰지
         // 못하게 하고, main에도 세션을 그만두라고 알린다.
         release()
-        d.stopStream().catch(() => {})
+        d.stopStream(slotRef).catch(() => {})
         return
       }
       restartCountRef.current += 1
@@ -253,7 +258,7 @@ export function useScrcpyStream(
         }
       })
       release()
-      d.stopStream().catch(() => {})
+      d.stopStream(slotRef).catch(() => {})
     }
 
     /** session이 알린 codec에 맞는 경로로 바꾼다. 같은 codec이면 그대로 둔다. */
@@ -302,15 +307,14 @@ export function useScrcpyStream(
       }
     }
 
-    const unsubscribe = d.onStreamPort((meta, next) => {
-      if (!active || meta.serial !== serial) {
-        next.close()
-        return
-      }
+    // 구독을 먼저 한다. 포트는 아래 요청의 응답으로만 생기므로 라우터가 이 화면의 포트를 닫는 일이 없다.
+    const unsubscribe = d.subscribePort(slotRef, (_meta, next) => {
+      // 구독을 푼 뒤에 온 포트는 라우터가 이 구독자를 부르지 않으니 여기 오지 않는다.
+      if (!active) return
       adopt(next)
     })
 
-    d.startStream(serial).then(
+    d.startStream(slotRef).then(
       (outcome) => {
         if (active && !outcome.ok) setStatus({ state: 'failed', error: outcome.error })
       },
@@ -332,9 +336,9 @@ export function useScrcpyStream(
       unsubscribe()
       release()
       // cleanup 중 실패는 보고할 곳이 없다 — unhandled rejection만 막는다.
-      d.stopStream().catch(() => {})
+      d.stopStream(slotRef).catch(() => {})
     }
-  }, [serial, attempt, canvasRef])
+  }, [slotId, epoch, attempt, canvasRef])
 
   const send = useCallback((intent: ControlIntent) => {
     portRef.current?.postMessage(intent)

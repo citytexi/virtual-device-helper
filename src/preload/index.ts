@@ -7,7 +7,7 @@ import {
   type RendererApi
 } from '../shared/types/ipc'
 import type { ScreenshotResult } from '../shared/types/device'
-import type { SessionPortMeta } from '../shared/types/stream'
+import type { StreamPortMeta } from '../shared/types/stream'
 import type { LogPortMeta } from '../shared/types/logs'
 
 /**
@@ -23,8 +23,8 @@ const api: RendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.shutdownDevice, serial) as Promise<Outcome<void>>,
   captureScreenshot: (serial) =>
     ipcRenderer.invoke(IPC_CHANNELS.captureScreenshot, serial) as Promise<Outcome<ScreenshotResult>>,
-  startStream: (serial) => ipcRenderer.invoke(IPC_CHANNELS.startStream, serial) as Promise<Outcome<void>>,
-  stopStream: () => ipcRenderer.invoke(IPC_CHANNELS.stopStream) as Promise<Outcome<void>>,
+  startStream: (ref) => ipcRenderer.invoke(IPC_CHANNELS.startStream, ref) as Promise<Outcome<void>>,
+  stopStream: (ref) => ipcRenderer.invoke(IPC_CHANNELS.stopStream, ref) as Promise<Outcome<void>>,
   openLogs: (serial) => ipcRenderer.invoke(IPC_CHANNELS.openLogs, serial) as Promise<Outcome<void>>,
   closeLogs: () => ipcRenderer.invoke(IPC_CHANNELS.closeLogs) as Promise<Outcome<void>>,
   onEvent: (callback) => {
@@ -40,9 +40,19 @@ const api: RendererApi = {
  * main world에 건넨다. renderer의 streamPort.ts가 channel·출처·포트 개수를 보고 받는다.
  * 여기서는 포트가 정확히 하나일 때만 넘긴다 — 이 채널이 범용 포트 통로가 되지 않게 한다.
  */
-ipcRenderer.on(IPC_CHANNELS.streamPort, (event: IpcRendererEvent, meta: SessionPortMeta) => {
+ipcRenderer.on(IPC_CHANNELS.streamPort, (event: IpcRendererEvent, meta: StreamPortMeta) => {
   if (event.ports.length !== 1) return
-  window.postMessage({ channel: IPC_CHANNELS.streamPort, serial: meta.serial, sessionId: meta.sessionId }, '*', [...event.ports])
+  window.postMessage(
+    {
+      channel: IPC_CHANNELS.streamPort,
+      serial: meta.serial,
+      sessionId: meta.sessionId,
+      slotId: meta.slotId,
+      epoch: meta.epoch
+    },
+    '*',
+    [...event.ports]
+  )
 })
 
 /**

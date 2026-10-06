@@ -1,13 +1,17 @@
 import { useRef } from 'react'
 import type { JSX, KeyboardEvent, PointerEvent, WheelEvent } from 'react'
+import type { ScreenSlot } from '../../../shared/types/ipc'
 import type { DeviceKey, SessionStatus } from '../../../shared/types/stream'
 import { useScrcpyStream } from '../hooks/useScrcpyStream'
 import { keyToIntent, toVideoPoint, wheelToScroll } from '../stream/inputMapper'
 import { GestureOverlay } from './GestureOverlay'
 import { ScreenshotView } from './ScreenshotView'
 
+/** 기기가 놓인 칸. 빈 칸은 호출부가 걸러서 이 컴포넌트까지 오지 않는다. */
+export type OccupiedScreen = ScreenSlot & { serial: string }
+
 export interface DeviceScreenProps {
-  serial: string | null
+  screen: OccupiedScreen
 }
 
 const DEVICE_BUTTONS: ReadonlyArray<{ key: DeviceKey; label: string; glyph: string }> = [
@@ -27,24 +31,18 @@ function statusText(status: SessionStatus): string | null {
 
 /**
  * 기기 화면 영역. 실시간 스트림을 그리고 사람 입력을 기기로 보낸다. 스트림이 끝내 실패하면
- * 스크린샷 화면으로 강등된다. 바깥 경계(props)는 M1 그대로라 App은 이 변화를 모른다.
+ * 스크린샷 화면으로 강등된다. 칸의 세대가 바뀌면 호출부의 key가 바뀌어 새 캔버스로 다시 마운트된다.
  */
-export function DeviceScreen({ serial }: DeviceScreenProps): JSX.Element {
-  if (!serial) {
-    return (
-      <section aria-label="기기 화면" className="device-screen">
-        <p className="empty">기기를 선택해라. 왼쪽 목록에서 실행 중인 기기를 누르면 화면이 뜬다.</p>
-      </section>
-    )
-  }
-  // key로 기기마다 새 캔버스를 만든다. 이전 기기의 마지막 프레임이 새 기기 화면처럼 남지 않는다.
-  return <LiveScreen key={serial} serial={serial} />
+export function DeviceScreen({ screen }: DeviceScreenProps): JSX.Element {
+  return <LiveScreen screen={screen} />
 }
 
-function LiveScreen({ serial }: { serial: string }): JSX.Element {
+function LiveScreen({ screen }: { screen: OccupiedScreen }): JSX.Element {
+  const { serial } = screen
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const dragging = useRef(false)
-  const stream = useScrcpyStream(serial, canvasRef)
+  // 훅의 effect는 slotId와 epoch만 본다. 이 객체는 렌더마다 새로 만들어도 스트림을 다시 열지 않는다.
+  const stream = useScrcpyStream({ slotId: screen.id, epoch: screen.epoch }, canvasRef)
   const { status, video, keys, send } = stream
   const live = status.state === 'streaming'
   const overlayText = statusText(status)
