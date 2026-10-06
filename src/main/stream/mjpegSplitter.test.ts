@@ -104,4 +104,30 @@ describe('createMjpegSplitter', () => {
     c.push(part(jpeg(3)))
     expect(Buffer.from(c.frames[0]!).equals(snapshot)).toBe(true)
   })
+
+  it('작은 프레임도 자기 ArrayBuffer만 차지한다 (공유 풀 뷰가 아니다)', () => {
+    const c = collect()
+    c.push(part(jpeg(5)))
+    const f = c.frames[0]!
+    expect(f.byteLength).toBe(9)
+    expect(f.byteOffset).toBe(0)
+    expect(f.buffer.byteLength).toBe(f.byteLength)
+  })
+
+  it('onFrame이 던져도 다음 push는 같은 프레임을 다시 내지 않고 다음 프레임을 낸다', () => {
+    const got: number[] = []
+    let first = true
+    const splitter = createMjpegSplitter((f) => {
+      if (first) {
+        first = false
+        throw new Error('boom')
+      }
+      got.push(f.length)
+    })
+    // 던진 push에서 남은 바이트는 버려지므로, 본문이 끝나는 지점에서 청크를 끊는다.
+    const p1 = part(jpeg(5))
+    expect(() => splitter.push(p1.subarray(0, p1.length - 2))).toThrow('boom')
+    splitter.push(Buffer.concat([Buffer.from('\r\n'), part(jpeg(7))]))
+    expect(got).toEqual([11])
+  })
 })
