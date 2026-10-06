@@ -1,10 +1,10 @@
 ---
 id: m4-2-ios-input-nodes
 title: M4-2 — iOS 입력과 노드
-status: draft
+status: done
 type: work-order
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-06
 owner: virtual-device-helper 팀
 scope: [main, mcp, shared, ios, renderer]
 hosts: [macos]

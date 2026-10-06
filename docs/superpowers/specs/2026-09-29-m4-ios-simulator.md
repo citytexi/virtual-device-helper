@@ -1,8 +1,8 @@
 ---
 id: m4-ios-simulator
 title: M4 — iOS 시뮬레이터 지원
-status: draft
-verified: 2026-09-30
+status: in-progress
+verified: 2026-10-06
 scope: [main, renderer, preload, mcp, shared, ios, streaming]
 hosts: [macos]
 supersedes:
@@ -11,7 +11,7 @@ related_adr: [ADR-0014, ADR-0015, ADR-0016, ADR-0005, ADR-0003, ADR-0008, ADR-00
 related_spec: [m1-device-core-mcp-server, m2-live-streaming, m3-node-control-logs-events, agent-guide]
 related_architecture: main-layers
 related_plan: [m4-1-ios-foundation, m4-2-ios-input-nodes, m4-3-ios-streaming]
-related_code: [device.ts#Device, device.ts#DeviceInfo, device.ts#UiNode, device.ts#AvdEntry, errors.ts#ToolErrorKind, registry.ts#createDeviceRegistry, avdController.ts#AvdController, index.ts#createDeviceStack, bootstrap.ts#assembleWithoutSdk, nodeRefs.ts, logManager.ts#LogManagerDeps, streamManager.ts#StreamManagerDeps, stream.ts#StreamDown, stream.ts#ControlIntent, streamDecoder.ts, layering.test.ts, agentGuide.ts]
+related_code: [device.ts#Device, device.ts#DeviceInfo, device.ts#UiNode, device.ts#AvdEntry, errors.ts#ToolErrorKind, registry.ts#createDeviceRegistry, avdController.ts#AvdController, index.ts#createDeviceStack, bootstrap.ts#assembleWithoutSdk, nodeRefs.ts, logManager.ts#LogManagerDeps, streamManager.ts#StreamManagerDeps, streamSession.ts#StreamSession, rejectingSession.ts#createPlatformStreamSession, rejectingSession.ts#createIosStreamSessionFactory, axeStreamSession.ts#createAxeStreamSession, axeControl.ts#createAxeControl, iosKeys.ts#IOS_KEY_ARGS, mjpegSplitter.ts#createMjpegSplitter, jpegRenderer.ts#createJpegRenderer, stream.ts#StreamDown, stream.ts#ControlIntent, streamDecoder.ts, layering.test.ts, agentGuide.ts]
 tags: [spec, ios, simulator, axe]
 ---
 
@@ -201,8 +201,9 @@ axeClient ───→ IosDevice     ┘
 - 스냅샷의 `sdk: SdkStatus`는 플랫폼별 `platforms: { android: PlatformStatus; ios: PlatformStatus }`
   로 바뀐다. 둘 다 준비되지 않았을 때만 안내 화면(`SdkMissing`)을 띄우고 두 플랫폼의 안내를 함께
   보여 준다. 하나만 준비됐으면 기기 패널 위에 빠진 쪽 안내를 한 줄로 띄운다.
-- M4-1에서 iOS 기기로 스트림을 열면 조립 지점이 `unsupported`로 거절한다. renderer는 기존 강등
-  경로대로 스크린샷을 보여 준다. 실제 스트림은 M4-3이다.
+- M4-1에서 iOS 기기로 스트림을 열면 조립 지점이 `unsupported`로 거절했다. M4-3부터는 AXe 스트림 세션을
+  열고, AXe가 없을 때만 `ios_tool_not_found`로 거절한다. 거절되면 renderer는 기존 강등 경로대로
+  스크린샷을 보여 준다.
 
 ### 로그
 
@@ -265,9 +266,8 @@ ndjson에는 `eventType`이 `activityCreateEvent`인 줄도 섞여 나온다. �
 | `pressKey('enter')` / `pressKey('tab')` | `key 40` / `key 43` (HID keycode) |
 | `pressKey('back')` | `unsupported` |
 
-- `inputText`는 입력할 때마다 시뮬레이터 pasteboard를 덮어쓴다. Simulator.app의 pasteboard 동기화가 켜져 있으면
-  호스트 클립보드까지 덮일 수 있다(측정하지 않았다). 이전 클립보드를 되돌리지 않는다 — 복원(`pbpaste`/`pbcopy`)은
-  이 범위 밖이고 M4-3 계획의 과제로 넘겼다.
+- `inputText`는 입력할 때마다 시뮬레이터 pasteboard를 덮어쓴다. 이전 클립보드를 되돌리지 않는다. 복원은
+  M4-3에서 검토하고 만들지 않기로 했다(이유와 호스트 클립보드 측정은 "M4-3 검증 결과").
 
 **노드: `describe-ui` → `UiNode`**
 
@@ -298,16 +298,21 @@ ndjson에는 `eventType`이 `activityCreateEvent`인 줄도 섞여 나온다. �
 
 ### 스트리밍과 화면 입력 (M4-3)
 
-**main.** `StreamManagerDeps.createSession`이 돌려주는 타입을 `ScrcpySession`에서 `StreamSession`
-인터페이스(`start`/`stop`/`send(intent)`와 핸들러)로 올린다. `ScrcpySession`과 `AxeStreamSession`이
-구현한다. 재연결·포트 관리는 `streamManager` 본체에 그대로 둔다. 어느 세션을 쓸지는 조립 지점이
-platform으로 고른다.
+**main.** `StreamManagerDeps.createSession`이 돌려주는 타입은 `streamSession.ts`의 `StreamSession`
+인터페이스(`start`/`sendControl(intent)`/`close`와 `StreamSessionHandlers`)다. `ScrcpySession`과
+`axeStreamSession.ts`의 `createAxeStreamSession`이 구현한다. 재연결·포트 관리는 `streamManager` 본체에
+그대로 둔다. 어느 세션을 쓸지는 조립 지점이 platform으로 고른다. `rejectingSession.ts`의
+`createPlatformStreamSession`이 라우터이고, iOS 기기에는 `createIosStreamSessionFactory`가 만든 세션을,
+AXe를 못 찾았으면 `ios_tool_not_found`로 거절하는 세션을 준다. `streamManager`는 플랫폼을 모른다.
 
 `AxeStreamSession`은 `axe stream-video --udid <udid> --format mjpeg --fps <n> --scale <s> --quality <q>`
-를 띄우고 stdout을 JPEG 한 장 단위로 자른다. 시작값은 fps 30, scale 0.5, quality 70이다.
-stdout은 순수 JPEG 연결이 아니라 `HTTP/1.1 200 OK` 헤더로 시작하는 `multipart/x-mixed-replace`이고,
-각 파트의 `Content-Length`로 자른다(스파이크 4). `--scale 1.0`과 `--quality 80`(둘 다 기본값)이면
-파트가 JPEG가 아니라 PNG로 나오므로 기본값에 기대지 않고 항상 명시한다.
+를 띄우고 stdout을 JPEG 한 장 단위로 자른다. 시작값은 fps 30, scale 0.5, quality 70이고
+`axeStreamSession.ts`의 `STREAM_ARGS` 한 곳에 둔다.
+stdout은 순수 JPEG 연결이 아니라 `HTTP/1.1 200 OK` 헤더로 시작하는 `multipart/x-mixed-replace`다(스파이크 4).
+`mjpegSplitter.ts`의 `createMjpegSplitter`가 각 파트를 `Content-Length`로 자르고, 본문이 SOI(`FF D8`)로 시작해
+EOI(`FF D9`)로 끝나는지 확인한다. 어긋난 파트는 버리고 다음 경계로 다시 맞춘다. `--scale 1.0`과
+`--quality 80`(둘 다 기본값)이면 파트가 JPEG가 아니라 PNG로 나오므로 기본값에 기대지 않고 항상 명시한다.
+화면 크기는 `jpegSize.ts`의 `jpegSize`가 프레임에서 읽는다. 크기가 달라진 프레임이 오면 `session`을 다시 올린다.
 
 **포트 메시지** (`src/shared/types/stream.ts`)
 
@@ -325,20 +330,40 @@ export type StreamDown =
 - `session.codec`으로 디코더를 고른다. `h264`는 지금의 `streamDecoder`, `jpeg`는 새 `jpegRenderer`다.
 - `jpegRenderer`는 `createImageBitmap(blob)`으로 디코드해 canvas에 그린다. 디코드 중 새 프레임이
   오면 최신 한 장만 남긴다. 지연이 쌓이지 않게 한다.
+- 캔버스 크기는 두 코덱 경로 모두 `session`이 알린 크기를 따르고, 그릴 때는 프레임을 캔버스 크기에 맞춘다.
+  프레임 크기가 `session`과 잠깐 어긋나도 입력 좌표의 기준(`session` 크기)과 화면이 같은 틀을 쓴다.
+- 깨진 JPEG 한 장은 건너뛴다. 디코드·그리기가 연속으로 `jpegRenderer.ts`의 `MAX_CONSECUTIVE_FAILURES`만큼
+  실패하면 h264 디코더의 치명 오류와 같은 경로로 스트림을 끝낸다. 조용히 멈춘 화면을 두지 않기 위해서다.
 - 툴바 키 버튼은 `session.keys`에 있는 것만 그린다. renderer는 `platform`을 읽지 않는다.
 
-**화면 입력.** 변환은 `axeControl.ts`에 모은다. Android의 `scrcpyProtocol`과 같은 자리다.
+**화면 입력.** 변환은 `axeControl.ts`의 `createAxeControl`에 모은다. Android의 `scrcpyProtocol`과 같은 자리다.
 
 - AXe `touch`에는 move가 없고 호출마다 프로세스가 뜬다. 그래서 제스처를 main에 모은다.
   - `down`: 시작점과 시각을 적는다.
   - `move`: 끝점만 갱신한다.
-  - `up`: 이동이 작으면 `tap`, 크면 `swipe`(시작점→끝점, `duration`은 실제 경과 시간).
+  - `up`: 이동이 작으면 `tap`, 크면 `swipe`(시작점→끝점). `duration`은 `down`에서 `up`까지의 실제 경과
+    시간이고 `up`을 받은 때에 잰다. 줄에서 기다린 시간은 넣지 않는다.
 - 알려진 한계: 드래그가 손을 뗀 뒤에 한 번에 반영되고, 곡선 경로가 직선이 된다. 스파이크에서
   `batch --stdin`은 EOF까지 읽은 뒤에야 실행하므로(스파이크 5) 이 방식이 확정이다.
-- `VideoPoint`(JPEG 프레임 픽셀)를 `displayFrame`(point) 비율로 바꾼다.
-- `scroll`은 그 위치의 짧은 `swipe`다. 방향은 `vScroll`/`hScroll`의 부호로 정한다.
-- `text`는 `type`, `key`는 HID keycode 표를 쓴다. `power`는 `button lock`이다. iOS `keys`에는
-  `back`, `app_switch`, `volume_up`, `volume_down`이 없다.
+- AXe 호출은 기기당 한 줄로 세워 한 번에 하나만 돈다. 실패한 호출은 줄을 끊지 않는다.
+- `VideoPoint`(JPEG 프레임 픽셀)를 `displayFrame`(point) 비율로 바꾸고 화면 안으로 자른다. `displayFrame`은
+  제스처마다 `IosDevice.displayFrame`으로 다시 잰다.
+- `scroll`은 그 위치의 짧은 `swipe`다. 축 의미는 Android와 같아서 양수가 뷰포트를 오른쪽·위로 보낸다.
+  그래서 손가락은 `hScroll > 0`이면 왼쪽으로, `vScroll > 0`이면 아래로 간다. 이동 거리는 세로가
+  `displayFrame.height × 0.15`, 가로가 `displayFrame.width × 0.15`에 `clamp(값, -1, 1)`을 곱한 것이다.
+- 휠은 초당 수십 번 오는데 AXe 호출은 느리다. 그래서 `scroll`은 합친다. 줄에서 아직 시작하지 않은
+  `scroll`이 줄의 끝에 있으면 새 `scroll`은 거기에 더해지고(양은 합, 위치는 최신) 기다리는 `scroll`은
+  많아야 하나다. 탭·스와이프·키·텍스트는 합치거나 버리지 않는다.
+- `text`는 `axe type`을 쓰지 않고 `IosDevice.inputText`(`simctl pbcopy` + ⌘V)로 간다. `type`은 ASCII만 받고
+  시뮬레이터 키보드가 한국어면 ASCII도 깨지기 때문이다(스파이크 3, M4-3 검증에서 다시 봤다).
+  `createIosStreamSessionFactory`가 이 호출을 `registry.run` 기기 큐에 세운다. MCP `ui_text`와 같은 줄이라
+  한쪽의 `pbcopy`와 ⌘V 사이에 다른 쪽이 끼어들지 못한다. 탭·스와이프·키는 공유 상태가 없어 기기 큐에
+  세우지 않는다. 세우면 사람 입력이 `app_install` 같은 긴 MCP 작업 뒤에서 기다린다.
+- 입력 뒤 시뮬레이터 클립보드를 되돌리지 않는다. 복원을 검토했으나 만들지 않았다. ⌘V는 `key-combo`가
+  돌아온 뒤에 비동기로 처리되므로 곧바로 되돌리면 이전 내용이 붙을 수 있다.
+- `key`는 `iosKeys.ts`의 `IOS_KEY_ARGS` 표 하나를 쓴다(HID keycode, `home`은 `button home`, `power`는
+  `button lock`). 세션이 알리는 `keys`(`IOS_KEYS`)도 이 표에서 나온다. iOS `keys`에는 `back`, `app_switch`,
+  `volume_up`, `volume_down`이 없고, 표에 없는 키가 와도 호출하지 않는다.
 
 **스트림 실패.** 지금처럼 스크린샷 PNG로 강등한다.
 
@@ -384,8 +409,11 @@ export type StreamDown =
 | `src/main/device/parsers/` | simctl·log·launchctl·describe-ui 파서 | M4-1, M4-2 |
 | `src/main/logs/iosLogDeps.ts` | 로그 패널 iOS deps | M4-1 |
 | `src/main/ios/axeClient.ts` | `axe` 경계 | M4-2 |
+| `src/main/stream/streamSession.ts` | `StreamSession` 인터페이스 | M4-3 |
 | `src/main/stream/axeStreamSession.ts` | MJPEG 스트림 세션 | M4-3 |
-| `src/main/stream/axeControl.ts` | `ControlIntent` → AXe | M4-3 |
+| `src/main/stream/mjpegSplitter.ts`, `jpegSize.ts` | MJPEG 파트 자르기, JPEG 크기 읽기 | M4-3 |
+| `src/main/stream/axeControl.ts`, `iosKeys.ts` | `ControlIntent` → AXe, iOS 키 표 | M4-3 |
+| `src/main/stream/rejectingSession.ts` | 플랫폼별 세션 라우터와 iOS 세션 조립 | M4-1, M4-3 |
 | `src/renderer/src/stream/jpegRenderer.ts` | JPEG 프레임 그리기 | M4-3 |
 
 `docs/architecture/main-layers.md`에 iOS 줄을 M4-1에서 더하고 `verified`를 갱신한다.
@@ -457,7 +485,8 @@ SwiftUI와 UIKit의 차이를 가를 서드파티 앱은 이번에 쓰지 못했
 
 ## 열린 질문
 
-- 없음. 스파이크 결과에 따라 입력·스트림 세부가 바뀔 수 있다.
+- 화면 입력으로 영문을 한 글자씩 넣으면 붙여 넣기 사이에 공백이 낀다. 어떻게 넣을지 정해야 한다("M4-3 검증 결과").
+- 시뮬레이터를 가로로 돌려도 스트림 프레임이 세로 그대로다. 화면과 입력 좌표를 어디서 돌릴지 정해야 한다("M4-3 검증 결과").
 
 ## M4-1 검증 결과
 
@@ -532,3 +561,82 @@ SwiftUI와 UIKit의 차이를 가를 서드파티 앱은 이번에 쓰지 못했
 
 **열린 것.** 검색 결과 목록이 나오는 경우(항목 4), 앱 창에서 보는 항목(기기 화면의 탭 표시, 활동 탭의 입력 가림)은
 사람이 확인한다. 서드파티 UIKit 앱의 `describe-ui` 모양은 이번에도 보지 못했고 SwiftUI 최소 앱과 설정 앱만 봤다.
+
+## M4-3 검증 결과
+
+2026-10-06에 iPhone 17(iOS 26.5) 시뮬레이터 하나를 부팅해 확인했다. Xcode 26.6, AXe 1.8.0(`/opt/homebrew/bin/axe`)이다.
+확인한 뒤 그 시뮬레이터를 껐다. 시뮬레이터 키보드와 로케일은 한국어였다. 앱 창은 사람이 볼 수 없어 실제
+모듈을 스크립트로 조립해 돌렸다. `createStreamManager`에 가짜 포트를 물리고, `createSession`에는 앱과 같은
+`createPlatformStreamSession` + `createIosStreamSessionFactory`를, 기기 쪽에는 `createDeviceRegistry` +
+`trackSimulators` + `createIosDevice`를 썼다. 입력은 renderer가 보내는 모양 그대로 포트의 `message`로 넣어
+`streamManager.ts`의 `toControlIntent` 검증을 거치게 했다. 앱 조립 코드(`index.ts`, `bootstrap.ts`)와 renderer·앱
+창은 이 경로에 없다. "화면이 바뀐 때"는 포트로 온 `frame`의 바이트가 직전과 달라진 첫 프레임으로 쟀다.
+
+**이번 확인으로 M4-3의 완료 기준 둘이 충족되지 않았다(영문 한 글자씩 입력, 가로 회전).** 고치려면 설계 결정이
+필요해 코드는 그대로 두었고 스펙 상태를 `implemented`로 올리지 않았다.
+
+**통합 테스트** (`axeStreamSession.ios.integration.test.ts`, 부팅된 시뮬레이터에서): 통과했다. 세션이 `codec: 'jpeg'`로
+열리고 프레임이 오며, 화면 가운데 탭이 `axe tap`까지 가고 실패가 없다. 첫 프레임까지 0.27~0.35초였고, 그 뒤 2초
+동안 받은 프레임은 실행마다 크게 달랐다(적을 때는 초당 6~7장, 많을 때는 초당 16장). M4-1·M4-2의 iOS 통합
+테스트도 같은 기기에서 다시 통과했다. 스트림 테스트의 탭이 같은 시뮬레이터를 쓰는 다른 파일의 화면을 바꿔
+함께 돌리면 실패했으므로 `vitest.integration.config.ts`에서 파일을 한 번에 하나씩 돌리게 했다.
+
+| 항목 | 결과 | 관찰 |
+|---|---|---|
+| 1. 실시간 화면 | 부분 확인 | `open`에서 첫 `frame`까지 0.26~0.32초. `session`은 603×1311, `codec: 'jpeg'`, `keys`는 `IOS_KEYS`. `--fps 30` 요청에 정지 화면에서 초당 15.4~16.6장, 스크롤 중 14.3~15.9장이 왔다. 프레임 하나는 약 70KB다. canvas에 그려지는 것은 사람 확인 필요 — 그리기는 `jpegRenderer.test.ts`와 `useScrcpyStream.test.tsx`가 덮는다. |
+| 2. Settings 셀 클릭 | 확인 | 설정 첫 화면의 `일반` 셀 중심을 `touch` down·up으로 보내자 `tap -x 201 -y 319`가 나가고 일반 화면으로 들어갔다(세 번). |
+| 3. 드래그로 스크롤 | 확인 | 약 0.3초 동안 `down`→`move`→`up`을 보내면 `swipe` 한 번이 나가고 목록이 움직였다. 목록 끝에서는 더 움직이지 않았다. |
+| 4. 휠로 스크롤 | 확인 | 16ms 간격 `scroll`(`vScroll: -1`) 서른 번이 `swipe` 두 번으로 합쳐졌고 목록이 아래로 내려갔다. 손가락은 `vScroll > 0`에서 아래로, `hScroll > 0`에서 왼쪽으로 갔고 거리는 `displayFrame`의 0.15배였다. |
+| 5. 한글 입력 | 확인 | 검색 필드에 `text` `한글`, 한 글자씩 `한`·`글`을 보내면 `한글`로 들어갔다. renderer의 조합 입력(IME)이 이 모양으로 보내는지는 사람 확인 필요. |
+| 6. 영문 입력 | **실패** | 문자열 한 번(`Wi`)은 그대로 들어간다. 그러나 한 글자씩 `a`·`b`·`c`를 보내면 `a b c`가 된다(`1`·`2` → `1 2`, `ab`·`cd` → `ab cd`). 아래 "실제 기기로 잡은 것" 참고. |
+| 7. 홈 버튼, 지원하지 않는 키 | 확인 | `key: 'home'`이 `button home`으로 나가 홈 화면이 됐다. `backspace`는 `key 42`로 한 글자를 지웠다. `back`·`app_switch`·`volume_up`·`volume_down`은 AXe 호출이 없었고 스트림은 이어졌다. 뒤로 버튼이 그려지지 않는 것은 `DeviceScreen.test.tsx`가 덮고, 앱 창에서는 사람 확인 필요. |
+| 8. 가로 회전 | **실패** | Simulator.app의 Device 메뉴로 왼쪽 회전했다(Safari). `displayFrame`은 874×402로 바뀌지만 스트림 프레임은 603×1311 그대로이고 내용만 옆으로 누워 온다. 새 `session`도 오지 않는다. 아래 참고. |
+| 9. 시뮬레이터 종료 | 확인 | 스트림 중 `simctl shutdown`을 부르자 약 0.6초 뒤 세션이 `onEnded`(`device_unresponsive`, "axe stream-video가 끝났다")를 올렸다. 매니저가 `reconnecting`을 두 번 알린 뒤, 약 1.9초에 `trackSimulators` 폴링이 기기 해제를 알려 `handleDisconnect`로 포트가 닫혔다. `axe` 프로세스는 남지 않았다. |
+| 10. 사람 입력과 MCP 입력의 겹침 | 확인 | `registry.run` 안의 `inputText('M')`과 화면 `text` `H`를 동시에 보내면 두 ⌘V가 겹치지 않고 차례로 돌아 `M`, `H` 순으로 들어갔다. |
+
+**입력 지연** (보낸 때 → 화면이 바뀐 첫 프레임, 세 번씩)
+
+| 입력 | 지연 | 내역 |
+|---|---|---|
+| 탭 | 1.25~1.6초 | `displayFrame`(`describe-ui`) 약 0.53초 + `axe tap` 약 0.58초. 호출은 보낸 뒤 약 1.1초에 끝난다. |
+| 드래그 | 손을 뗀 뒤 1.2~1.3초 | `displayFrame` 약 0.5초 + `axe swipe` 0.86~0.98초(그중 0.31초가 `duration`). |
+| 휠 | 약 1.3초 | 첫 `swipe`가 약 0.54초에 시작해 약 0.71초 걸린다. |
+| 텍스트 | 호출이 0.33~0.39초에 끝남 | 커서가 깜빡여 프레임 변화로는 잴 수 없었다. `pbcopy` 약 0.14초 + `key-combo` 약 0.2초. |
+| 홈 | 호출이 약 0.18초에 끝남 | `displayFrame`을 재지 않는다. |
+
+탭과 드래그가 1초를 넘는다. 쓸 수는 있지만 느리다. 절반은 제스처마다 다시 재는 `displayFrame`(`describe-ui`)이다.
+후속 과제로 남긴다. `displayFrame`을 캐시하면 탭·드래그가 약 0.5초 줄지만 회전을 어떻게 알아챌지와 묶인
+결정이다. 드래그가 손을 뗀 뒤에야 반영되는 것은 스파이크 5(`batch --stdin`은 stdin을 닫아야 실행한다) 때문에
+그대로다.
+
+**호스트 클립보드.** 텍스트 입력은 시뮬레이터 pasteboard를 덮는다(`simctl pbpaste`로 확인). 호스트 Mac의
+클립보드가 따라 바뀌는지 세 경우로 쟀다. 호스트 클립보드에 표식을 넣고 텍스트를 입력한 뒤 `pbpaste`로 읽었다.
+
+- Simulator.app이 떠 있지 않을 때: 바뀌지 않았다.
+- Simulator.app이 뒤에 떠 있을 때: 바뀌지 않았다. 반대 방향(호스트 → 시뮬레이터)은 동기화돼 입력 전 시뮬레이터
+  pasteboard에 호스트의 표식이 들어 있었다.
+- Simulator.app을 앞에 둔 채 `simctl pbcopy`를 하고 다른 앱으로 돌아왔을 때: 바뀌지 않았다.
+
+관찰한 범위에서는 호스트 클립보드가 덮이지 않는다. 사람이 시뮬레이터 안에서 직접 복사하는 경우는 보지 않았다.
+시뮬레이터 클립보드 복원은 만들지 않았다(이유는 "스트리밍과 화면 입력 (M4-3)").
+
+**실제 기기로 잡은 것.**
+
+- *스와이프 길이가 늘어났다(고침).* `axeControl.ts`의 `createAxeControl`이 `swipe`의 `duration`을 줄에서 실행될 때
+  쟀다. 그래서 `displayFrame`을 재는 약 0.5초와 앞 호출을 기다린 시간이 더해져 0.3초 드래그가 0.8~1.2초
+  스와이프로 나갔다. `up`을 받은 때에 재도록 고치고 단위 테스트를 더했다. 고친 뒤 0.31초로 나간다.
+- *영문을 한 글자씩 넣으면 공백이 낀다(안 고침).* renderer의 `inputMapper.ts`는 키 하나마다 `text` 하나를
+  보내고, iOS는 붙여 넣은 낱말과 앞 낱말 사이에 공백을 넣는다(smart insert). 그래서 사람이 `abc`를 치면
+  `a b c`가 된다. 한글은 공백이 끼지 않는다. MCP `ui_text`도 같은 필드에 두 번 부르면 같은 일이 생긴다
+  (`Wi` 다음 `한글` → `Wi 한글`). `axe type`은 대안이 아니다. 한국어 키보드에서 `a`·`b`·`c`가 `뮻`이 됐다.
+  줄에서 기다리는 `text`를 합치면 빠르게 친 글자는 붙지만 천천히 치면 여전히 낀다. 넣는 방법을 정해야 한다.
+- *가로 회전을 따라가지 않는다(안 고침).* `stream-video`와 `simctl io screenshot`은 기기를 돌려도 세로 프레임을
+  주고 내용만 눕는다. `describe-ui`와 `axe tap`의 좌표는 돌아간 화면 기준이다(가로 874×402에서 `describe-ui`로
+  찾은 주소 필드 중심을 `IosDevice.tap`하자 주소 필드가 눌렸다. MCP 경로는 가로에서도 맞는다). 화면 입력은
+  세로 프레임의 좌표를 가로 `displayFrame`에 비율로만 옮기므로 엉뚱한 곳을 누른다(프레임의 (0.75, 0.75)가
+  `tap -x 655 -y 301`). 프레임과 `displayFrame`의 가로세로가 뒤바뀐 것으로 회전은 알 수 있으나 왼쪽·오른쪽은
+  가르지 못한다. 프레임과 좌표를 어디서 돌릴지 정해야 한다. iPhone의 설정 앱과 홈 화면은 돌지 않아 영향이 없다.
+
+**열린 것.** 위 두 실패. 앱 창에서 보는 항목(canvas에 그려지는 화면과 비율, 툴바 키 버튼과 뒤로 버튼 없음,
+한글 조합 입력, AXe 없는 Mac에서의 강등 안내)은 사람이 확인한다. iOS 18.2 등 다른 런타임과 iPad는 보지 않았다.
+

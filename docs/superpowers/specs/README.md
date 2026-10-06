@@ -17,7 +17,7 @@
 <!-- index:start -->
 | 스펙 | 상태 | 내용 |
 |------|------|------|
-| [m4-ios-simulator](2026-09-29-m4-ios-simulator.md) | draft | iOS 시뮬레이터를 Android와 거의 같은 수준으로. simctl + AXe, M4-1 기반·M4-2 입력과 노드·M4-3 스트리밍 |
+| [m4-ios-simulator](2026-09-29-m4-ios-simulator.md) | in-progress | iOS 시뮬레이터를 Android와 거의 같은 수준으로. simctl + AXe, M4-1 기반·M4-2 입력과 노드·M4-3 스트리밍 |
 <!-- index:end -->
 
 ## 아카이브

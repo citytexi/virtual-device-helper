@@ -1,10 +1,10 @@
 ---
 id: m4-3-ios-streaming
 title: M4-3 — iOS 스트리밍과 화면 입력
-status: draft
+status: in-progress
 type: work-order
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-06
 owner: virtual-device-helper 팀
 scope: [main, renderer, shared, streaming, ios]
 hosts: [macos]
@@ -20,7 +20,7 @@ tags: [plan, ios, streaming, axe]
 # M4-3 — iOS 스트리밍과 화면 입력 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: `superpowers:subagent-driven-development`(권장) 또는
-> `superpowers:executing-plans`로 task 단위 구현. 각 단계는 체크박스(`- [ ]`)로 추적한다.
+> `superpowers:executing-plans`로 task 단위 구현. 각 단계는 체크박스(`- [x]`)로 추적한다.
 
 **Goal:** 앱 창에 iOS 시뮬레이터 화면이 실시간으로 보이고 마우스·키보드로 조작된다.
 
@@ -64,8 +64,11 @@ M4-1 Task 1의 fixture `stream-video-jpeg.bin`(JPEG 파트). `stream-video.bin`�
 M4-2 작업 중 미룬 것 중 이 계획이 맡는 것이다. 해당 task에 붙여 처리한다.
 
 - 기기 추적 실패 안내(`trackingFailure`)가 한 칸이라 iOS 폴링만 죽어도 어느 쪽인지 말하지 않는다. 플랫폼별로 나눠 어느 플랫폼의 추적이 죽었는지 말하게 한다. renderer의 안내 표시를 만지는 Task 5에 붙이는 것이 자연스럽다. → Task 5.
+  - **했다(Task 5).** `registry.ts`의 `tracking_failed` 이벤트가 `platform`을 싣고 안내가 어느 플랫폼인지 말한다.
 - `inputText`가 시뮬레이터 클립보드를 덮어쓴다(M4-2 스펙 "입력 매핑"). 입력 전 `simctl pbpaste`로 읽어 두었다가 붙여 넣은 뒤 `pbcopy`로 되돌리는 복원을 검토한다. Simulator.app pasteboard 동기화로 호스트 클립보드까지 덮이는지도 그때 측정한다.
+  - **만들지 않기로 했다.** ⌘V는 `key-combo`가 돌아온 뒤에 비동기로 처리되므로 곧바로 되돌리면 이전 내용이 붙을 수 있다. 측정 결과 호스트 클립보드는 Simulator.app이 없을 때, 뒤에 떠 있을 때, 앞에 있다가 물러날 때 모두 바뀌지 않았다(스펙 "M4-3 검증 결과").
 - SDK/AXe 없음 안내를 Android도 iOS처럼 main이 hint로 정해 내려 주게 대칭화한다. 지금은 `SdkMissing`·`DevicePanel`의 Android 안내 문구가 renderer에 고정돼 있다.
+  - **했다.** `bootstrap.ts`의 `platformStatuses`가 Android 안내도 `hint`로 내려 준다.
 
 ## Review Focus
 
@@ -111,11 +114,11 @@ M4-2 작업 중 미룬 것 중 이 계획이 맡는 것이다. 해당 task에 �
 - `stream.ts`: 스펙 "포트 메시지" 절대로 `StreamDown`을 고친다.
 - renderer `useScrcpyStream`: `session` 메시지의 `codec`·`keys`를 상태로 들고 반환값에 `keys: DeviceKey[]`를 더한다. `frame` 메시지는 이 task에서는 무시한다(Task 5).
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다** — `streamManager.test.ts`: 가짜 세션이 `onFrame(bytes)`를 부르면 포트에 `{ type: 'frame', data: bytes }` / `onSession(info)`가 `codec`·`keys`를 그대로 싣는다. `scrcpySession.test.ts`: 첫 meta에 `codec: 'h264'`와 `DEVICE_KEYS`. `useScrcpyStream.test.tsx`: `session` 메시지 뒤 `keys`가 반환된다.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/stream src/renderer/src/hooks/useScrcpyStream.test.tsx` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "refactor(stream): 세션을 StreamSession으로 올리고 session에 codec과 keys를 싣는다"`
+- [x] **Step 1: 실패하는 테스트를 쓴다** — `streamManager.test.ts`: 가짜 세션이 `onFrame(bytes)`를 부르면 포트에 `{ type: 'frame', data: bytes }` / `onSession(info)`가 `codec`·`keys`를 그대로 싣는다. `scrcpySession.test.ts`: 첫 meta에 `codec: 'h264'`와 `DEVICE_KEYS`. `useScrcpyStream.test.tsx`: `session` 메시지 뒤 `keys`가 반환된다.
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/stream src/renderer/src/hooks/useScrcpyStream.test.tsx` / Expected: FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "refactor(stream): 세션을 StreamSession으로 올리고 session에 codec과 keys를 싣는다"`
 
 ---
 
@@ -129,11 +132,11 @@ M4-2 작업 중 미룬 것 중 이 계획이 맡는 것이다. 해당 task에 �
   - `createMjpegSplitter(onFrame: (jpeg: Uint8Array) => void, opts?: { maxFrameBytes?: number }): { push(chunk: Buffer): void }` — SOI(`FF D8`)부터 EOI(`FF D9`)까지를 한 장으로 낸다. SOI 앞 바이트(multipart 경계·헤더)는 버린다. `maxFrameBytes`(기본 8MiB)를 넘도록 EOI가 안 오면 그 장을 버리고 다음 SOI를 찾는다.
   - `jpegSize(jpeg: Uint8Array): { width: number; height: number } | null` — SOF0/SOF1/SOF2 마커의 크기. 없으면 null.
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다** (`stream-video-jpeg.bin`) — 스트림은 HTTP 응답 헤더와 `multipart/x-mixed-replace; boundary=--mjpegstream` 파트 헤더가 섞여 온다. 분할기는 헤더 바이트를 건너뛰고 SOI~EOI만 낸다. fixture 전체를 한 번에 push하면 프레임이 하나 이상, 각 프레임이 `FFD8`로 시작해 `FFD9`로 끝난다 / 같은 fixture를 1바이트씩 push해도 같은 프레임들 / 첫 프레임의 `jpegSize`가 양수 / 잘린 JPEG에서 `jpegSize`가 null / `maxFrameBytes: 16`이면 큰 프레임은 버려지고 다음 프레임은 나온다.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/stream/mjpegSplitter.test.ts src/main/stream/jpegSize.test.ts` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(stream): MJPEG 스트림을 JPEG 한 장씩 자른다"`
+- [x] **Step 1: 실패하는 테스트를 쓴다** (`stream-video-jpeg.bin`) — 스트림은 HTTP 응답 헤더와 `multipart/x-mixed-replace; boundary=--mjpegstream` 파트 헤더가 섞여 온다. 분할기는 헤더 바이트를 건너뛰고 SOI~EOI만 낸다. fixture 전체를 한 번에 push하면 프레임이 하나 이상, 각 프레임이 `FFD8`로 시작해 `FFD9`로 끝난다 / 같은 fixture를 1바이트씩 push해도 같은 프레임들 / 첫 프레임의 `jpegSize`가 양수 / 잘린 JPEG에서 `jpegSize`가 null / `maxFrameBytes: 16`이면 큰 프레임은 버려지고 다음 프레임은 나온다.
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/stream/mjpegSplitter.test.ts src/main/stream/jpegSize.test.ts` / Expected: FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "feat(stream): MJPEG 스트림을 JPEG 한 장씩 자른다"`
 
 ---
 
@@ -161,11 +164,11 @@ M4-2 작업 중 미룬 것 중 이 계획이 맡는 것이다. 해당 task에 �
   - 시작 뒤 스트림이 예기치 않게 끝나면 `onEnded`를 한 번. `close()`로 닫으면 부르지 않는다.
   - `sendControl(intent)`: 마지막 `SessionInfo`의 `width`·`height`와 함께 `control.send`로 넘긴다.
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다** — 가짜 stream에 fixture를 흘리면 `start()`가 resolve하고 `onSession`의 `codec === 'jpeg'` / 첫 프레임 없이 타이머가 다 되면 `device_unresponsive` / 크기가 다른 JPEG가 오면 `onSession`이 다시 불린다(fixture 프레임 둘의 SOF 크기 바이트를 바꾼 복사본) / 시작 뒤 close 이벤트에 `onEnded` 한 번, `close()` 뒤에는 없음 / `sendControl`이 현재 크기를 싣는다.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/stream/axeStreamSession.test.ts` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(stream): axe stream-video로 iOS 스트림 세션을 연다"`
+- [x] **Step 1: 실패하는 테스트를 쓴다** — 가짜 stream에 fixture를 흘리면 `start()`가 resolve하고 `onSession`의 `codec === 'jpeg'` / 첫 프레임 없이 타이머가 다 되면 `device_unresponsive` / 크기가 다른 JPEG가 오면 `onSession`이 다시 불린다(fixture 프레임 둘의 SOF 크기 바이트를 바꾼 복사본) / 시작 뒤 close 이벤트에 `onEnded` 한 번, `close()` 뒤에는 없음 / `sendControl`이 현재 크기를 싣는다.
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/stream/axeStreamSession.test.ts` / Expected: FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "feat(stream): axe stream-video로 iOS 스트림 세션을 연다"`
 
 ---
 
@@ -196,11 +199,11 @@ M4-2 작업 중 미룬 것 중 이 계획이 맡는 것이다. 해당 task에 �
   - 호출은 한 줄로 세운다(Global Constraints). 실패는 `onError`로 보내고 다음 호출은 계속한다.
   - `close()` 뒤에 온 `send`는 버린다. 진행 중 제스처도 버린다.
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다** — down·up 같은 점 → `tap` 한 번, 좌표가 `displayFrame`/`video` 비율로 환산 / down·move·up 긴 이동 → `swipe` 한 번, 시작·끝·duration / 탭 셋을 연달아 보내고 첫 호출을 늦게 resolve시키면 `calls` 순서가 보낸 순서 / `key: 'back'` → 호출 없음 / `key: 'power'` → `['button', 'lock']` / 첫 호출이 reject해도 둘째 호출이 간다 / `scroll` vScroll 1 → 끝점 y가 시작보다 크다.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/stream/axeControl.test.ts` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(stream): 화면 입력을 제스처 단위 AXe 호출로 바꾼다"`
+- [x] **Step 1: 실패하는 테스트를 쓴다** — down·up 같은 점 → `tap` 한 번, 좌표가 `displayFrame`/`video` 비율로 환산 / down·move·up 긴 이동 → `swipe` 한 번, 시작·끝·duration / 탭 셋을 연달아 보내고 첫 호출을 늦게 resolve시키면 `calls` 순서가 보낸 순서 / `key: 'back'` → 호출 없음 / `key: 'power'` → `['button', 'lock']` / 첫 호출이 reject해도 둘째 호출이 간다 / `scroll` vScroll 1 → 끝점 y가 시작보다 크다.
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/stream/axeControl.test.ts` / Expected: FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "feat(stream): 화면 입력을 제스처 단위 AXe 호출로 바꾼다"`
 
 ---
 
@@ -224,11 +227,11 @@ M4-2 작업 중 미룬 것 중 이 계획이 맡는 것이다. 해당 task에 �
 - `useScrcpyStream`: `session.codec`이 `jpeg`면 `createStreamDecoder` 대신 `createJpegRenderer`를 만들고 `frame` 메시지를 넣는다. 캔버스 크기는 두 경로 모두 `session`의 `width`·`height`만 따른다. codec이 바뀌는 `session`이 오면 이전 경로를 닫는다.
 - `DeviceScreen`: `DEVICE_BUTTONS` 중 `keys`에 있는 것만 그린다.
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다** — `jpegRenderer`: 느린 `decode` 중 프레임 셋을 push하면 `draw`는 첫 장과 마지막 장 두 번 / `close()` 뒤 끝난 디코드는 `draw`하지 않는다. `useScrcpyStream`: `codec: 'jpeg'` 세션에서 `frame`이 jpeg 경로로 가고 `VideoDecoder`는 만들지 않는다 / `codec`이 h264→jpeg로 바뀌면 이전 디코더의 `close`가 불린다. `DeviceScreen`: `keys`에 `back`이 없으면 뒤로 버튼이 없다.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/renderer/src/stream/jpegRenderer.test.ts src/renderer/src/hooks src/renderer/src/components/DeviceScreen.test.tsx` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(renderer): JPEG 스트림 경로를 더하고 키 버튼을 세션이 준 목록으로 그린다"`
+- [x] **Step 1: 실패하는 테스트를 쓴다** — `jpegRenderer`: 느린 `decode` 중 프레임 셋을 push하면 `draw`는 첫 장과 마지막 장 두 번 / `close()` 뒤 끝난 디코드는 `draw`하지 않는다. `useScrcpyStream`: `codec: 'jpeg'` 세션에서 `frame`이 jpeg 경로로 가고 `VideoDecoder`는 만들지 않는다 / `codec`이 h264→jpeg로 바뀌면 이전 디코더의 `close`가 불린다. `DeviceScreen`: `keys`에 `back`이 없으면 뒤로 버튼이 없다.
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/renderer/src/stream/jpegRenderer.test.ts src/renderer/src/hooks src/renderer/src/components/DeviceScreen.test.tsx` / Expected: FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "feat(renderer): JPEG 스트림 경로를 더하고 키 버튼을 세션이 준 목록으로 그린다"`
 
 ---
 
@@ -239,7 +242,7 @@ M4-2 작업 중 미룬 것 중 이 계획이 맡는 것이다. 해당 task에 �
   `docs/adr/0016-stream-codec-per-session.md`(`related_plan`), 이 계획 문서
 - Create: `src/main/stream/axeStreamSession.ios.integration.test.ts`
 
-- [ ] **Step 1: 조립을 바꾼다**
+- [x] **Step 1: 조립을 바꾼다**
 
 `index.ts`의 `createSession`: 기기 `platform`이 `ios`이고 axe가 있으면
 `createAxeStreamSession({ udid, axe, control: createAxeControl({ udid, axe, displayFrame: () => device.displayFrame() }) }, handlers)`,
@@ -247,7 +250,7 @@ axe가 없으면 `rejectingSession(ios_tool_not_found 에러)`. M4-1의 `unsuppo
 
 Run: `npm test && npm run typecheck` / Expected: PASS.
 
-- [ ] **Step 2: 통합 테스트를 쓴다**
+- [x] **Step 2: 통합 테스트를 쓴다**
 
 부팅된 시뮬레이터와 axe가 없으면 skip. 세션을 열어 2초 동안 받은 프레임 수와 첫 프레임까지 걸린 시간을
 `console.info`로 남기고, 프레임이 하나 이상이며 `onSession.codec === 'jpeg'`인지 본다. 탭 한 번을
@@ -255,7 +258,7 @@ Run: `npm test && npm run typecheck` / Expected: PASS.
 
 Run: `npm run test:integration -- src/main/stream/axeStreamSession.ios.integration.test.ts` / Expected: PASS.
 
-- [ ] **Step 3: 앱으로 완료 기준을 확인한다**
+- [ ] **Step 3: 앱으로 완료 기준을 확인한다** — 실제 모듈로 확인했고 둘이 실패했다(영문 한 글자씩 입력, 가로 회전). 스펙 "M4-3 검증 결과".
 
 앱에서 iOS 기기를 골라: 실시간 화면이 뜬다 / Settings 셀을 클릭하면 들어간다 / 목록을 드래그·휠로
 스크롤한다 / 검색 필드에 키보드로 영문·한글을 친다 / 홈 버튼이 동작하고 뒤로 버튼은 없다 /
@@ -263,7 +266,7 @@ Run: `npm run test:integration -- src/main/stream/axeStreamSession.ios.integrati
 관찰한 fps·입력 지연을 스펙 끝 "M4-3 검증 결과" 절에 적는다. 드래그 반영 지연이 쓰기 어려운 수준이면
 스파이크 5번(`batch --stdin`) 결과와 함께 후속 과제로 적는다.
 
-- [ ] **Step 4: 문서를 마무리하고 커밋한다**
+- [ ] **Step 4: 문서를 마무리하고 커밋한다** — 문서는 맞췄다. 스펙 `implemented`와 이 계획 `done`은 위 두 실패를 정한 뒤로 미뤘다.
 
 `main-layers.md`에 스트림 세션 두 갈래를 더하고 `verified`를 갱신한다. 스펙 `status`를 `implemented`로,
 세 계획의 `status`를 `done`으로 바꾼다(아카이브 이동은 머지 뒤 따로 한다).

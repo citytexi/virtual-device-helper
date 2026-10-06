@@ -2,14 +2,14 @@
 id: main-layers
 title: main 프로세스 층 구조
 status: living                  # living | superseded | deprecated
-verified: 2026-09-30
+verified: 2026-10-06
 scope: [main, mcp, android, ios, streaming]
 hosts: []                       # windows | macos — 호스트 OS마다 구조가 갈릴 때만 채운다
-related_adr: [ADR-0005, ADR-0001, ADR-0010, ADR-0013]
+related_adr: [ADR-0005, ADR-0001, ADR-0010, ADR-0013, ADR-0016]
 related_spec: [m1-device-core-mcp-server, m2-live-streaming, m3-node-control-logs-events, m4-ios-simulator]
 related_architecture:
 related_plan:
-related_code: [processClient.ts#createProcessClient, adbClient.ts#createAdbClient, simctlClient.ts#createSimctlClient, axeClient.ts#createAxeClient, locateAxe.ts#locateAxe, androidDevice.ts#createAndroidDevice, iosDevice.ts#createIosDevice, trackSimulators.ts#trackSimulators, platformLogDeps.ts#createPlatformLogDeps, registry.ts#createDeviceRegistry, registerTools.ts#registerTools, httpServer.ts#startMcpHttpServer, ipcBridge.ts#registerIpcBridge, appState.ts#createAppState, streamManager.ts#createStreamManager, logManager.ts#createLogManager, bootstrap.ts#bootstrapApp, layering.test.ts]
+related_code: [processClient.ts#createProcessClient, adbClient.ts#createAdbClient, simctlClient.ts#createSimctlClient, axeClient.ts#createAxeClient, locateAxe.ts#locateAxe, androidDevice.ts#createAndroidDevice, iosDevice.ts#createIosDevice, trackSimulators.ts#trackSimulators, platformLogDeps.ts#createPlatformLogDeps, registry.ts#createDeviceRegistry, registerTools.ts#registerTools, httpServer.ts#startMcpHttpServer, ipcBridge.ts#registerIpcBridge, appState.ts#createAppState, streamManager.ts#createStreamManager, streamSession.ts#StreamSession, rejectingSession.ts#createPlatformStreamSession, rejectingSession.ts#createIosStreamSessionFactory, scrcpySession.ts#createScrcpySession, axeStreamSession.ts#createAxeStreamSession, axeControl.ts#createAxeControl, logManager.ts#createLogManager, bootstrap.ts#bootstrapApp, layering.test.ts]
 tags: [architecture, main, layers]
 ---
 
@@ -66,7 +66,20 @@ main의 링과 renderer `reduce`가 같은 값으로 오래된 항목부터 버�
 **로그는 플랫폼 라우터를 거친다.** `logManager`는 tail·pid 조회 의존성을 하나만 받는다.
 `logs/platformLogDeps.ts#createPlatformLogDeps`가 기기의 `platform`을 보고 Android(`logTail.ts`, `adbLogDeps.ts`)와
 iOS(`iosLogTail.ts`의 `log stream` tail, `iosLogDeps.ts`)로 나눈다. 준비되지 않은 플랫폼의 기기는 `unsupported`다.
-화면 스트림도 같은 방식으로 `createPlatformStreamSession`이 라우팅하고, iOS는 M4-3 전까지 `unsupported`로 거절한다.
+
+**화면 스트림도 플랫폼 라우터를 거친다.** `streamManager`는 `streamSession.ts`의 `StreamSession` 하나만 다루고
+플랫폼을 모른다. `stream/rejectingSession.ts#createPlatformStreamSession`이 기기의 `platform`으로 세션을 고른다.
+코덱은 세션이 `session` 메시지로 알린다([ADR-0016](../adr/0016-stream-codec-per-session.md)).
+
+| 갈래 | 세션 | 화면 | 화면 입력 |
+|---|---|---|---|
+| Android | `scrcpySession.ts#createScrcpySession` | scrcpy-server의 H.264 패킷(`codec: 'h264'`) | `scrcpyProtocol.ts`가 control 메시지로 바꿔 같은 소켓으로 보낸다 |
+| iOS | `axeStreamSession.ts#createAxeStreamSession` | `axe stream-video`의 MJPEG을 `mjpegSplitter.ts`가 JPEG 한 장씩 자른다(`codec: 'jpeg'`) | `axeControl.ts#createAxeControl`이 제스처 단위 AXe 호출로 바꿔 한 줄로 세운다 |
+
+iOS 세션은 `rejectingSession.ts#createIosStreamSessionFactory`가 조립한다. `axeControl`은 좌표 환산용 화면 크기와
+문자열 입력을 그 기기의 `IosDevice`(`displayFrame`, `inputText`)에 맡기고, 문자열 입력만 기기 관리 층의 `run`
+큐에 세운다. 시뮬레이터 클립보드를 MCP `ui_text`와 함께 쓰기 때문이다. 도구가 없는 플랫폼의 기기는 그 이유
+(`sdk_not_found`, `ios_tool_not_found`)로 `start()`가 거절되는 세션을 받고, renderer는 스크린샷으로 강등한다.
 
 ## 조립
 
