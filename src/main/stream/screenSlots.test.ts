@@ -240,6 +240,15 @@ describe('createScreenSlots', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
+  it('중복 handleConnect는 무시한다: 끊은 뒤 유령 후보가 남지 않는다', () => {
+    const { slots, onChange } = setup()
+    slots.handleConnect('A1')
+    slots.handleConnect('A1')
+    expect(onChange).toHaveBeenCalledTimes(1)
+    slots.handleDisconnect('A1')
+    expect(slotOf(slots, 'a')).toMatchObject({ serial: null, epoch: 2 })
+  })
+
   it('붙어 있지 않은 serial의 select는 무시한다', () => {
     const { slots, onChange } = setup()
     slots.select('A1')
