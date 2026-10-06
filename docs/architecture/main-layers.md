@@ -74,11 +74,17 @@ iOS(`iosLogTail.ts`의 `log stream` tail, `iosLogDeps.ts`)로 나눈다. 준비�
 | 갈래 | 세션 | 화면 | 화면 입력 |
 |---|---|---|---|
 | Android | `scrcpySession.ts#createScrcpySession` | scrcpy-server의 H.264 패킷(`codec: 'h264'`) | `scrcpyProtocol.ts`가 control 메시지로 바꿔 같은 소켓으로 보낸다 |
-| iOS | `axeStreamSession.ts#createAxeStreamSession` | `axe stream-video`의 MJPEG을 `mjpegSplitter.ts`가 JPEG 한 장씩 자른다(`codec: 'jpeg'`) | `axeControl.ts#createAxeControl`이 제스처 단위 AXe 호출로 바꿔 한 줄로 세운다 |
+| iOS | `axeStreamSession.ts#createAxeStreamSession` | `axe stream-video`의 MJPEG을 `mjpegSplitter.ts`가 JPEG 한 장씩 자른다(`codec: 'jpeg'`) | `axeControl.ts#createAxeControl`이 제스처 단위 AXe 호출로 바꿔 한 줄로 세운다. 연달아 온 글자는 모아 한 번에 붙여 넣는다 |
 
 iOS 세션은 `rejectingSession.ts#createIosStreamSessionFactory`가 조립한다. `axeControl`은 좌표 환산용 화면 크기와
 문자열 입력을 그 기기의 `IosDevice`(`displayFrame`, `inputText`)에 맡기고, 문자열 입력만 기기 관리 층의 `run`
-큐에 세운다. 시뮬레이터 클립보드를 MCP `ui_text`와 함께 쓰기 때문이다. 도구가 없는 플랫폼의 기기는 그 이유
+큐에 세운다. 시뮬레이터 클립보드를 MCP `ui_text`와 함께 쓰기 때문이다. 그래서 화면에서 친 글자는 긴 MCP
+작업(`app_install` 등)이 끝날 때까지 기다리고, 탭·스와이프·키는 기다리지 않는다.
+
+알려진 한계: 글자를 치다가 잠깐 멈추면 붙여 넣기가 갈리고 그 경계에 iOS가 공백을 넣을 수 있다. 시뮬레이터를
+가로로 돌리면 스트림 프레임이 따라 돌지 않아 탭·스와이프·scroll을 보내지 않는다(`unsupported`). 관찰은
+[M4 스펙](../superpowers/specs/2026-09-29-m4-ios-simulator.md)의 "M4-3 검증 결과"에 있다.
+ 도구가 없는 플랫폼의 기기는 그 이유
 (`sdk_not_found`, `ios_tool_not_found`)로 `start()`가 거절되는 세션을 받고, renderer는 스크린샷으로 강등한다.
 
 ## 조립

@@ -74,8 +74,12 @@ M4-2 작업 중 미룬 것 중 이 계획이 맡는 것이다. 해당 task에 �
 
 - **청크 경계에 걸린 JPEG**: `FFD8`/`FFD9`가 두 stdout 청크에 걸쳐 쪼개져 와도 프레임 하나로
   이어 붙는다. → Task 2 테스트.
-- **회전**: 시뮬레이터를 가로로 돌리면 JPEG 크기가 바뀐다. 새 크기로 `session`을 다시 보내고
-  renderer 캔버스와 입력 좌표가 따라간다. → Task 3·5 테스트.
+- **회전**: 계획할 때는 시뮬레이터를 가로로 돌리면 JPEG 크기가 바뀌어 새 `session`이 가고 캔버스와 입력
+  좌표가 따라간다고 봤다. 실제 기기에서는 그렇지 않았다. `stream-video` 프레임은 세로 그대로이고 내용만
+  누워서 오며 새 `session`은 오지 않는다. `displayFrame`만 가로가 된다(스펙 "M4-3 검증 결과"). 그래서
+  `axeControl.ts`의 `createAxeControl`은 `displayFrame`과 프레임의 방향이 어긋나면 탭·스와이프·scroll을
+  보내지 않고 `unsupported`를 한 번 알린다(R12). 크기가 바뀐 프레임에 `session`을 다시 보내는 경로는
+  그대로 있고 Task 3·5 테스트가 덮지만, 시뮬레이터 회전으로는 그 경로를 타지 않는다.
 - **느린 디코드**: renderer 디코드가 프레임 속도를 못 따라가면 최신 한 장만 그리고 쌓지 않는다.
   → Task 5 테스트.
 - **빠른 연타**: 탭을 빠르게 여러 번 하면 순서가 뒤바뀌지 않고 모두 간다. → Task 4 테스트.
@@ -245,7 +249,8 @@ M4-2 작업 중 미룬 것 중 이 계획이 맡는 것이다. 해당 task에 �
 - [x] **Step 1: 조립을 바꾼다**
 
 `index.ts`의 `createSession`: 기기 `platform`이 `ios`이고 axe가 있으면
-`createAxeStreamSession({ udid, axe, control: createAxeControl({ udid, axe, displayFrame: () => device.displayFrame() }) }, handlers)`,
+`createAxeStreamSession({ udid, axe, control: createAxeControl({ udid, axe, displayFrame: () => device.displayFrame(), inputText: (text) => device.inputText(text) }) }, handlers)`
+(R2. 실제 조립은 `rejectingSession.ts`의 `createIosStreamSessionFactory`가 하고 `inputText`를 `registry.run`에 세운다),
 axe가 없으면 `rejectingSession(ios_tool_not_found 에러)`. M4-1의 `unsupported` 거절은 지운다.
 
 Run: `npm test && npm run typecheck` / Expected: PASS.
@@ -258,7 +263,7 @@ Run: `npm test && npm run typecheck` / Expected: PASS.
 
 Run: `npm run test:integration -- src/main/stream/axeStreamSession.ios.integration.test.ts` / Expected: PASS.
 
-- [ ] **Step 3: 앱으로 완료 기준을 확인한다** — 실제 모듈로 확인했고 둘이 실패했다(영문 한 글자씩 입력, 가로 회전). 스펙 "M4-3 검증 결과".
+- [ ] **Step 3: 앱으로 완료 기준을 확인한다** — 실제 모듈로 확인했다. 영문 한 글자씩 입력은 글자를 모아 붙이게 고쳐 다시 확인했고(R11), 가로 화면은 따라가지 않고 터치를 막는 것으로 정했다(R12). 앱 창에서 보는 항목은 사람 확인이 남았다. 스펙 "M4-3 검증 결과".
 
 앱에서 iOS 기기를 골라: 실시간 화면이 뜬다 / Settings 셀을 클릭하면 들어간다 / 목록을 드래그·휠로
 스크롤한다 / 검색 필드에 키보드로 영문·한글을 친다 / 홈 버튼이 동작하고 뒤로 버튼은 없다 /
@@ -266,7 +271,7 @@ Run: `npm run test:integration -- src/main/stream/axeStreamSession.ios.integrati
 관찰한 fps·입력 지연을 스펙 끝 "M4-3 검증 결과" 절에 적는다. 드래그 반영 지연이 쓰기 어려운 수준이면
 스파이크 5번(`batch --stdin`) 결과와 함께 후속 과제로 적는다.
 
-- [ ] **Step 4: 문서를 마무리하고 커밋한다** — 문서는 맞췄다. 스펙 `implemented`와 이 계획 `done`은 위 두 실패를 정한 뒤로 미뤘다.
+- [ ] **Step 4: 문서를 마무리하고 커밋한다** — 문서는 맞췄다. 스펙 `implemented`와 이 계획 `done`으로 닫는 것은 사람이 앱 창을 확인한 뒤 정한다(R13).
 
 `main-layers.md`에 스트림 세션 두 갈래를 더하고 `verified`를 갱신한다. 스펙 `status`를 `implemented`로,
 세 계획의 `status`를 `done`으로 바꾼다(아카이브 이동은 머지 뒤 따로 한다).
