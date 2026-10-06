@@ -191,12 +191,14 @@ describe.skipIf(udid === null || axePath === null)('AxeStreamSession (실제 시
       // 3) 받는 대로 확인을 올린다. 포트가 여러 장을 받는다.
       autoAck = true
       const portBefore = portFrames.length
+      const offeredBefore = offered.length
       const startedAt = Date.now()
       sendAck()
       await portAtLeast(portBefore + 10)
       const elapsedMs = Date.now() - startedAt
       const delivered = portFrames.length - portBefore
-      console.info(`[frame ack] 받는 대로 확인: 포트 ${delivered}장 / ${elapsedMs}ms (${((delivered * 1000) / elapsedMs).toFixed(1)}fps)`)
+      const offeredDuring = offered.length - offeredBefore
+      console.info(`[frame ack] 받는 대로 확인: 포트 ${delivered}장 / ${elapsedMs}ms (${((delivered * 1000) / elapsedMs).toFixed(1)}fps), 같은 동안 세션이 올린 장 ${offeredDuring}장 (${((offeredDuring * 1000) / elapsedMs).toFixed(1)}장/초)`)
       expect(delivered).toBeGreaterThanOrEqual(10)
     } finally {
       autoAck = false
