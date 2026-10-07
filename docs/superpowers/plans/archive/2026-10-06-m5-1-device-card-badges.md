@@ -1,14 +1,14 @@
 ---
 id: m5-1-device-card-badges
 title: M5-1 — 기기 카드 배지 겹침 수정
-status: draft
+status: done
 type: work-order
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-07
 owner: virtual-device-helper 팀
 scope: [renderer]
 hosts: []
-archived_reason:
+archived_reason: done — M5-1 구현 완료. 기기 카드의 배지를 한 묶음으로 놓고 일련번호를 버튼 열에서 뺀다. PR #27로 develop에 머지. 단계 체크박스는 채우지 않았다
 related_adr: [ADR-0015]
 related_spec: m5-multi-screen
 related_architecture: main-layers
@@ -31,7 +31,7 @@ serial을 `auto`인 3열에 넣는다. 줄바꿈 없는 긴 iOS UDID가 그 열�
 
 **Tech Stack:** React, CSS grid, Vitest + Testing Library
 
-**Spec:** [`../specs/2026-10-06-m5-multi-screen.md`](../specs/2026-10-06-m5-multi-screen.md) — "기기 카드" 절.
+**Spec:** [`../specs/2026-10-06-m5-multi-screen.md`](../../specs/archive/2026-10-06-m5-multi-screen.md) — "기기 카드" 절.
 
 ## Global Constraints
 

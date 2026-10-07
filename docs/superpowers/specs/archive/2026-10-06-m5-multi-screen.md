@@ -1,7 +1,7 @@
 ---
 id: m5-multi-screen
 title: M5 — 여러 기기 화면 동시 보기
-status: in-progress
+status: implemented
 verified: 2026-10-06
 scope: [main, renderer, preload, shared, streaming, android, ios]
 hosts: [windows, macos]
@@ -121,7 +121,7 @@ export interface ScreenSlots {
 - 칸 id는 플랫폼 이름이 아닌 중립 값(`'a'`, `'b'`)이다. renderer 테스트는 임의 id로 돈다.
 - 지금의 배정 함수는 조립 지점(`bootstrap.ts`)의 클로저다. 기기의 플랫폼을 보고 Android는 첫 칸, iOS는 둘째
   칸을 준다. `screenSlots.ts`는 `Platform`을 import하지 않는다. 플랫폼을 보는 곳은 이 클로저뿐이다
-  ([ADR-0015](../../adr/0015-platform-difference-surface.md)).
+  ([ADR-0015](../../../adr/0015-platform-difference-surface.md)).
 - 칸 수의 상한 `MAX_SCREEN_SLOTS`는 `src/shared/limits.ts`에 둔다. `slotIds`가 이를 넘으면 조립에서 던진다.
   실제 방어는 "칸 밖의 요청은 열지 않는다"이다. 칸을 늘릴 때 함께 볼 곳: 이 상수, `app.css`의 화면 열,
   `index.ts`의 `createWindow`가 정하는 창 최소 폭, 부하 측정.
@@ -187,7 +187,7 @@ export type StreamUp = ControlIntent | { type: 'frame_ack' }
 
 - `preload/index.ts`와 `streamPort.ts`의 `createStreamPortRouter`가 새 필드를 그대로 나른다. 지금은 `serial`과
   `sessionId`를 손으로 옮겨 적는다.
-- `frame_ack`는 `jpeg` 세션에서 쓴다. 규칙은 [ADR-0018](../../adr/0018-jpeg-frame-ack-flow-control.md)에 있다.
+- `frame_ack`는 `jpeg` 세션에서 쓴다. 규칙은 [ADR-0018](../../../adr/0018-jpeg-frame-ack-flow-control.md)에 있다.
 
 ### renderer 포트 라우터 (`src/renderer/src/stream/streamPort.ts`)
 

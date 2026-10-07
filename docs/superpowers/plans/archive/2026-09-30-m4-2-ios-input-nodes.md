@@ -4,11 +4,11 @@ title: M4-2 — iOS 입력과 노드
 status: done
 type: work-order
 created: 2026-09-30
-updated: 2026-10-06
+updated: 2026-10-07
 owner: virtual-device-helper 팀
 scope: [main, mcp, shared, ios, renderer]
 hosts: [macos]
-archived_reason:
+archived_reason: done — M4-2 구현 완료. axeClient·describe-ui 파서·IosDevice 입력과 노드·계약 테스트. PR #25로 develop에 머지. 앱 확인 일부 미검증(스펙 "M4-2 검증 결과")
 related_adr: [ADR-0014, ADR-0015, ADR-0011, ADR-0012, ADR-0005]
 related_spec: m4-ios-simulator
 related_architecture: main-layers
@@ -30,9 +30,9 @@ tags: [plan, ios, axe, node]
 
 **Tech Stack:** TypeScript, AXe CLI, `xcrun simctl`, Vitest
 
-**Spec:** [`../specs/2026-09-29-m4-ios-simulator.md`](../specs/2026-09-29-m4-ios-simulator.md) —
+**Spec:** [`../specs/2026-09-29-m4-ios-simulator.md`](../../specs/archive/2026-09-29-m4-ios-simulator.md) —
 "입력과 노드 (M4-2)" 절, "실패 처리", "스파이크 결과". 결정 근거는
-[ADR-0014](../../adr/0014-ios-control-via-axe.md), [ADR-0015](../../adr/0015-platform-difference-surface.md).
+[ADR-0014](../../../adr/0014-ios-control-via-axe.md), [ADR-0015](../../../adr/0015-platform-difference-surface.md).
 
 **선행 조건:** [M4-1](2026-09-29-m4-1-ios-foundation.md) 완료. 특히 M4-1 Task 1의 fixture
 `describe-ui-settings.json`과 스펙 "스파이크 결과"의 1~3·5번 답.

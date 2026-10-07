@@ -92,7 +92,7 @@ iOS 세션은 `rejectingSession.ts#createIosStreamSessionFactory`가 조립한�
 콘솔에만 남고 앱 창에는 아무것도 뜨지 않는다. 그래서 사람에게는 가로 화면의 클릭이 그냥 먹히지 않는 것으로
 보인다. 화면 키보드 입력은 ASCII만 간다(renderer의 `inputMapper.ts#keyToIntent`). main의 `text` 경로는 한글도
 받지만 renderer의 조합 입력(IME)은 아직 보내지 않는다. 관찰은
-[M4 스펙](../superpowers/specs/2026-09-29-m4-ios-simulator.md)의 "M4-3 검증 결과"에 있다.
+[M4 스펙](../superpowers/specs/archive/2026-09-29-m4-ios-simulator.md)의 "M4-3 검증 결과"에 있다.
 
 **화면은 칸에 놓인다.** 화면 스트림의 수명은 MCP 대상이 아니라 화면 칸이 정한다. `stream/screenSlots.ts#createScreenSlots`가
 화면 칸 조정자다. 기기가 붙고 끊기고 선택될 때 어느 칸에 놓을지를 `PlaceFn`에 묻고, 칸의 기기가 바뀔 때마다 그 칸의
@@ -103,7 +103,7 @@ iOS 세션은 `rejectingSession.ts#createIosStreamSessionFactory`가 조립한�
 있고, 조정자는 `Platform`을 import하지 않는다. renderer의 `stream/streamPort.ts#createStreamPortRouter`는 받은 포트를
 `slotId`와 `epoch`가 맞는 구독자 하나에게만 넘기고, 받을 구독자가 없는 포트는 닫는다. 화면 훅(`hooks/useScrcpyStream.ts`의 `useScrcpyStream`)은 구독(`subscribePort`)을 먼저 하고 그다음
 `SlotRef`로 스트림을 요청한다(`startStream`). 결정은 [ADR-0017](../adr/0017-screen-slots-separate-from-target.md), 설계는
-[M5 스펙](../superpowers/specs/2026-10-06-m5-multi-screen.md)에 있다.
+[M5 스펙](../superpowers/specs/archive/2026-10-06-m5-multi-screen.md)에 있다.
 
 **JPEG 프레임은 확인을 받고 보낸다.** `streamManager.ts`의 `createStreamManager`는 jpeg `frame`을 포트로 보낸 뒤
 renderer의 `frame_ack`가 올 때까지 다음 장을 보내지 않고, 기다리는 동안 올라온 프레임은 가장 새 한 장만 들고
@@ -112,7 +112,7 @@ renderer의 `frame_ack`가 올 때까지 다음 장을 보내지 않고, 기다�
 `sendControl`로 넘기지 않는다. renderer 쪽은 `jpegRenderer.ts`와 `useScrcpyStream.ts`가 프레임마다 확인을 보내고
 `FRAME_RESYNC_MS` 동안 프레임이 끊기면 한 번 더 보낸다. h264 `packet`은 이 규칙을 타지 않는다. 결정은
 [ADR-0018](../adr/0018-jpeg-frame-ack-flow-control.md), 측정은
-[M5 스펙](../superpowers/specs/2026-10-06-m5-multi-screen.md)의 "M5-2 검증 결과"에 있다.
+[M5 스펙](../superpowers/specs/archive/2026-10-06-m5-multi-screen.md)의 "M5-2 검증 결과"에 있다.
 
 ## 조립
 
