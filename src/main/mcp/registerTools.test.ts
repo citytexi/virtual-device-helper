@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AvdController } from '../device/avdController'
+import type { VirtualDeviceCatalog } from '../device/virtualDeviceCatalog'
 import type { DeviceRegistry } from '../device/registry'
 import { createToolHarness } from './testHarness'
 
@@ -26,7 +26,7 @@ const EXPECTED_TOOLS = [
   'log_clear'
 ]
 
-function fakeRegistryAndAvd() {
+function fakeRegistryAndCatalog() {
   const registry = {
     start: vi.fn(),
     stop: vi.fn(),
@@ -38,16 +38,16 @@ function fakeRegistryAndAvd() {
     run: (_serial: string, task: () => Promise<unknown>) => task(),
     on: () => () => {}
   } as unknown as DeviceRegistry
-  const avd = { list: async () => [], boot: async () => '', shutdown: async () => {} } as AvdController
+  const catalog = { list: async () => [], boot: async () => '', shutdown: async () => {} } as VirtualDeviceCatalog
 
-  return { registry, avd }
+  return { registry, catalog }
 }
 
 describe('registerTools', () => {
   it('exposes exactly the tools the spec lists', async () => {
-    const { registry, avd } = fakeRegistryAndAvd()
+    const { registry, catalog } = fakeRegistryAndCatalog()
 
-    const harness = await createToolHarness({ registry, avd })
+    const harness = await createToolHarness({ registry, catalog })
     const listed = await harness.client.listTools()
 
     expect(listed.tools.map((tool) => tool.name).sort()).toEqual([...EXPECTED_TOOLS].sort())
@@ -56,9 +56,9 @@ describe('registerTools', () => {
   })
 
   it('gives every tool a description an agent can choose from', async () => {
-    const { registry, avd } = fakeRegistryAndAvd()
+    const { registry, catalog } = fakeRegistryAndCatalog()
 
-    const harness = await createToolHarness({ registry, avd })
+    const harness = await createToolHarness({ registry, catalog })
     const listed = await harness.client.listTools()
 
     for (const tool of listed.tools) {

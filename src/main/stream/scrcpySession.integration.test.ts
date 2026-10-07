@@ -31,7 +31,7 @@ describe('scrcpy session on a real device', () => {
     const onEnded = vi.fn()
     const session = createScrcpySession(
       { serial, adb, jarPath, connect: connectLoopback },
-      { onSession: (w, h) => sessions.push([w, h]), onPacket: (p) => packets.push(p), onEnded }
+      { onSession: (info) => sessions.push([info.width, info.height]), onPacket: (p) => packets.push(p), onFrame: vi.fn(), onEnded }
     )
 
     // 중간에 실패해도 forward·기기 서버가 남지 않게 close를 보장한다. close는 여러 번 불러도 된다.

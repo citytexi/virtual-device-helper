@@ -2,20 +2,24 @@
 
 Android·iOS 가상 기기를 MCP로 제어하고, 화면·로그·이벤트를 한 화면에서 보는 Electron 데스크탑 앱.
 
-현재 상태: v0.3.0 — macOS(Apple Silicon) 호스트, Android 에뮬레이터, MCP 서버, 실시간 기기 화면과 직접 조작,
-에이전트 동작 표시, ref 기반 노드 제어, 실시간 로그 탭, 툴 호출·기기 이벤트 타임라인, 에이전트 안내 탭.
+현재 상태: v0.4.0 — macOS(Apple Silicon) 호스트, Android 에뮬레이터와 iOS 시뮬레이터, MCP 서버, 실시간 기기 화면과
+직접 조작, Android·iOS 화면 나란히 보기, 에이전트 동작 표시, ref 기반 노드 제어, 실시간 로그 탭,
+툴 호출·기기 이벤트 타임라인, 에이전트 안내 탭.
 검증 결과와 남은 결함은 [M1 스펙](docs/superpowers/specs/archive/2026-09-22-m1-device-core-mcp-server.md),
 [M2 스펙](docs/superpowers/specs/archive/2026-09-23-m2-live-streaming.md),
-[M3 스펙](docs/superpowers/specs/archive/2026-09-28-m3-node-control-logs-events.md)의 "검증 결과"에 있다.
+[M3 스펙](docs/superpowers/specs/archive/2026-09-28-m3-node-control-logs-events.md),
+[M4 스펙](docs/superpowers/specs/archive/2026-09-29-m4-ios-simulator.md),
+[M5 스펙](docs/superpowers/specs/archive/2026-10-06-m5-multi-screen.md)의 "검증 결과"에 있다.
 
 ## 필요한 것
 
 - macOS
 - Android Studio와 Android SDK, 부팅 가능한 AVD 하나
+- iOS 시뮬레이터를 쓰려면 Xcode와 AXe(`brew install cameroncooke/axe/axe`)
 - Node.js
 
-이 앱은 Android SDK를 번들하지 않는다. 이유는
-[ADR-0003](docs/adr/0003-no-bundled-android-sdk.md)에 있다.
+이 앱은 Android SDK와 AXe를 번들하지 않는다. 이유는
+[ADR-0003](docs/adr/0003-no-bundled-android-sdk.md)과 [ADR-0014](docs/adr/0014-ios-control-via-axe.md)에 있다.
 
 ## 설치
 
@@ -118,7 +122,7 @@ Claude Code가 아닌 MCP 클라이언트는 상단 바의 "설정 JSON 복사"�
 | `no_device` | 대상 기기가 없다 | `device_list`로 확인하고 `device_boot` 또는 `device_select` |
 | `ambiguous_device` | 기기가 여럿인데 대상을 정하지 않았다 | `device_select`로 하나를 고른다 |
 | `package_not_found` | 기기에 그 패키지가 없다 | 패키지명을 확인하고 `app_install`을 먼저 한다 |
-| `apk_path_invalid` | APK 경로가 틀렸다 | 빌드를 먼저 하고 호스트의 절대 경로를 준다 |
+| `app_path_invalid` | 앱 경로(.apk 또는 .app)가 틀렸다 | 빌드를 먼저 하고 호스트의 절대 경로를 준다 |
 | `device_unresponsive` | 기기가 응답하지 않는다 | `device_shutdown` 후 `device_boot`로 다시 켠다 |
 | `stale_ref` | 화면이 바뀌었다 | `ui_find`를 다시 부른다 |
 | `command_failed` | 그 밖의 명령 실패 | `hint`와 `details`의 stderr를 읽는다 |

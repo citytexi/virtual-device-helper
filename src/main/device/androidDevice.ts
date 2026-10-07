@@ -21,6 +21,18 @@ import type { ResizeImage } from './resizeImage'
 /** 스크린샷 기본 축소 기준. 원본이 필요한 쪽은 사람이고, 사람은 앱 화면으로 본다. */
 export const DEFAULT_MAX_LONG_EDGE = 720
 
+/** 스크린샷 scale이 (0, 1] 안인지 검사한다. Android·iOS가 같은 규칙을 쓴다. */
+export function assertValidScreenshotScale(scale: number | undefined): void {
+  if (scale !== undefined && (scale <= 0 || scale > 1)) {
+    throw deviceError('command_failed', `scale은 0보다 크고 1 이하여야 한다: ${scale}`, '0.1에서 1.0 사이 값을 써라')
+  }
+}
+
+/** scale을 원본의 긴 변에 곱해 축소 기준 길이를 구한다. */
+export function scaledLongEdge(size: { width: number; height: number }, scale: number): number {
+  return Math.round(Math.max(size.width, size.height) * scale)
+}
+
 const SCREENSHOT_TIMEOUT_MS = 60_000
 const DUMP_PATH = '/sdcard/window_dump.xml'
 
@@ -215,26 +227,25 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
   }
 
   async function info(): Promise<DeviceInfo> {
-    const [model, sdk, size] = await Promise.all([
+    const [model, release, sdk, size] = await Promise.all([
       getprop('ro.product.model'),
+      getprop('ro.build.version.release'),
       getprop('ro.build.version.sdk'),
       naturalSize()
     ])
 
-    return { serial, model, apiLevel: Number(sdk), width: size.width, height: size.height }
+    return { serial, platform: 'android', model, osVersion: `${release} (API ${sdk})`, width: size.width, height: size.height }
   }
 
   async function screenshot(opts: ScreenshotOpts = {}): Promise<ScreenshotResult> {
-    if (opts.scale !== undefined && (opts.scale <= 0 || opts.scale > 1)) {
-      throw deviceError('command_failed', `scale은 0보다 크고 1 이하여야 한다: ${opts.scale}`, '0.1에서 1.0 사이 값을 써라')
-    }
+    assertValidScreenshotScale(opts.scale)
 
     // scale이 없으면 기기 해상도를 알 필요가 없다. 기본 경로에서 wm size 왕복을
     // 한 번 아낀다.
     let maxLongEdge = DEFAULT_MAX_LONG_EDGE
     if (opts.scale !== undefined) {
       const size = await naturalSize()
-      maxLongEdge = Math.round(Math.max(size.width, size.height) * opts.scale)
+      maxLongEdge = scaledLongEdge(size, opts.scale)
     }
 
     const captured = await adb.exec(serial, ['exec-out', 'screencap', '-p'], {
@@ -349,13 +360,13 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
     })
   }
 
-  async function install(apkPath: string, opts: InstallOpts = {}): Promise<string | null> {
-    if (!apkPath.endsWith('.apk')) {
-      throw deviceError('apk_path_invalid', `APK 파일이 아니다: ${apkPath}`, '.apk 파일 경로를 줘라', { apkPath })
+  async function install(appPath: string, opts: InstallOpts = {}): Promise<string | null> {
+    if (!appPath.endsWith('.apk')) {
+      throw deviceError('app_path_invalid', `APK 파일이 아니다: ${appPath}`, '.apk 파일 경로를 줘라', { appPath })
     }
-    if (!fileExists(apkPath)) {
-      throw deviceError('apk_path_invalid', `파일이 없다: ${apkPath}`, '경로를 확인해라. 상대 경로면 절대 경로로 바꿔라', {
-        apkPath
+    if (!fileExists(appPath)) {
+      throw deviceError('app_path_invalid', `파일이 없다: ${appPath}`, '경로를 확인해라. 상대 경로면 절대 경로로 바꿔라', {
+        appPath
       })
     }
 
@@ -363,7 +374,7 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
 
     const args = ['install']
     if (opts.reinstall) args.push('-r')
-    args.push(apkPath)
+    args.push(appPath)
     try {
       await adb.exec(serial, args, { timeoutMs: 180_000 })
     } catch (error) {
@@ -536,6 +547,7 @@ export function createAndroidDevice(deps: AndroidDeviceDeps): Device {
 
   return {
     serial,
+    platform: 'android',
     info,
     screenshot,
     dumpUi,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DeviceError, deviceError } from './errors'
+import { DeviceError, deviceError, unsupported } from './errors'
 
 describe('deviceError', () => {
   it('builds a DeviceError carrying kind, message and hint', () => {
@@ -24,5 +24,26 @@ describe('deviceError', () => {
     const error = deviceError('adb_not_found', 'adb를 찾지 못했다', 'Android SDK를 설치해라')
 
     expect(error.message).toBe('adb를 찾지 못했다')
+  })
+})
+
+describe('unsupported', () => {
+  it('uses 를 after a syllable without a final consonant', () => {
+    expect(unsupported('ios', '스와이프', 'M4-2에서 지원한다').toolError.message).toBe('iOS에서는 스와이프를 할 수 없다: M4-2에서 지원한다')
+  })
+
+  it('uses 을 after a syllable with a final consonant', () => {
+    expect(unsupported('ios', '실시간 화면', 'M4-3에서 지원한다').toolError.message).toBe('iOS에서는 실시간 화면을 할 수 없다: M4-3에서 지원한다')
+  })
+
+  it('falls back to 을(를) when the action does not end in Hangul', () => {
+    expect(unsupported('ios', 'UI 덤프 v2', '이유').toolError.message).toBe('iOS에서는 UI 덤프 v2을(를) 할 수 없다: 이유')
+  })
+
+  it('shows the platform with its display label but keeps the raw value in details', () => {
+    const error = unsupported('android', '시스템 앱 데이터 지우기', '이유')
+    expect(error.toolError.kind).toBe('unsupported')
+    expect(error.toolError.message).toBe('Android에서는 시스템 앱 데이터 지우기를 할 수 없다: 이유')
+    expect(error.toolError.details).toEqual({ platform: 'android', action: '시스템 앱 데이터 지우기' })
   })
 })

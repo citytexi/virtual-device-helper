@@ -5,13 +5,17 @@ import type { AppSnapshot, MainEvent, RendererApi, TimelineEntry } from '../../.
 import { targetSerial, useAppState } from './useAppState'
 
 const baseSnapshot: AppSnapshot = {
-  sdk: { ok: true, sdkRoot: '/opt/sdk' },
+  platforms: {
+    android: { ok: true, location: '/opt/sdk', notes: [] },
+    ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: [] }
+  },
   server: { url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' },
-  avds: [{ name: 'Pixel_7_API_34', running: false, serial: null }],
+  virtualDevices: [{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: false, serial: null, osVersion: null }],
   devices: [],
   activeSerial: null,
+  screens: [],
   timeline: [],
-  trackingFailure: null
+  trackingFailures: { android: null, ios: null }
 }
 
 function toolCallEntry(id: string, at: number): TimelineEntry {
@@ -70,7 +74,7 @@ describe('useAppState', () => {
     expect(result.current.loading).toBe(true)
 
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(result.current.snapshot?.sdk).toEqual({ ok: true, sdkRoot: '/opt/sdk' })
+    expect(result.current.snapshot?.platforms.android).toEqual({ ok: true, location: '/opt/sdk', notes: [] })
   })
 
   it('adds a device when a device_connected event arrives', async () => {
@@ -128,18 +132,18 @@ describe('useAppState', () => {
     expect(timeline.at(-1)?.id).toBe('new')
   })
 
-  it('replaces the avd list when it changes', async () => {
+  it('replaces the catalog list when it changes', async () => {
     const { result } = renderHook(() => useAppState())
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     act(() =>
       listener?.({
-        type: 'avds_changed',
-        avds: [{ name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' }]
+        type: 'virtual_devices_changed',
+        virtualDevices: [{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null }]
       })
     )
 
-    expect(result.current.snapshot?.avds[0]?.running).toBe(true)
+    expect(result.current.snapshot?.virtualDevices[0]?.running).toBe(true)
   })
 
   it('records a tracking failure when a tracking_failed event arrives', async () => {
@@ -149,11 +153,14 @@ describe('useAppState', () => {
     act(() =>
       listener?.({
         type: 'tracking_failed',
-        failure: { error: null, exitCode: 1 }
+        failure: { platform: 'ios', label: 'iOS', error: null, exitCode: 1 }
       })
     )
 
-    expect(result.current.snapshot?.trackingFailure).toEqual({ error: null, exitCode: 1 })
+    expect(result.current.snapshot?.trackingFailures).toEqual({
+      android: null,
+      ios: { platform: 'ios', label: 'iOS', error: null, exitCode: 1 }
+    })
   })
 
   it('unsubscribes on unmount so events do not hit a dead component', async () => {
@@ -163,6 +170,32 @@ describe('useAppState', () => {
     unmount()
 
     expect(unsubscribed).toBe(true)
+  })
+
+  it('applies a screens_changed event', async () => {
+    const { result } = renderHook(() => useAppState())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    const screens = [{ id: 'x', epoch: 2, serial: 'emulator-5554', label: 'Pixel' }]
+
+    act(() => listener?.({ type: 'screens_changed', screens }))
+
+    expect(result.current.snapshot?.screens).toEqual(screens)
+  })
+
+  it('applies a screens_changed event that arrived before the snapshot after the replay', async () => {
+    const pending = deferred<AppSnapshot>()
+    installApi(vi.fn(() => pending.promise))
+    const { result } = renderHook(() => useAppState())
+    const screens = [{ id: 'y', epoch: 1, serial: 'emulator-5554', label: 'Pixel' }]
+
+    act(() => listener?.({ type: 'screens_changed', screens }))
+    await act(async () => {
+      pending.resolve(baseSnapshot)
+      await pending.promise
+    })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.snapshot?.screens).toEqual(screens)
   })
 
   it('buffers an event that arrives before the initial snapshot resolves and applies it once the snapshot lands', async () => {

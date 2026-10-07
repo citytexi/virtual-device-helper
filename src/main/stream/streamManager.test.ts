@@ -1,8 +1,8 @@
 import { describe, expect, it, vi, type Mock } from 'vitest'
 import { deviceError } from '../../shared/types/errors'
-import type { ControlIntent, StreamDown } from '../../shared/types/stream'
-import type { ScrcpySession, SessionHandlers } from './scrcpySession'
-import { createStreamManager, RECONNECT_DELAYS_MS, toControlIntent, type PortLike } from './streamManager'
+import type { ControlIntent, DeviceKey, StreamDown } from '../../shared/types/stream'
+import type { StreamSession, StreamSessionHandlers } from './streamSession'
+import { createStreamManager, isFrameAck, RECONNECT_DELAYS_MS, toControlIntent, type PortLike } from './streamManager'
 
 class FakePort implements PortLike {
   readonly sent: StreamDown[] = []
@@ -31,8 +31,8 @@ class FakePort implements PortLike {
   }
 }
 
-interface FakeSession extends ScrcpySession {
-  handlers: SessionHandlers
+interface FakeSession extends StreamSession {
+  handlers: StreamSessionHandlers
   start: Mock<() => Promise<void>>
   close: Mock<() => Promise<void>>
   sendControl: Mock<(intent: ControlIntent) => void>
@@ -117,14 +117,25 @@ describe('createStreamManager', () => {
     const h = harness()
     await h.manager.open('emulator-5554')
     const data = new Uint8Array([1, 2, 3])
+    const keys: DeviceKey[] = ['home', 'enter']
 
-    h.sessions[0]?.handlers.onSession(472, 1024)
+    h.sessions[0]?.handlers.onSession({ width: 472, height: 1024, codec: 'jpeg', keys })
     h.sessions[0]?.handlers.onPacket({ config: false, key: true, ptsUs: 10, data })
 
     expect(h.ports[0]?.sent.slice(-2)).toEqual([
-      { type: 'session', width: 472, height: 1024 },
+      { type: 'session', width: 472, height: 1024, codec: 'jpeg', keys },
       { type: 'packet', config: false, key: true, ptsUs: 10, data }
     ])
+  })
+
+  it('relays jpeg frames to the port as frame messages', async () => {
+    const h = harness()
+    await h.manager.open('emulator-5554')
+    const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9])
+
+    h.sessions[0]?.handlers.onFrame(bytes)
+
+    expect(h.ports[0]?.sent.at(-1)).toEqual({ type: 'frame', data: bytes })
   })
 
   it('closes the previous port and session when opening another device', async () => {
@@ -226,17 +237,6 @@ describe('createStreamManager', () => {
     expect(h.sessions.map((s) => s.serial)).toEqual(['A', 'B'])
   })
 
-  it('closes on disconnect of the streaming device only', async () => {
-    const h = harness()
-    await h.manager.open('emulator-5554')
-
-    await h.manager.handleDisconnect('emulator-5556')
-    expect(h.ports[0]?.close).not.toHaveBeenCalled()
-
-    await h.manager.handleDisconnect('emulator-5554')
-    expect(h.ports[0]?.close).toHaveBeenCalled()
-  })
-
   it('forwards valid input and drops malformed input', async () => {
     const h = harness()
     await h.manager.open('emulator-5554')
@@ -319,7 +319,7 @@ describe('createStreamManager', () => {
     const stale = h.sessions[0]
     await h.manager.open('B')
 
-    stale?.handlers.onSession(1, 1)
+    stale?.handlers.onSession({ width: 1, height: 1, codec: 'h264', keys: [] })
 
     expect(h.ports[0]?.sent.some((m) => m.type === 'session')).toBe(false)
     expect(h.ports[1]?.sent.some((m) => m.type === 'session')).toBe(false)
@@ -376,11 +376,11 @@ describe('createStreamManager onState', () => {
     expect(h.states.map(([, state]) => state)).toEqual(['started', 'reconnecting', 'reconnecting', 'reconnecting', 'stopped'])
   })
 
-  it('reports stopped for the previous device when another opens, and on disconnect', async () => {
+  it('reports stopped for the previous device when another opens, and on stop', async () => {
     const h = harness()
     await h.manager.open('emulator-5554')
     await h.manager.open('emulator-5556')
-    await h.manager.handleDisconnect('emulator-5556')
+    await h.manager.stop()
 
     expect(h.states).toEqual([
       ['emulator-5554', 'started'],
@@ -399,6 +399,203 @@ describe('createStreamManager onState', () => {
     await opening
 
     expect(h.states).toEqual([])
+  })
+})
+
+describe('jpeg frame flow control', () => {
+  const info = { width: 472, height: 1024, codec: 'jpeg' as const, keys: [] as DeviceKey[] }
+  const frame = (n: number): Uint8Array => new Uint8Array([n])
+  const ACK = { type: 'frame_ack' }
+  const frames = (port: FakePort | undefined): StreamDown[] => (port?.sent ?? []).filter((m) => m.type === 'frame')
+
+  async function opened(opts: Parameters<typeof harness>[0] = {}) {
+    const h = harness(opts)
+    await h.manager.open('emulator-5554')
+    return h
+  }
+
+  it('sends only the first frame until it is acknowledged, then the newest waiting one', async () => {
+    const h = await opened()
+    const s = h.sessions[0] as FakeSession
+    s.handlers.onSession(info)
+
+    s.handlers.onFrame(frame(1))
+    s.handlers.onFrame(frame(2))
+    s.handlers.onFrame(frame(3))
+    expect(frames(h.ports[0])).toEqual([{ type: 'frame', data: frame(1) }])
+
+    h.ports[0]?.receive(ACK)
+    expect(frames(h.ports[0])).toEqual([
+      { type: 'frame', data: frame(1) },
+      { type: 'frame', data: frame(3) }
+    ])
+  })
+
+  it('goes idle after an ack with nothing waiting, so the next frame is sent at once', async () => {
+    const h = await opened()
+    const s = h.sessions[0] as FakeSession
+    s.handlers.onSession(info)
+    s.handlers.onFrame(frame(1))
+    s.handlers.onFrame(frame(2))
+    expect(frames(h.ports[0])).toHaveLength(1)
+    h.ports[0]?.receive(ACK)
+    const before = frames(h.ports[0]).length
+    expect(before).toBe(2)
+
+    h.ports[0]?.receive(ACK)
+    expect(frames(h.ports[0]).length).toBe(before)
+
+    s.handlers.onFrame(frame(4))
+    expect(frames(h.ports[0]).at(-1)).toEqual({ type: 'frame', data: frame(4) })
+  })
+
+  it('ignores an ack that arrives while nothing is awaited', async () => {
+    const h = await opened()
+    const s = h.sessions[0] as FakeSession
+    s.handlers.onSession(info)
+
+    h.ports[0]?.receive(ACK)
+    s.handlers.onFrame(frame(1))
+    s.handlers.onFrame(frame(2))
+
+    expect(frames(h.ports[0])).toEqual([{ type: 'frame', data: frame(1) }])
+  })
+
+  it('drops the waiting frame and the wait when the session sends onSession again', async () => {
+    const h = await opened()
+    const s = h.sessions[0] as FakeSession
+    s.handlers.onSession(info)
+    s.handlers.onFrame(frame(1))
+    s.handlers.onFrame(frame(2))
+
+    expect(frames(h.ports[0])).toHaveLength(1)
+    s.handlers.onSession(info)
+    s.handlers.onFrame(frame(3))
+    expect(frames(h.ports[0]).at(-1)).toEqual({ type: 'frame', data: frame(3) })
+    const count = frames(h.ports[0]).length
+
+    h.ports[0]?.receive(ACK)
+    expect(frames(h.ports[0]).length).toBe(count)
+  })
+
+  it('does not release the old waiting frame on an ack while reconnecting', async () => {
+    const h = await opened()
+    const s = h.sessions[0] as FakeSession
+    s.handlers.onSession(info)
+    s.handlers.onFrame(frame(1))
+    s.handlers.onFrame(frame(2))
+
+    s.handlers.onEnded(endError)
+    await vi.waitFor(() => expect(h.sleeps.length).toBe(1))
+    h.ports[0]?.receive(ACK)
+
+    expect(frames(h.ports[0])).toEqual([{ type: 'frame', data: frame(1) }])
+  })
+
+  it('sends the first frame of a reconnected session without a new onSession', async () => {
+    const h = await opened()
+    const s = h.sessions[0] as FakeSession
+    s.handlers.onSession(info)
+    s.handlers.onFrame(frame(1))
+    s.handlers.onFrame(frame(2))
+    expect(frames(h.ports[0])).toHaveLength(1)
+
+    s.handlers.onEnded(endError)
+    await h.wake()
+    h.sessions[1]?.handlers.onFrame(frame(9))
+
+    expect(frames(h.ports[0]).at(-1)).toEqual({ type: 'frame', data: frame(9) })
+  })
+
+  it('sends nothing on an ack after every retry failed', async () => {
+    const h = await opened({ startResults: ['ok', 'fail', 'fail', 'fail'] })
+    const s = h.sessions[0] as FakeSession
+    s.handlers.onSession(info)
+    s.handlers.onFrame(frame(1))
+    s.handlers.onFrame(frame(2))
+
+    s.handlers.onEnded(endError)
+    await h.wake()
+    await h.wake()
+    await h.wake()
+    expect(h.ports[0]?.statuses().at(-1)).toBe('failed')
+    expect(frames(h.ports[0])).toHaveLength(1)
+    const count = h.ports[0]?.sent.length
+
+    h.ports[0]?.receive(ACK)
+    expect(h.ports[0]?.sent.length).toBe(count)
+  })
+
+  it('ignores an ack from a port that open() replaced', async () => {
+    const h = await opened()
+    const s = h.sessions[0] as FakeSession
+    s.handlers.onSession(info)
+    s.handlers.onFrame(frame(1))
+    s.handlers.onFrame(frame(2))
+    await h.manager.open('emulator-5556')
+    const countNew = h.ports[1]?.sent.length
+
+    h.ports[0]?.receive(ACK)
+
+    expect(h.ports[1]?.sent.length).toBe(countNew)
+  })
+
+  it('does not forward frame_ack to sendControl', async () => {
+    const h = await opened()
+    const s = h.sessions[0] as FakeSession
+    s.handlers.onSession(info)
+    s.handlers.onFrame(frame(1))
+
+    h.ports[0]?.receive(ACK)
+
+    expect(s.sendControl).not.toHaveBeenCalled()
+  })
+
+  it('leaves the port and sendControl untouched for an ack on a packet-only session', async () => {
+    const h = await opened()
+    const s = h.sessions[0] as FakeSession
+    const count = h.ports[0]?.sent.length
+
+    h.ports[0]?.receive(ACK)
+
+    expect(h.ports[0]?.sent.length).toBe(count)
+    expect(s.sendControl).not.toHaveBeenCalled()
+  })
+
+  it('sends nothing on an ack after stop()', async () => {
+    const h = await opened()
+    const s = h.sessions[0] as FakeSession
+    s.handlers.onSession(info)
+    s.handlers.onFrame(frame(1))
+    s.handlers.onFrame(frame(2))
+    await h.manager.stop()
+    const count = h.ports[0]?.sent.length
+
+    h.ports[0]?.receive(ACK)
+
+    expect(h.ports[0]?.sent.length).toBe(count)
+  })
+
+  it('relays every packet regardless of acks', async () => {
+    const h = await opened()
+    const s = h.sessions[0] as FakeSession
+    const data = new Uint8Array([1])
+
+    s.handlers.onPacket({ config: false, key: true, ptsUs: 1, data })
+    s.handlers.onPacket({ config: false, key: false, ptsUs: 2, data })
+    s.handlers.onPacket({ config: false, key: false, ptsUs: 3, data })
+
+    expect(h.ports[0]?.sent.filter((m) => m.type === 'packet')).toHaveLength(3)
+  })
+})
+
+describe('isFrameAck', () => {
+  it.each([[null], ['frame_ack'], [{ type: 'touch' }]])('rejects %j', (value) => {
+    expect(isFrameAck(value)).toBe(false)
+  })
+
+  it('accepts a frame_ack even with extra fields', () => {
+    expect(isFrameAck({ type: 'frame_ack', extra: 1 })).toBe(true)
   })
 })
 

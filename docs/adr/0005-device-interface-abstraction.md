@@ -8,7 +8,7 @@ scope: [main, android, ios, shared]
 hosts: []
 supersedes:
 superseded_by:
-related_adr: ADR-0004
+related_adr: ADR-0004, ADR-0015
 related_spec: m1-device-core-mcp-server
 related_architecture:
 related_plan:
@@ -38,6 +38,8 @@ M1은 Android만 만든다. 그러나 iOS를 붙일 때 MCP 툴 층·서버 층�
 - 타깃마다 다른 능력은 인터페이스에 "지원함/지원 안 함"으로 드러낸다. 타깃 이름으로 분기하지 않는다.
 - M1에서 인터페이스를 넓게 설계하지 않는다. Android 구현이 실제로 필요로 하는 만큼만 정의하고,
   iOS를 붙일 때 실제 차이를 보고 넓힌다.
+
+M4에서 넓힌 내용은 ADR-0015에 있다.
 
 ## 대안
 

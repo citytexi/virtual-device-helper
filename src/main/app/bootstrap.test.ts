@@ -1,15 +1,26 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AvdController } from '../device/avdController'
+import type { VirtualDeviceCatalog } from '../device/virtualDeviceCatalog'
 import type { DeviceRegistry } from '../device/registry'
 import type { McpServerHandle } from '../mcp/httpServer'
 import { deviceError } from '../../shared/types/errors'
 import { IPC_CHANNELS, type AppSnapshot, type Outcome } from '../../shared/types/ipc'
-import { bootstrapApp, rendererSender, type BootstrapDeps } from './bootstrap'
+import { createDeviceRegistry } from '../device/registry'
+import type { Platform } from '../../shared/types/device'
+import type { Occupancy } from '../stream/screenSlots'
+import { bootstrapApp, createPlaceByPlatform, rendererSender, type BootstrapDeps } from './bootstrap'
 
 type Handler = (event: unknown, ...args: unknown[]) => unknown
 
+const missing: BootstrapDeps['located'] = { ok: false, searched: ['/opt/sdk/platform-tools/adb'] }
+const ANDROID_HINT =
+  'Android Studio를 설치하고 Device Manager에서 AVD를 만든 뒤 앱을 다시 켜라. 이미 설치돼 있다면 ANDROID_HOME 또는 ANDROID_SDK_ROOT를 SDK 경로로 지정하고 앱을 다시 켜라'
+
+const iosMissing: BootstrapDeps['iosTools'] = { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', hostSupported: false }
+const iosNoXcode: BootstrapDeps['iosTools'] = { ok: false, reason: 'iOS: Xcode 개발자 디렉토리를 찾지 못했다', hostSupported: true }
+const iosReady: BootstrapDeps['iosTools'] = { ok: true, developerDir: '/Applications/Xcode.app/Contents/Developer' }
+
 function fakeStack() {
-  const device = { serial: 'emulator-5554', screenshot: vi.fn(async () => ({ base64: 'QUJD', width: 1, height: 1 })) }
+  const device = { serial: 'emulator-5554', platform: 'android', screenshot: vi.fn(async () => ({ base64: 'QUJD', width: 1, height: 1 })) }
   const registry = {
     start: vi.fn(),
     stop: vi.fn(),
@@ -21,12 +32,12 @@ function fakeStack() {
     run: vi.fn((_serial: string, task: () => Promise<unknown>) => task()),
     on: vi.fn(() => () => {})
   } as unknown as DeviceRegistry
-  const avd = {
+  const catalog = {
     list: vi.fn(async () => []),
     boot: vi.fn(async () => 'emulator-5554'),
     shutdown: vi.fn(async () => {})
-  } as unknown as AvdController
-  return { registry, avd, device }
+  } as unknown as VirtualDeviceCatalog
+  return { registry, catalog, device }
 }
 
 function harness(overrides: Partial<BootstrapDeps> = {}) {
@@ -45,11 +56,10 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
   ;(stack.registry.start as ReturnType<typeof vi.fn>).mockImplementation(() => {
     registryListeners.forEach((listener) => listener({ type: 'device_connected', serial: 'emulator-5554' }))
   })
-  const stream = {
-    open: vi.fn(async () => {}),
-    stop: vi.fn(async () => {}),
-    handleDisconnect: vi.fn(async () => {})
-  }
+  // 칸마다 관리자가 하나씩 만들어진다(a, b). createStreamManager는 부른 순서대로 이 둘을 준다.
+  const fakeManager = () => ({ open: vi.fn(async () => {}), stop: vi.fn(async () => {}) })
+  const managers = { a: fakeManager(), b: fakeManager() }
+  const stream = managers.a
   const logs = {
     handleConnect: vi.fn(),
     handleDisconnect: vi.fn(),
@@ -69,11 +79,14 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
       ok: true,
       paths: { sdkRoot: '/opt/sdk', adb: '/opt/sdk/platform-tools/adb', emulator: '/opt/sdk/emulator/emulator', source: 'ANDROID_HOME' }
     },
+    iosTools: iosMissing,
+    axePath: '/opt/homebrew/bin/axe',
     ipcMain: ipcMain as never,
     send: vi.fn(),
-    createDeviceStack: vi.fn(() => ({ registry: stack.registry, avd: stack.avd })),
-    createStreamManager: vi.fn(() => stream),
+    createDeviceStack: vi.fn(() => ({ registry: stack.registry, catalog: stack.catalog })),
+    createStreamManager: vi.fn(() => [managers.a, managers.b][vi.mocked(deps.createStreamManager).mock.calls.length - 1]!),
     createLogManager: vi.fn(() => logs),
+    postStreamPort: vi.fn(),
     startServer: vi.fn(async () => server),
     ...overrides
   }
@@ -91,28 +104,32 @@ function harness(overrides: Partial<BootstrapDeps> = {}) {
     stack,
     server,
     stream,
+    managers,
     logs,
     fireRegistry: (event: unknown) => registryListeners.forEach((listener) => listener(event))
   }
 }
 
-const missing: BootstrapDeps['located'] = { ok: false, searched: ['/opt/sdk/platform-tools/adb'] }
 
-describe('bootstrapApp without an SDK', () => {
-  it('still registers the bridge and serves a snapshot with the sdk guidance data', async () => {
+describe('bootstrapApp without any platform', () => {
+  it('still registers the bridge and serves a snapshot with both platforms guidance data', async () => {
     const h = harness({ located: missing })
 
     await bootstrapApp(h.deps)
     const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
 
     expect(snapshot).toEqual({
-      sdk: { ok: false, searched: ['/opt/sdk/platform-tools/adb'] },
+      platforms: {
+        android: { ok: false, reason: 'Android SDK를 찾지 못했다', searched: ['/opt/sdk/platform-tools/adb'], hint: ANDROID_HINT },
+        ios: { ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [], hint: null }
+      },
       server: null,
-      avds: [],
+      virtualDevices: [],
       devices: [],
       activeSerial: null,
+      screens: [],
       timeline: [],
-      trackingFailure: null
+      trackingFailures: { android: null, ios: null }
     })
   })
 
@@ -133,7 +150,7 @@ describe('bootstrapApp without an SDK', () => {
 
     for (const channel of [
       IPC_CHANNELS.selectDevice,
-      IPC_CHANNELS.bootAvd,
+      IPC_CHANNELS.bootVirtualDevice,
       IPC_CHANNELS.shutdownDevice,
       IPC_CHANNELS.captureScreenshot,
       IPC_CHANNELS.openLogs,
@@ -183,12 +200,14 @@ describe('bootstrapApp with an SDK: logs', () => {
 
   it('stops all tails on app stop even if the stream stop throws', async () => {
     const h = harness()
-    h.stream.stop.mockRejectedValueOnce(new Error('boom'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const app = await bootstrapApp(h.deps)
+    h.stream.stop.mockRejectedValueOnce(new Error('boom'))
 
-    await expect(app.stop()).rejects.toThrow('boom')
+    await expect(app.stop()).resolves.toBeUndefined()
 
     expect(h.logs.stopAll).toHaveBeenCalled()
+    consoleError.mockRestore()
   })
 
   it('opens logs for a known serial', async () => {
@@ -296,13 +315,14 @@ describe('bootstrapApp with an SDK', () => {
     const app = await bootstrapApp(h.deps)
     const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
 
-    expect(h.deps.createDeviceStack).toHaveBeenCalledWith(expect.objectContaining({ sdkRoot: '/opt/sdk' }))
+    expect(h.deps.createDeviceStack).toHaveBeenCalledWith(expect.objectContaining({ sdkRoot: '/opt/sdk' }), false)
     expect(h.stack.registry.start).toHaveBeenCalled()
     // 상태가 먼저 구독해야 처음 붙어 있던 기기의 device_connected를 놓치지 않는다.
     const onOrder = vi.mocked(h.stack.registry.on).mock.invocationCallOrder[0]!
     const startOrder = vi.mocked(h.stack.registry.start).mock.invocationCallOrder[0]!
     expect(onOrder).toBeLessThan(startOrder)
-    expect(snapshot.sdk).toEqual({ ok: true, sdkRoot: '/opt/sdk' })
+    expect(snapshot.platforms.android).toEqual({ ok: true, location: '/opt/sdk', notes: [] })
+    expect(snapshot.platforms.ios).toEqual({ ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [], hint: null })
     expect(snapshot.server).toEqual({ url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' })
     expect(app.server).toBe(h.server)
   })
@@ -325,7 +345,7 @@ describe('bootstrapApp with an SDK', () => {
 
     expect(snapshot.timeline.filter((entry) => entry.kind === 'tool_call').map((entry) => entry.id)).toEqual(['a'])
     expect(context.registry).toBe(h.stack.registry)
-    expect(context.avd).toBe(h.stack.avd)
+    expect(context.catalog).toBe(h.stack.catalog)
   })
 
   it('keeps going without a server when the server fails to start', async () => {
@@ -344,18 +364,18 @@ describe('bootstrapApp with an SDK', () => {
     }
   })
 
-  it('routes the actions to the registry and avd controller', async () => {
+  it('routes the actions to the registry and catalog', async () => {
     const h = harness()
 
     await bootstrapApp(h.deps)
     await h.invoke(IPC_CHANNELS.selectDevice, 'emulator-5554')
-    await h.invoke(IPC_CHANNELS.bootAvd, 'Pixel_7_API_34')
+    await h.invoke(IPC_CHANNELS.bootVirtualDevice, 'Pixel_7_API_34')
     await h.invoke(IPC_CHANNELS.shutdownDevice, 'emulator-5554')
     const shot = await h.invoke<Outcome<unknown>>(IPC_CHANNELS.captureScreenshot, 'emulator-5554')
 
     expect(h.stack.registry.setActive).toHaveBeenCalledWith('emulator-5554')
-    expect(h.stack.avd.boot).toHaveBeenCalledWith('Pixel_7_API_34')
-    expect(h.stack.avd.shutdown).toHaveBeenCalledWith('emulator-5554')
+    expect(h.stack.catalog.boot).toHaveBeenCalledWith('Pixel_7_API_34')
+    expect(h.stack.catalog.shutdown).toHaveBeenCalledWith('emulator-5554', 'android')
     expect(h.stack.registry.run).toHaveBeenCalledWith('emulator-5554', expect.any(Function))
     expect(shot).toEqual({ ok: true, value: { base64: 'QUJD', width: 1, height: 1 } })
   })
@@ -370,66 +390,350 @@ describe('bootstrapApp with an SDK', () => {
     expect(h.server.close).toHaveBeenCalled()
   })
 
-  it('starts a stream for a known serial', async () => {
+  it('closes the stream of its slot when its device disconnects', async () => {
     const h = harness()
     await bootstrapApp(h.deps)
-
-    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, 'emulator-5554')
-
-    expect(result.ok).toBe(true)
-    expect(h.stream.open).toHaveBeenCalledWith('emulator-5554')
-  })
-
-  it('refuses a stream for a serial the registry does not know', async () => {
-    const h = harness()
-    ;(h.stack.registry.resolve as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      throw deviceError('no_device', 'gone', 'x')
-    })
-    await bootstrapApp(h.deps)
-
-    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, 'emulator-9999')
-
-    expect(result.ok).toBe(false)
-    expect(h.stream.open).not.toHaveBeenCalled()
-  })
-
-  it('closes the stream when its device disconnects', async () => {
-    const h = harness()
-    await bootstrapApp(h.deps)
+    h.stream.stop.mockClear()
 
     h.fireRegistry({ type: 'device_disconnected', serial: 'emulator-5554' })
 
-    expect(h.stream.handleDisconnect).toHaveBeenCalledWith('emulator-5554')
+    expect(h.stream.stop).toHaveBeenCalledTimes(1)
   })
 
-  it('stops the stream on shutdown', async () => {
+  it('stops every slot manager on shutdown', async () => {
     const h = harness()
     const app = await bootstrapApp(h.deps)
+    h.managers.a.stop.mockClear()
 
     await app.stop()
 
-    expect(h.stream.stop).toHaveBeenCalled()
+    expect(h.managers.a.stop).toHaveBeenCalled()
+    expect(h.managers.b.stop).toHaveBeenCalled()
   })
 
   it('still stops tracking and closes the server when stopping the stream throws', async () => {
     const h = harness()
-    h.stream.stop.mockRejectedValueOnce(new Error('boom'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const app = await bootstrapApp(h.deps)
+    h.stream.stop.mockRejectedValueOnce(new Error('boom'))
 
-    await expect(app.stop()).rejects.toThrow('boom')
+    await expect(app.stop()).resolves.toBeUndefined()
 
     expect(h.stack.registry.stop).toHaveBeenCalled()
     expect(h.server.close).toHaveBeenCalled()
+    consoleError.mockRestore()
   })
 
-  it('refuses a stream without an SDK and never builds a stream manager', async () => {
+  it('does nothing for stream requests without an SDK and never builds a stream manager', async () => {
     const h = harness({ located: missing })
     await bootstrapApp(h.deps)
 
-    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, 'emulator-5554')
+    const start = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, { slotId: 'a', epoch: 1 })
+    const stop = await h.invoke<Outcome<void>>(IPC_CHANNELS.stopStream, { slotId: 'a', epoch: 1 })
 
-    expect(result.ok).toBe(false)
+    // SDK가 없으면 칸도 관리자도 없다. 두 액션은 성공하고 아무것도 하지 않는다.
+    expect(start.ok).toBe(true)
+    expect(stop.ok).toBe(true)
     expect(h.deps.createStreamManager).not.toHaveBeenCalled()
+  })
+})
+
+describe('bootstrapApp Android hint', () => {
+  it('sends the Android Studio / ANDROID_HOME guidance when the SDK is missing', async () => {
+    const h = harness({ located: missing, iosTools: iosReady })
+
+    await bootstrapApp(h.deps)
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(snapshot.platforms.android).toMatchObject({ ok: false, hint: ANDROID_HINT })
+  })
+})
+
+describe('bootstrapApp iOS hint', () => {
+  it('gives no hint when the host is not macOS', async () => {
+    const h = harness({ located: missing, iosTools: iosMissing })
+
+    await bootstrapApp(h.deps)
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(snapshot.platforms.ios).toEqual({ ok: false, reason: 'macOS에서만 iOS 시뮬레이터를 쓸 수 있다', searched: [], hint: null })
+  })
+
+  it('tells a Mac without Xcode to install it', async () => {
+    const h = harness({ located: missing, iosTools: iosNoXcode })
+
+    await bootstrapApp(h.deps)
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(snapshot.platforms.ios).toEqual({
+      ok: false,
+      reason: 'iOS: Xcode 개발자 디렉토리를 찾지 못했다',
+      searched: [],
+      hint: 'Xcode를 설치하고 xcode-select -s로 개발자 디렉토리를 정해라'
+    })
+  })
+})
+
+describe('bootstrapApp with only iOS', () => {
+  it('opens the MCP server and reports android missing, ios ready', async () => {
+    const h = harness({ located: missing, iosTools: iosReady })
+
+    const app = await bootstrapApp(h.deps)
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(h.deps.startServer).toHaveBeenCalled()
+    expect(app.server).toBe(h.server)
+    expect(snapshot.platforms.android).toEqual({
+      ok: false,
+      reason: 'Android SDK를 찾지 못했다',
+      searched: ['/opt/sdk/platform-tools/adb'],
+      hint: ANDROID_HINT
+    })
+    expect(snapshot.platforms.ios).toEqual({ ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: [] })
+  })
+
+  it('adds a note to the iOS status when AXe is missing', async () => {
+    const h = harness({ located: missing, iosTools: iosReady, axePath: null })
+
+    await bootstrapApp(h.deps)
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(snapshot.platforms.ios).toEqual({
+      ok: true,
+      location: '/Applications/Xcode.app/Contents/Developer',
+      notes: ['AXe가 없어 iOS 입력·노드·실시간 화면을 쓸 수 없다. brew install cameroncooke/axe/axe로 설치하고 앱을 다시 켜라']
+    })
+  })
+
+  it('builds the stack, stream and log managers without Android paths', async () => {
+    const h = harness({ located: missing, iosTools: iosReady })
+
+    await bootstrapApp(h.deps)
+
+    expect(h.deps.createDeviceStack).toHaveBeenCalledWith(null, true)
+    expect(vi.mocked(h.deps.createStreamManager).mock.calls[0]![1]).toBeNull()
+    expect(vi.mocked(h.deps.createLogManager).mock.calls[0]![1]).toBeNull()
+    expect(h.stack.registry.start).toHaveBeenCalled()
+  })
+})
+
+describe('bootstrapApp with both platforms', () => {
+  it('passes the Android paths and the iOS flag to the device stack', async () => {
+    const h = harness({ iosTools: iosReady })
+
+    await bootstrapApp(h.deps)
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(h.deps.createDeviceStack).toHaveBeenCalledWith(expect.objectContaining({ sdkRoot: '/opt/sdk' }), true)
+    expect(snapshot.platforms.android.ok).toBe(true)
+    expect(snapshot.platforms.ios.ok).toBe(true)
+  })
+})
+
+describe('createPlaceByPlatform', () => {
+  const platforms: Record<string, Platform> = { A1: 'android', A2: 'android', I1: 'ios' }
+  const place = createPlaceByPlatform((serial) => platforms[serial] ?? null)
+  const empty: Occupancy = [{ slotId: 'a', serial: null }, { slotId: 'b', serial: null }]
+
+  it('gives Android the first slot and iOS the second', () => {
+    expect(place('A1', empty, 'connected')).toBe('a')
+    expect(place('I1', empty, 'connected')).toBe('b')
+  })
+
+  it('gives no slot on connected when the slot is taken, but always on selected and vacated', () => {
+    const taken: Occupancy = [{ slotId: 'a', serial: 'A1' }, { slotId: 'b', serial: null }]
+
+    expect(place('A2', taken, 'connected')).toBeNull()
+    expect(place('A2', taken, 'selected')).toBe('a')
+    expect(place('A2', taken, 'vacated')).toBe('a')
+  })
+
+  it('gives no slot to a device of unknown platform', () => {
+    expect(place('X9', empty, 'connected')).toBeNull()
+    expect(place('X9', empty, 'selected')).toBeNull()
+  })
+})
+
+describe('bootstrapApp screen slots', () => {
+  /** 실제 registry에 손으로 track을 쏜다. 처음부터 붙어 있는 기기는 track이 불리는 순간 알린다. */
+  function slotHarness(initial: Array<{ serial: string; platform: Platform }> = []) {
+    let fire: (serial: string, connected: boolean, platform: Platform) => void = () => {}
+    const registry = createDeviceRegistry({
+      track: (onChange) => {
+        fire = onChange
+        for (const d of initial) onChange(d.serial, true, d.platform)
+        return () => {}
+      },
+      createDevice: (serial, platform) => ({ serial, platform }) as never
+    })
+    const base = harness()
+    const h = harness({ createDeviceStack: vi.fn(() => ({ registry, catalog: base.stack.catalog })) })
+    const hooksBySlot = () => vi.mocked(h.deps.createStreamManager).mock.calls.map((call) => call[2])
+    return {
+      ...h,
+      registry,
+      attach: (serial: string, platform: Platform) => fire(serial, true, platform),
+      detach: (serial: string, platform: Platform) => fire(serial, false, platform),
+      hooksBySlot,
+      screens: async () => (await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)).screens
+    }
+  }
+
+  it('puts a device attached before registry.start into slot a', async () => {
+    const h = slotHarness([{ serial: 'emulator-5554', platform: 'android' }])
+    await bootstrapApp(h.deps)
+
+    expect(await h.screens()).toEqual([
+      { id: 'a', epoch: 1, serial: 'emulator-5554', label: 'Android' },
+      { id: 'b', epoch: 0, serial: null, label: '' }
+    ])
+  })
+
+  it('fills both slots when an Android and an iOS device attach without anyone choosing', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+
+    h.attach('emulator-5554', 'android')
+    h.attach('SIM-1', 'ios')
+    const screens = await h.screens()
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(screens.map((s) => [s.id, s.serial, s.label])).toEqual([
+      ['a', 'emulator-5554', 'Android'],
+      ['b', 'SIM-1', 'iOS']
+    ])
+    expect(snapshot.activeSerial).toBeNull()
+  })
+
+  it('moves activeSerial and the slot together on selectDevice', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    h.attach('emulator-5556', 'android')
+
+    await h.invoke(IPC_CHANNELS.selectDevice, 'emulator-5556')
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(snapshot.activeSerial).toBe('emulator-5556')
+    expect(snapshot.screens[0]?.serial).toBe('emulator-5556')
+  })
+
+  it('moves the slot when the target is set through registry.setActive (MCP device_select)', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    h.attach('emulator-5556', 'android')
+
+    h.registry.setActive('emulator-5556')
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(snapshot.activeSerial).toBe('emulator-5556')
+    expect(snapshot.screens[0]?.serial).toBe('emulator-5556')
+  })
+
+  it('clears the target but hands the slot to another device of the platform when the target disconnects', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    h.attach('emulator-5556', 'android')
+    h.registry.setActive('emulator-5556')
+
+    h.detach('emulator-5556', 'android')
+    const snapshot = await h.invoke<AppSnapshot>(IPC_CHANNELS.getSnapshot)
+
+    expect(snapshot.activeSerial).toBeNull()
+    expect(snapshot.screens[0]?.serial).toBe('emulator-5554')
+  })
+
+  it('opens only the manager of the slot the ref names', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    h.attach('SIM-1', 'ios')
+    const b = (await h.screens()).find((s) => s.id === 'b')!
+
+    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, { slotId: 'b', epoch: b.epoch })
+
+    expect(result.ok).toBe(true)
+    expect(h.managers.b.open).toHaveBeenCalledWith('SIM-1')
+    expect(h.managers.a.open).not.toHaveBeenCalled()
+  })
+
+  it('succeeds without opening any manager for a stale epoch', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    const a = (await h.screens()).find((s) => s.id === 'a')!
+
+    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.startStream, { slotId: 'a', epoch: a.epoch - 1 })
+
+    expect(result.ok).toBe(true)
+    expect(h.managers.a.open).not.toHaveBeenCalled()
+    expect(h.managers.b.open).not.toHaveBeenCalled()
+  })
+
+  it('does not stop the new session when the old screen stops with its stale ref after the device changed', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    h.attach('emulator-5556', 'android')
+    const before = (await h.screens()).find((s) => s.id === 'a')!
+    const oldRef = { slotId: 'a', epoch: before.epoch }
+    await h.invoke(IPC_CHANNELS.selectDevice, 'emulator-5556')
+    const after = (await h.screens()).find((s) => s.id === 'a')!
+    expect(after.epoch).toBeGreaterThan(before.epoch)
+    h.managers.a.stop.mockClear()
+
+    const result = await h.invoke<Outcome<void>>(IPC_CHANNELS.stopStream, oldRef)
+
+    expect(result.ok).toBe(true)
+    expect(h.managers.a.stop).not.toHaveBeenCalled()
+  })
+
+  it('stops the manager of the slot for the current ref', async () => {
+    const h = slotHarness()
+    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    const a = (await h.screens()).find((s) => s.id === 'a')!
+    h.managers.a.stop.mockClear()
+
+    await h.invoke(IPC_CHANNELS.stopStream, { slotId: 'a', epoch: a.epoch })
+
+    expect(h.managers.a.stop).toHaveBeenCalledTimes(1)
+    expect(h.managers.b.stop).not.toHaveBeenCalled()
+  })
+
+  it('tags a manager port with its slot and epoch, and gives null once the device left the slot', async () => {
+    const postStreamPort = vi.fn()
+    const h = slotHarness()
+    h.deps.postStreamPort = postStreamPort
+    await bootstrapApp(h.deps)
+    h.attach('emulator-5554', 'android')
+    const [hooksA] = h.hooksBySlot()
+    const remote = {}
+
+    hooksA!.postPort({ serial: 'emulator-5554', sessionId: 's1' }, remote)
+    h.detach('emulator-5554', 'android')
+    hooksA!.postPort({ serial: 'emulator-5554', sessionId: 's1' }, remote)
+
+    expect(postStreamPort).toHaveBeenNthCalledWith(
+      1,
+      { serial: 'emulator-5554', sessionId: 's1', slotId: 'a', epoch: 1 },
+      remote
+    )
+    expect(postStreamPort).toHaveBeenNthCalledWith(2, null, remote)
+  })
+
+  it('resolves app.stop even when a manager throws on close', async () => {
+    const h = slotHarness()
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const app = await bootstrapApp(h.deps)
+    h.managers.b.stop.mockRejectedValueOnce(new Error('boom'))
+
+    await expect(app.stop()).resolves.toBeUndefined()
+
+    expect(h.managers.a.stop).toHaveBeenCalled()
+    consoleError.mockRestore()
   })
 })
 

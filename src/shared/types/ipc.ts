@@ -1,4 +1,4 @@
-import type { AvdEntry, ScreenshotResult } from './device'
+import type { Platform, ScreenshotResult, VirtualDeviceEntry } from './device'
 import type { ToolError, ToolErrorKind } from './errors'
 
 /**
@@ -68,7 +68,7 @@ export type TimelineEntry =
 export const IPC_CHANNELS = {
   getSnapshot: 'app:get-snapshot',
   selectDevice: 'app:select-device',
-  bootAvd: 'app:boot-avd',
+  bootVirtualDevice: 'app:boot-virtual-device',
   shutdownDevice: 'app:shutdown-device',
   captureScreenshot: 'app:capture-screenshot',
   startStream: 'app:start-stream',
@@ -82,7 +82,20 @@ export const IPC_CHANNELS = {
   event: 'app:event'
 } as const
 
-export type SdkStatus = { ok: true; sdkRoot: string } | { ok: false; searched: string[] }
+/**
+ * 플랫폼 하나가 준비됐는지. Android는 location이 SDK 경로, searched가 찾아본 경로다.
+ * iOS는 location이 Xcode 개발자 디렉토리이고 searched는 비어 있다.
+ * ok:false의 hint는 사용자가 할 일을 main이 정해 내려 주는 문구다. 할 일이 없으면(예: 이 호스트에서는
+ * 설치할 수 없는 도구) null이고, renderer는 호스트 OS를 보고 따로 안내를 만들지 않는다.
+ */
+export type PlatformStatus =
+  | { ok: true; location: string; /** 준비는 됐지만 알려 둘 것. 없으면 빈 배열이다. */ notes: string[] }
+  | { ok: false; reason: string; searched: string[]; hint: string | null }
+
+export interface PlatformStatuses {
+  android: PlatformStatus
+  ios: PlatformStatus
+}
 
 /**
  * IPC를 넘는 결과. 예외로 던지지 않는다 — Electron IPC를 넘는 Error는
@@ -103,26 +116,48 @@ export interface ServerStatus {
  * 함께 사라진다. 그래서 여기서는 이미 평평한 ToolError로 바꿔 담는다.
  */
 export interface TrackingFailure {
+  /** 어느 플랫폼의 추적이 죽었는지. renderer는 이 값으로 문구를 가르지 않고 label을 그대로 보인다. */
+  platform: Platform
+  /** 사람이 읽는 플랫폼 이름. main이 정한다. */
+  label: string
   error: ToolError | null
   exitCode: number | null
 }
 
+/** 화면 한 칸. epoch는 칸의 기기가 바뀔 때마다 오른다. */
+export interface ScreenSlot {
+  id: string
+  epoch: number
+  serial: string | null
+  label: string
+}
+
+/** 칸과 세대로 가리키는 스트림 요청 대상. */
+export interface SlotRef {
+  slotId: string
+  epoch: number
+}
+
 export interface AppSnapshot {
-  sdk: SdkStatus
+  platforms: PlatformStatuses
   server: ServerStatus | null
-  avds: AvdEntry[]
+  virtualDevices: VirtualDeviceEntry[]
   devices: string[]
   activeSerial: string | null
+  /** 화면 칸. 칸의 진실은 main에 있다. */
+  screens: ScreenSlot[]
   timeline: TimelineEntry[]
-  trackingFailure: TrackingFailure | null
+  /** 플랫폼별 추적 실패. 추적이 살아 있으면(또는 그 플랫폼을 조립하지 않았으면) null이다. */
+  trackingFailures: Record<Platform, TrackingFailure | null>
 }
 
 export type MainEvent =
   | { type: 'device_connected'; serial: string }
   | { type: 'device_disconnected'; serial: string }
   | { type: 'active_changed'; serial: string | null }
-  | { type: 'avds_changed'; avds: AvdEntry[] }
+  | { type: 'virtual_devices_changed'; virtualDevices: VirtualDeviceEntry[] }
   | { type: 'timeline'; entry: TimelineEntry }
+  | { type: 'screens_changed'; screens: ScreenSlot[] }
   | { type: 'server_changed'; server: ServerStatus | null }
   | { type: 'tracking_failed'; failure: TrackingFailure }
 
@@ -130,12 +165,16 @@ export type MainEvent =
 export interface RendererApi {
   getSnapshot(): Promise<AppSnapshot>
   selectDevice(serial: string): Promise<Outcome<void>>
-  bootAvd(name: string): Promise<Outcome<void>>
+  bootVirtualDevice(id: string): Promise<Outcome<void>>
   shutdownDevice(serial: string): Promise<Outcome<void>>
   captureScreenshot(serial: string): Promise<Outcome<ScreenshotResult>>
-  /** 이 기기로 스트림을 연다. 이전 스트림은 main이 닫는다. 포트는 IPC_CHANNELS.streamPort로 따로 온다. */
-  startStream(serial: string): Promise<Outcome<void>>
-  stopStream(): Promise<Outcome<void>>
+  /**
+   * 이 칸·세대(`ref`)의 스트림을 연다. 세대가 지금 것과 다르거나 칸이 비었으면 성공으로 끝내고 아무것도 하지 않는다.
+   * 포트는 IPC_CHANNELS.streamPort로 따로 오며 `slotId`와 `epoch` 꼬리표가 붙는다.
+   */
+  startStream(ref: SlotRef): Promise<Outcome<void>>
+  /** 이 칸·세대의 스트림을 닫는다. 낡은 세대의 요청은 지금 세션을 건드리지 않고 성공으로 끝난다. */
+  stopStream(ref: SlotRef): Promise<Outcome<void>>
   /** 이 기기의 로그를 연다. 이전 로그 포트는 main이 닫는다. 포트는 IPC_CHANNELS.logPort로 따로 온다. */
   openLogs(serial: string): Promise<Outcome<void>>
   closeLogs(): Promise<Outcome<void>>

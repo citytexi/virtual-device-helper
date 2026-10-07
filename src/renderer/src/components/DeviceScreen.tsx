@@ -1,13 +1,23 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import type { JSX, KeyboardEvent, PointerEvent, WheelEvent } from 'react'
+import type { ScreenSlot } from '../../../shared/types/ipc'
 import type { DeviceKey, SessionStatus } from '../../../shared/types/stream'
 import { useScrcpyStream } from '../hooks/useScrcpyStream'
 import { keyToIntent, toVideoPoint, wheelToScroll } from '../stream/inputMapper'
 import { GestureOverlay } from './GestureOverlay'
+import { ScreenHeader } from './ScreenHeader'
 import { ScreenshotView } from './ScreenshotView'
 
+/** 기기가 놓인 칸. 빈 칸은 호출부가 걸러서 이 컴포넌트까지 오지 않는다. */
+export type OccupiedScreen = ScreenSlot & { serial: string }
+
 export interface DeviceScreenProps {
-  serial: string | null
+  screen: OccupiedScreen
+  /** 이 화면의 기기가 지금 MCP 대상인가. */
+  isTarget: boolean
+  onMakeTarget(): void
+  /** F6: 다음 화면의 포커스 대상으로 옮긴다. */
+  onFocusNext(): void
 }
 
 const DEVICE_BUTTONS: ReadonlyArray<{ key: DeviceKey; label: string; glyph: string }> = [
@@ -27,27 +37,48 @@ function statusText(status: SessionStatus): string | null {
 
 /**
  * 기기 화면 영역. 실시간 스트림을 그리고 사람 입력을 기기로 보낸다. 스트림이 끝내 실패하면
- * 스크린샷 화면으로 강등된다. 바깥 경계(props)는 M1 그대로라 App은 이 변화를 모른다.
+ * 스크린샷 화면으로 강등된다. 칸의 세대가 바뀌면 호출부의 key가 바뀌어 새 캔버스로 다시 마운트된다.
  */
-export function DeviceScreen({ serial }: DeviceScreenProps): JSX.Element {
-  if (!serial) {
-    return (
-      <section aria-label="기기 화면" className="device-screen">
-        <p className="empty">기기를 선택해라. 왼쪽 목록에서 실행 중인 기기를 누르면 화면이 뜬다.</p>
-      </section>
-    )
-  }
-  // key로 기기마다 새 캔버스를 만든다. 이전 기기의 마지막 프레임이 새 기기 화면처럼 남지 않는다.
-  return <LiveScreen key={serial} serial={serial} />
+export function DeviceScreen(props: DeviceScreenProps): JSX.Element {
+  return <LiveScreen {...props} />
 }
 
-function LiveScreen({ serial }: { serial: string }): JSX.Element {
+function LiveScreen({ screen, isTarget, onMakeTarget, onFocusNext }: DeviceScreenProps): JSX.Element {
+  const { serial, label } = screen
+  const sectionRef = useRef<HTMLElement | null>(null)
+  const refocusAfterReconnect = useRef(false)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const dragging = useRef(false)
-  const stream = useScrcpyStream(serial, canvasRef)
-  const { status, video, send } = stream
+  // 훅의 effect는 slotId와 epoch만 본다. 이 객체는 렌더마다 새로 만들어도 스트림을 다시 열지 않는다.
+  const stream = useScrcpyStream({ slotId: screen.id, epoch: screen.epoch }, canvasRef)
+  const { status, video, keys, send } = stream
   const live = status.state === 'streaming'
   const overlayText = statusText(status)
+  const failed = status.state === 'failed'
+
+  /** 이 화면의 포커스 대상: 캔버스가 있으면 캔버스, 없으면 section 자체. */
+  function focusTarget(): void {
+    sectionRef.current?.querySelector<HTMLElement>('[data-screen-focus]')?.focus()
+  }
+
+  // 다시 연결로 캔버스가 다시 마운트되면 캔버스에 포커스를 준다.
+  useEffect(() => {
+    if (refocusAfterReconnect.current && !failed) {
+      refocusAfterReconnect.current = false
+      focusTarget()
+    }
+  }, [failed])
+
+  function reconnect(): void {
+    refocusAfterReconnect.current = true
+    stream.reconnect()
+  }
+
+  function onSectionKeyDown(event: KeyboardEvent<HTMLElement>): void {
+    if (event.key !== 'F6') return
+    event.preventDefault()
+    onFocusNext()
+  }
 
   function pointAt(clientX: number, clientY: number, clamp: boolean) {
     const canvas = canvasRef.current
@@ -101,18 +132,22 @@ function LiveScreen({ serial }: { serial: string }): JSX.Element {
   }
 
   return (
-    <section aria-label="기기 화면" className="device-screen">
-      <div className="screen-toolbar">
-        <h2 className="pane-title">화면</h2>
-        <span className="device-serial mono">{serial}</span>
-        {status.state === 'failed' ? (
-          <button type="button" className="btn" onClick={stream.reconnect}>
-            다시 연결
-          </button>
-        ) : null}
-      </div>
+    <section
+      ref={sectionRef}
+      aria-label={`기기 화면 ${label} ${serial}`}
+      className="device-screen"
+      {...(failed ? { 'data-screen-focus': '', tabIndex: -1 } : {})}
+      onKeyDown={onSectionKeyDown}
+    >
+      <ScreenHeader
+        screen={screen}
+        isTarget={isTarget}
+        onMakeTarget={onMakeTarget}
+        onReconnect={reconnect}
+        canReconnect={failed}
+      />
 
-      {status.state === 'failed' ? (
+      {failed ? (
         <>
           <p role="alert" className="notice notice-error">
             실시간 화면을 열지 못했다: {status.error.message} — {status.error.hint}
@@ -126,6 +161,7 @@ function LiveScreen({ serial }: { serial: string }): JSX.Element {
               ref={canvasRef}
               className="screen-canvas"
               tabIndex={0}
+              data-screen-focus=""
               aria-label={`${serial}의 실시간 화면`}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
@@ -144,8 +180,8 @@ function LiveScreen({ serial }: { serial: string }): JSX.Element {
         </div>
       )}
 
-      <div className="device-keys" role="toolbar" aria-label="기기 버튼">
-        {DEVICE_BUTTONS.map((button) => (
+      <div className="device-keys" role="toolbar" aria-label={`기기 버튼 ${label} ${serial}`}>
+        {DEVICE_BUTTONS.filter((button) => keys.includes(button.key)).map((button) => (
           <button
             key={button.key}
             type="button"
@@ -153,7 +189,10 @@ function LiveScreen({ serial }: { serial: string }): JSX.Element {
             aria-label={button.label}
             title={button.label}
             disabled={!live}
-            onClick={() => send({ type: 'key', key: button.key })}
+            onClick={() => {
+              send({ type: 'key', key: button.key })
+              focusTarget()
+            }}
           >
             {button.glyph}
           </button>

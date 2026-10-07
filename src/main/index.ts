@@ -1,22 +1,37 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, type MessagePortMain } from 'electron'
 import { join } from 'node:path'
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { promisify } from 'node:util'
 import { createAdbClient } from './adb/adbClient'
 import { trackDevices } from './adb/trackDevices'
 import { createAndroidDevice } from './device/androidDevice'
 import { createAvdController } from './device/avdController'
+import { createVirtualDeviceCatalog, type VirtualDeviceSource } from './device/virtualDeviceCatalog'
 import { createDeviceRegistry } from './device/registry'
 import { electronResizeImage } from './device/resizeImage'
+import { createIosDevice } from './device/iosDevice'
+import { createAxeClient } from './ios/axeClient'
+import { locateAxe } from './ios/locateAxe'
+import { createSimctlClient } from './ios/simctlClient'
+import { createSimulatorCatalog } from './ios/simulatorCatalog'
+import { defaultLocateIosToolsDeps, locateIosTools } from './ios/locateIosTools'
+import { trackSimulators } from './ios/trackSimulators'
 import { createLogManager } from './logs/logManager'
 import { createLogTail } from './logs/logTail'
 import { createPidof, createSeedPids } from './logs/adbLogDeps'
+import { createIosLogTail } from './logs/iosLogTail'
+import { createIosPidof, createIosSeedPids } from './logs/iosLogDeps'
+import { createPlatformLogDeps } from './logs/platformLogDeps'
 import { startMcpHttpServer } from './mcp/httpServer'
 import { defaultLocateSdkDeps, locateSdk } from './sdk/locateSdk'
 import { resolveScrcpyJar } from './stream/scrcpyJar'
 import { connectLoopback, createScrcpySession } from './stream/scrcpySession'
+import { createIosStreamSessionFactory, createPlatformStreamSession } from './stream/rejectingSession'
 import { createStreamManager } from './stream/streamManager'
 import { bootstrapApp, rendererSender, type BootstrappedApp } from './app/bootstrap'
 import { createPortChannel } from './app/portChannel'
+import { deviceError } from '../shared/types/errors'
 import { IPC_CHANNELS } from '../shared/types/ipc'
 import type { LogDown } from '../shared/types/logs'
 import type { StreamDown } from '../shared/types/stream'
@@ -70,8 +85,13 @@ function postPortToRenderer(channel: string, meta: unknown, remote: unknown): vo
   } catch (thrown) {
     console.error(`포트를 renderer에 건네지 못했다 (${channel})`, thrown)
   }
+  closePort(remote)
+}
+
+/** 건네지 않을 포트를 닫는다. 이미 닫혔으면 조용히 넘어간다. */
+function closePort(remote: unknown): void {
   try {
-    port.close()
+    ;(remote as MessagePortMain).close()
   } catch {
     // 이미 닫힌 포트다.
   }
@@ -80,46 +100,114 @@ function postPortToRenderer(channel: string, meta: unknown, remote: unknown): vo
 app
   .whenReady()
   .then(async () => {
+    // AXe는 iOS 입력·노드·실시간 화면에만 필요하다. 없어도 iOS 자체는 조립하고 안내만 남긴다.
+    const axePath = await locateAxe({
+      fileExists: existsSync,
+      which: async () => {
+        try {
+          const { stdout } = await promisify(execFile)('which', ['axe'], { timeout: 5_000 })
+          return stdout.trim() || null
+        } catch {
+          return null
+        }
+      }
+    })
     running = await bootstrapApp({
       located: locateSdk(defaultLocateSdkDeps()),
+      iosTools: await locateIosTools(defaultLocateIosToolsDeps()),
+      axePath,
       ipcMain,
       send: rendererSender(() => window),
-      createDeviceStack: (paths) => {
-        const adb = createAdbClient(paths.adb)
+      createDeviceStack: (paths, ios) => {
+        // 준비된 플랫폼의 추적·소스만 넣는다. iOS는 locateIosTools가 ok일 때만 조립한다 —
+        // Xcode 없는 Mac에서 simctl 추적을 시작하면 tracking_failed만 남는다.
+        const adb = paths ? createAdbClient(paths.adb) : null
+        const simctl = ios ? createSimctlClient() : null
+        const axe = axePath ? createAxeClient(axePath) : null
         const registry = createDeviceRegistry({
-          track: (onChange, onFailure) => trackDevices(adb, onChange, onFailure),
-          createDevice: (serial) => createAndroidDevice({ serial, adb, resizeImage: electronResizeImage })
+          track: (onChange, onFailure) => {
+            const stopAdb = adb ? trackDevices(adb, (serial, connected) => onChange(serial, connected, 'android'), (failure) => onFailure('android', failure)) : () => {}
+            const stopSimulators = simctl
+              ? trackSimulators(simctl, (serial, connected) => onChange(serial, connected, 'ios'), (failure) => onFailure('ios', failure))
+              : () => {}
+            return () => {
+              stopAdb()
+              stopSimulators()
+            }
+          },
+          createDevice: (serial, platform) => {
+            if (platform === 'ios' && simctl) return createIosDevice({ udid: serial, simctl, axe, resizeImage: electronResizeImage })
+            if (platform === 'android' && adb) return createAndroidDevice({ serial, adb, resizeImage: electronResizeImage })
+            // 추적하지 않는 플랫폼의 기기는 생기지 않는다. 만일을 위한 방어다.
+            throw deviceError('no_device', `${platform} 기기를 조립하지 않았다: ${serial}`, '앱을 다시 실행해라')
+          }
         })
-        const avd = createAvdController({ adb, emulatorPath: paths.emulator, spawn })
-        return { registry, avd }
+        const sources: VirtualDeviceSource[] = []
+        if (paths && adb) sources.push(createAvdController({ adb, emulatorPath: paths.emulator, spawn }))
+        if (simctl) sources.push(createSimulatorCatalog({ simctl }))
+        return { registry, catalog: createVirtualDeviceCatalog(sources) }
       },
       createStreamManager: (registry, paths, hooks) => {
-        const adb = createAdbClient(paths.adb)
+        const adb = paths ? createAdbClient(paths.adb) : null
         const jarPath = resolveScrcpyJar({
           isPackaged: app.isPackaged,
           resourcesPath: process.resourcesPath,
           appPath: app.getAppPath()
         })
+        // axe 클라이언트는 상태가 없어 스트림용으로 따로 만들어도 된다.
+        const axe = axePath ? createAxeClient(axePath) : null
         return createStreamManager({
-          createSession: (serial, handlers) => createScrcpySession({ serial, adb, jarPath, connect: connectLoopback }, handlers),
+          // 플랫폼별 세션은 라우터가 고른다. 도구가 없는 플랫폼은 그 이유로 거절하는 세션을 받는다.
+          createSession: createPlatformStreamSession({
+            platformOf: (serial) => registry.resolve(serial).platform,
+            android: adb
+              ? (serial, handlers) => createScrcpySession({ serial, adb, jarPath, connect: connectLoopback }, handlers)
+              : null,
+            ios: axe
+              ? createIosStreamSessionFactory({
+                  axe,
+                  deviceOf: (serial) => registry.resolve(serial),
+                  run: (serial, task) => registry.run(serial, task)
+                })
+              : null
+          }),
           createChannel: () => createPortChannel<StreamDown>(),
-          postPort: (meta, remote) => postPortToRenderer(IPC_CHANNELS.streamPort, meta, remote),
+          postPort: hooks.postPort,
           isConnected: (serial) => registry.serials().includes(serial),
           onState: hooks.onState
         })
       },
       createLogManager: (registry, paths, hooks) => {
-        const adb = createAdbClient(paths.adb)
+        const adb = paths ? createAdbClient(paths.adb) : null
+        // simctl은 상태가 없어 로그용으로 따로 만들어도 된다. iOS 기기가 없으면 불리지 않는다.
+        const simctl = createSimctlClient()
+        const platformDeps = createPlatformLogDeps({
+          platformOf: (serial) => registry.resolve(serial).platform,
+          android: adb
+            ? {
+                createTail: (serial, handlers) =>
+                  createLogTail({ serial, adb, isConnected: () => registry.serials().includes(serial) }, handlers),
+                seedPids: createSeedPids(adb),
+                pidof: createPidof(adb)
+              }
+            : null,
+          ios: {
+            createTail: (udid, handlers) =>
+              createIosLogTail({ udid, simctl, isConnected: () => registry.serials().includes(udid) }, handlers),
+            seedPids: createIosSeedPids(simctl),
+            pidof: createIosPidof(simctl)
+          }
+        })
         return createLogManager({
-          createTail: (serial, handlers) =>
-            createLogTail({ serial, adb, isConnected: () => registry.serials().includes(serial) }, handlers),
-          seedPids: createSeedPids(adb),
-          pidof: createPidof(adb),
+          ...platformDeps,
           createChannel: () => createPortChannel<LogDown>(),
           postPort: (meta, remote) => postPortToRenderer(IPC_CHANNELS.logPort, meta, remote),
           onTailState: hooks.onTailState
         })
       },
+      // 칸에 더는 없는 기기의 포트(meta가 null)는 건네지 않고 닫는다.
+      postStreamPort: (meta, remote) =>
+        meta ? postPortToRenderer(IPC_CHANNELS.streamPort, meta, remote) : closePort(remote),
       startServer: (opts) => startMcpHttpServer({ ...opts, version: app.getVersion() })
     })
 

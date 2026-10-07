@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { promptTemplates, serverInstructions } from '../../shared/agentGuide'
-import type { AvdController } from '../device/avdController'
+import type { VirtualDeviceCatalog } from '../device/virtualDeviceCatalog'
 import type { DeviceRegistry } from '../device/registry'
 import { createToolHarness } from './testHarness'
 
@@ -11,7 +11,7 @@ import { createToolHarness } from './testHarness'
  * shared 층은 이 하네스를 import할 수 없어서 이 테스트를 main 쪽에 둔다.
  */
 
-function fakeRegistryAndAvd() {
+function fakeRegistryAndCatalog() {
   const registry = {
     start: vi.fn(),
     stop: vi.fn(),
@@ -23,13 +23,13 @@ function fakeRegistryAndAvd() {
     run: (_serial: string, task: () => Promise<unknown>) => task(),
     on: () => () => {}
   } as unknown as DeviceRegistry
-  const avd = { list: async () => [], boot: async () => '', shutdown: async () => {} } as AvdController
+  const catalog = { list: async () => [], boot: async () => '', shutdown: async () => {} } as VirtualDeviceCatalog
 
-  return { registry, avd }
+  return { registry, catalog }
 }
 
 async function registeredToolNames(): Promise<string[]> {
-  const harness = await createToolHarness(fakeRegistryAndAvd())
+  const harness = await createToolHarness(fakeRegistryAndCatalog())
   const listed = await harness.client.listTools()
   await harness.close()
   return listed.tools.map((tool) => tool.name)
@@ -42,7 +42,7 @@ function mentionedToolNames(text: string): string[] {
 
 describe('agent guide consistency', () => {
   it('hands serverInstructions to every connecting client', async () => {
-    const harness = await createToolHarness(fakeRegistryAndAvd())
+    const harness = await createToolHarness(fakeRegistryAndCatalog())
 
     expect(harness.client.getInstructions()).toBe(serverInstructions())
 

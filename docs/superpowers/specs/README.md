@@ -30,6 +30,8 @@
 | [agent-guide](archive/2026-09-23-agent-guide.md) | implemented — Claude Code 연결 안내·프롬프트 템플릿을 README·앱 에이전트 탭·MCP instructions에 싣는다. 검증 결과 포함 |
 | [m2-live-streaming](archive/2026-09-23-m2-live-streaming.md) | implemented — 활성 기기 한 대 scrcpy 스트리밍, 에이전트 동작 오버레이, 최소한의 사람 입력. 검증 결과 포함 |
 | [m3-node-control-logs-events](archive/2026-09-28-m3-node-control-logs-events.md) | implemented — ref 기반 노드 제어와 정규화 좌표, logcat 실시간 로그 패널, 툴 호출·기기 이벤트 타임라인. 검증 결과 포함(M3-1·M3-2a·M3-2b 앱 확인 일부 미검증) |
+| [m4-ios-simulator](archive/2026-09-29-m4-ios-simulator.md) | implemented — iOS 시뮬레이터를 simctl + AXe로 Android와 거의 같은 수준으로 다룬다. M4-1 기반·M4-2 입력과 노드·M4-3 스트리밍. 검증 결과 포함(앱 설치 성공 경로와 앱 창 사람 확인 일부 미검증) |
+| [m5-multi-screen](archive/2026-10-06-m5-multi-screen.md) | implemented — Android·iOS 화면을 나란히 실시간으로 보인다. 화면 칸을 MCP 대상과 분리하고 JPEG 흐름 제어를 넣는다. 검증 결과 포함(사람 확인 일부 미검증) |
 <!-- archive:end -->
 
 ## 작성 가이드

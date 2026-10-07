@@ -43,13 +43,17 @@ function logHarness() {
 }
 
 const snapshot: AppSnapshot = {
-  sdk: { ok: true, sdkRoot: '/opt/sdk' },
+  platforms: {
+    android: { ok: true, location: '/opt/sdk', notes: [] },
+    ios: { ok: true, location: '/Applications/Xcode.app/Contents/Developer', notes: [] }
+  },
   server: { url: 'http://127.0.0.1:9321/mcp', port: 9321, token: 'token-value' },
-  avds: [{ name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554' }],
+  virtualDevices: [{ platform: 'android', id: 'Pixel_7_API_34', name: 'Pixel_7_API_34', running: true, serial: 'emulator-5554', osVersion: null }],
   devices: ['emulator-5554'],
   activeSerial: 'emulator-5554',
+  screens: [],
   timeline: [],
-  trackingFailure: null
+  trackingFailures: { android: null, ios: null }
 }
 
 describe('WorkArea', () => {

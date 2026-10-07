@@ -23,6 +23,7 @@ function node(partial: Partial<UiNode> = {}): UiNode {
     enabled: true,
     focused: false,
     scrollable: false,
+    editable: false,
     ...partial
   }
 }
@@ -131,17 +132,17 @@ describe('nodeRefs', () => {
     })
   })
 
-  it('ignores text on EditText so a typed field still resolves', async () => {
+  it('ignores text on an editable node regardless of className', async () => {
     const refs = createNodeRefs()
-    const field = node({ className: 'EditText', resourceId: 'email', text: '이메일' })
+    const field = node({ className: 'TextField', editable: true, resourceId: 'email', text: '이메일' })
     const gen = refs.remember(deviceA, dump([field]))
     deviceA.dumpUi.mockResolvedValueOnce(dump([{ ...field, text: 'a@b.c' }]))
     await expect(refs.resolve(deviceA, formatRef(gen, field.index))).resolves.toBeTruthy()
   })
 
-  it('treats changed text on a non-EditText node as a different node', async () => {
+  it('treats changed text on a non-editable node as a different node even if className is EditText', async () => {
     const refs = createNodeRefs()
-    const label = node({ className: 'TextView', resourceId: 'title', text: '환영합니다' })
+    const label = node({ className: 'EditText', editable: false, resourceId: 'title', text: '환영합니다' })
     const gen = refs.remember(deviceA, dump([label]))
     deviceA.dumpUi.mockResolvedValueOnce(dump([{ ...label, text: '안녕하세요' }]))
     await expect(refs.resolve(deviceA, formatRef(gen, label.index))).rejects.toMatchObject({

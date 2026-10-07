@@ -22,6 +22,11 @@ virtual-device-helper의 구조 결정을 기록한다. 기록하는 것은 **"�
 | [0011](0011-node-ref-revalidation.md) | 요소 지정은 스냅샷 ref와 실행 직전 재검증으로 한다 | proposed | 2026-09-28 | 화면이 바뀐 뒤 엉뚱한 곳을 누르는 틀린 성공을 막는다. 캐시 좌표·셀렉터 ref 기각 |
 | [0012](0012-normalized-tool-coordinates.md) | MCP 툴 좌표는 0..1 정규화 좌표로 한다 | proposed | 2026-09-28 | 스크린샷 축소·회전과 무관한 좌표. MCP 클라이언트 호환이 깨진다. 픽셀 유지·병행 기각 |
 | [0013](0013-log-transport-dedicated-port.md) | 로그 전송은 용도별 전용 MessagePort로 한다 | accepted | 2026-09-28 | 상태 이벤트와 대량 로그를 분리하고 흐름 제어 자리를 둔다. ADR-0010의 포트 규칙을 용도별로 넓힌다. `app:event`·폴링 기각 |
+| [0014](0014-ios-control-via-axe.md) | iOS 입력·노드·스트림은 AXe로 한다 | accepted | 2026-09-29 | simctl에 없는 입력·노드·스트림을 AXe로 채운다. 사용자 설치. idb·WebDriverAgent·번들 기각 |
+| [0015](0015-platform-difference-surface.md) | 플랫폼 차이는 platform 필드와 unsupported 에러로 드러낸다 | accepted | 2026-09-29 | serial 유지, platform 필드, 할 수 없는 동작은 unsupported. ADR-0005를 보강한다. capabilities() 조회·위층 분기 기각 |
+| [0016](0016-stream-codec-per-session.md) | 스트림 코덱은 세션마다 정한다 | accepted | 2026-09-29 | 세션이 codec(h264/jpeg)과 keys를 알리고 renderer가 경로를 고른다. main 트랜스코딩·스크린샷 폴링 기각 |
+| [0017](0017-screen-slots-separate-from-target.md) | 화면 칸을 MCP 대상과 분리하고 칸마다 세션 관리자를 둔다 | accepted | 2026-10-06 | 세션 기계·배정 규칙·MCP 대상을 따로 둔다. 칸 id는 불투명하고 배정 규칙만 플랫폼을 본다. 다중 세션 관리자·renderer 주도·플랫폼 고정 칸 기각 |
+| [0018](0018-jpeg-frame-ack-flow-control.md) | JPEG 프레임은 renderer 확인을 받은 뒤 다음 장을 보낸다 | accepted | 2026-10-06 | 최신 한 장 규칙을 보내는 쪽에서 건다. main에 남는 것은 칸마다 한 장. 고정 fps 상한·h264 동일 적용 기각 |
 <!-- index:end -->
 
 ## 언제 ADR을 쓰는가

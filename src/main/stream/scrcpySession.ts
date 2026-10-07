@@ -2,9 +2,10 @@ import { randomInt } from 'node:crypto'
 import { createConnection } from 'node:net'
 import type { AdbClient, AdbStream } from '../adb/adbClient'
 import { deviceError, isDeviceError, type DeviceError } from '../../shared/types/errors'
-import type { ControlIntent } from '../../shared/types/stream'
-import { createVideoStreamParser, serializeControl, type VideoPacket } from './scrcpyProtocol'
+import { DEVICE_KEYS, type ControlIntent } from '../../shared/types/stream'
+import { createVideoStreamParser, serializeControl } from './scrcpyProtocol'
 import { SCRCPY_SERVER_VERSION } from './scrcpyJar'
+import type { StreamSession, StreamSessionHandlers } from './streamSession'
 
 export const DEVICE_JAR_PATH = '/data/local/tmp/scrcpy-server.jar'
 /** 비디오 긴 변의 상한. 에이전트를 지켜보는 용도에는 이 정도로 충분하고 패킷이 작아진다. */
@@ -31,21 +32,6 @@ export const connectLoopback: ConnectFn = (port) =>
     socket.once('connect', () => resolve(socket))
     socket.once('error', reject)
   })
-
-export interface SessionHandlers {
-  onSession(width: number, height: number): void
-  onPacket(packet: VideoPacket): void
-  /** 예기치 않은 종료. close()로 닫은 경우에는 부르지 않는다. 최대 한 번. */
-  onEnded(error: DeviceError): void
-}
-
-export interface ScrcpySession {
-  readonly serial: string
-  /** 비디오·control 소켓이 붙고 첫 session meta를 받으면 끝난다. 실패하면 연 자원을 정리하고 던진다. */
-  start(): Promise<void>
-  sendControl(intent: ControlIntent): void
-  close(): Promise<void>
-}
 
 export interface ScrcpySessionDeps {
   serial: string
@@ -141,7 +127,7 @@ function withRealDeadline<T>(promise: Promise<T>, ms: number, onTimeout: () => D
   })
 }
 
-export function createScrcpySession(deps: ScrcpySessionDeps, handlers: SessionHandlers): ScrcpySession {
+export function createScrcpySession(deps: ScrcpySessionDeps, handlers: StreamSessionHandlers): StreamSession {
   const { serial, adb, jarPath, connect } = deps
   const randomScid = deps.randomScid ?? (() => randomInt(0, 0x7fffffff))
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
@@ -312,7 +298,7 @@ export function createScrcpySession(deps: ScrcpySessionDeps, handlers: SessionHa
       const parser = createVideoStreamParser({
         onDeviceName: () => {},
         onSession: (width, height) => {
-          handlers.onSession(width, height)
+          handlers.onSession({ width, height, codec: 'h264', keys: [...DEVICE_KEYS] })
           resolveReady()
         },
         onPacket: (packet) => handlers.onPacket(packet),

@@ -13,7 +13,7 @@ function harness() {
   }
 
   const state = {
-    snapshot: vi.fn(async () => ({ sdk: { ok: true, sdkRoot: '/opt/sdk' } })),
+    snapshot: vi.fn(async () => ({ platforms: { android: { ok: true, location: '/opt/sdk', notes: [] } } })),
     recordToolCall: vi.fn(),
     onEvent: vi.fn((listener: (event: unknown) => void) => {
       listeners.push(listener)
@@ -26,7 +26,7 @@ function harness() {
 
   const actions: BridgeActions = {
     selectDevice: vi.fn(),
-    bootAvd: vi.fn(async () => {}),
+    bootVirtualDevice: vi.fn(async () => {}),
     shutdownDevice: vi.fn(async () => {}),
     captureScreenshot: vi.fn(async () => ({ base64: 'QUJD', width: 1, height: 1 })),
     startStream: vi.fn(async () => {}),
@@ -50,7 +50,7 @@ describe('registerIpcBridge', () => {
       [
         IPC_CHANNELS.getSnapshot,
         IPC_CHANNELS.selectDevice,
-        IPC_CHANNELS.bootAvd,
+        IPC_CHANNELS.bootVirtualDevice,
         IPC_CHANNELS.shutdownDevice,
         IPC_CHANNELS.captureScreenshot,
         IPC_CHANNELS.startStream,
@@ -71,11 +71,11 @@ describe('registerIpcBridge', () => {
 
   it('returns a serialisable error payload instead of throwing across the boundary', async () => {
     const h = harness()
-    ;(h.actions.bootAvd as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+    ;(h.actions.bootVirtualDevice as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
       deviceError('command_failed', '그런 AVD가 없다', 'device_list로 확인해라')
     )
 
-    const result = await h.handlers.get(IPC_CHANNELS.bootAvd)?.({}, 'Nope')
+    const result = await h.handlers.get(IPC_CHANNELS.bootVirtualDevice)?.({}, 'Nope')
 
     expect(result).toEqual({
       ok: false,
@@ -105,9 +105,9 @@ describe('registerIpcBridge', () => {
 
   it('stringifies a thrown non-Error value into the generic payload', async () => {
     const h = harness()
-    ;(h.actions.bootAvd as ReturnType<typeof vi.fn>).mockRejectedValueOnce('문자열 실패')
+    ;(h.actions.bootVirtualDevice as ReturnType<typeof vi.fn>).mockRejectedValueOnce('문자열 실패')
 
-    const result = await h.handlers.get(IPC_CHANNELS.bootAvd)?.({}, 'Pixel_7_API_34')
+    const result = await h.handlers.get(IPC_CHANNELS.bootVirtualDevice)?.({}, 'Pixel_7_API_34')
 
     expect(result).toEqual({
       ok: false,
@@ -115,23 +115,19 @@ describe('registerIpcBridge', () => {
     })
   })
 
-  it('routes startStream with a serial and rejects a missing one', async () => {
+  it.each([
+    ['startStream', IPC_CHANNELS.startStream],
+    ['stopStream', IPC_CHANNELS.stopStream]
+  ] as const)('passes %s a fresh { slotId, epoch } object', async (action, channel) => {
     const h = harness()
-    const handler = h.handlers.get(IPC_CHANNELS.startStream)!
+    const sent = { slotId: 'a', epoch: 1, extra: 'drop me' }
 
-    await expect(handler({}, 'emulator-5554')).resolves.toEqual({ ok: true, value: undefined })
-    expect(h.actions.startStream).toHaveBeenCalledWith('emulator-5554')
+    await expect(h.handlers.get(channel)!({}, sent)).resolves.toEqual({ ok: true, value: undefined })
 
-    const rejected = (await handler({}, 42)) as { ok: boolean }
-    expect(rejected.ok).toBe(false)
-  })
-
-  it('routes stopStream without arguments', async () => {
-    const h = harness()
-
-    await h.handlers.get(IPC_CHANNELS.stopStream)!({})
-
-    expect(h.actions.stopStream).toHaveBeenCalledTimes(1)
+    const passed = vi.mocked(h.actions[action]).mock.calls[0]?.[0]
+    expect(passed).toEqual({ slotId: 'a', epoch: 1 })
+    expect(passed).not.toBe(sent)
+    expect(Object.keys(passed as object)).toEqual(['slotId', 'epoch'])
   })
 
   it('opens logs for a known serial', async () => {
@@ -176,7 +172,7 @@ describe('registerIpcBridge', () => {
 describe('registerIpcBridge argument checks', () => {
   const cases = [
     ['selectDevice', IPC_CHANNELS.selectDevice],
-    ['bootAvd', IPC_CHANNELS.bootAvd],
+    ['bootVirtualDevice', IPC_CHANNELS.bootVirtualDevice],
     ['shutdownDevice', IPC_CHANNELS.shutdownDevice],
     ['captureScreenshot', IPC_CHANNELS.captureScreenshot]
   ] as const
@@ -198,5 +194,52 @@ describe('registerIpcBridge argument checks', () => {
         expect(h.actions[action]).not.toHaveBeenCalled()
       })
     }
+  }
+})
+
+describe('registerIpcBridge slot ref checks', () => {
+  const channels = [
+    ['startStream', IPC_CHANNELS.startStream],
+    ['stopStream', IPC_CHANNELS.stopStream]
+  ] as const
+  const bads: unknown[] = [
+    undefined,
+    null,
+    'A1',
+    'a',
+    { slotId: '', epoch: 1 },
+    { slotId: 'a', epoch: -1 },
+    { slotId: 'a', epoch: 1.5 },
+    { slotId: 'a', epoch: '1' },
+    { slotId: 7, epoch: 1 },
+    { slotId: 'a' }
+  ]
+
+  for (const [action, channel] of channels) {
+    for (const bad of bads) {
+      it(`rejects ${JSON.stringify(bad) ?? 'undefined'} for ${action} without calling the action`, async () => {
+        const h = harness()
+
+        const result = (await h.handlers.get(channel)?.({}, bad)) as {
+          ok: boolean
+          error?: { kind: string; message: string; hint: string }
+        }
+
+        expect(result.ok).toBe(false)
+        expect(result.error?.kind).toBe('command_failed')
+        expect(result.error?.message).toBe('칸 지정이 올바르지 않다')
+        expect(result.error?.hint).toEqual(expect.any(String))
+        expect(h.actions[action]).not.toHaveBeenCalled()
+      })
+    }
+
+    it(`accepts epoch 0 for ${action}`, async () => {
+      const h = harness()
+
+      const result = (await h.handlers.get(channel)?.({}, { slotId: 'b', epoch: 0 })) as { ok: boolean }
+
+      expect(result.ok).toBe(true)
+      expect(h.actions[action]).toHaveBeenCalledWith({ slotId: 'b', epoch: 0 })
+    })
   }
 })

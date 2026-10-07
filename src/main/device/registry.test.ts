@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Device } from '../../shared/types/device'
+import type { Device, Platform } from '../../shared/types/device'
 import type { TrackFailure } from '../adb/trackDevices'
 import { createDeviceRegistry, type RegistryEvent } from './registry'
 
 function makeRegistry() {
-  let notify: ((serial: string, connected: boolean) => void) | undefined
-  let notifyFailure: ((failure: TrackFailure) => void) | undefined
+  let notify: ((serial: string, connected: boolean, platform: Platform) => void) | undefined
+  let notifyFailure: ((platform: Platform, failure: TrackFailure) => void) | undefined
   let stopped = false
+  const created: Array<[string, Platform]> = []
 
   const registry = createDeviceRegistry({
     track: (onChange, onFailure) => {
@@ -16,19 +17,36 @@ function makeRegistry() {
         stopped = true
       }
     },
-    createDevice: (serial) => ({ serial }) as Device
+    createDevice: (serial, platform) => {
+      created.push([serial, platform])
+      return { serial, platform } as Device
+    }
   })
 
   return {
     registry,
-    connect: (serial: string) => notify?.(serial, true),
-    disconnect: (serial: string) => notify?.(serial, false),
-    fail: (failure: TrackFailure) => notifyFailure?.(failure),
+    created,
+    connect: (serial: string, platform: Platform = 'android') => notify?.(serial, true, platform),
+    disconnect: (serial: string, platform: Platform = 'android') => notify?.(serial, false, platform),
+    fail: (failure: TrackFailure, platform: Platform = 'android') => notifyFailure?.(platform, failure),
     stopped: () => stopped
   }
 }
 
 describe('DeviceRegistry membership', () => {
+  it('passes the platform reported by track to createDevice', () => {
+    const harness = makeRegistry()
+    harness.registry.start()
+
+    harness.connect('emulator-5554', 'android')
+    harness.connect('UDID-1', 'ios')
+
+    expect(harness.created).toEqual([
+      ['emulator-5554', 'android'],
+      ['UDID-1', 'ios']
+    ])
+  })
+
   it('lists a device once it connects', () => {
     const harness = makeRegistry()
     harness.registry.start()
@@ -357,7 +375,19 @@ describe('DeviceRegistry tracking failure', () => {
     const failure: TrackFailure = { error: null, exitCode: 1 }
     harness.fail(failure)
 
-    expect(events).toEqual([{ type: 'tracking_failed', failure }])
+    expect(events).toEqual([{ type: 'tracking_failed', platform: 'android', failure }])
+  })
+
+  it('어느 플랫폼의 추적이 죽었는지 이벤트에 싣는다', () => {
+    const harness = makeRegistry()
+    const events: RegistryEvent[] = []
+    harness.registry.on((event) => events.push(event))
+    harness.registry.start()
+
+    const failure: TrackFailure = { error: null, exitCode: null }
+    harness.fail(failure, 'ios')
+
+    expect(events).toEqual([{ type: 'tracking_failed', platform: 'ios', failure }])
   })
 
   it('keeps the existing device list intact when tracking fails', () => {
@@ -368,5 +398,88 @@ describe('DeviceRegistry tracking failure', () => {
     harness.fail({ error: null, exitCode: 1 })
 
     expect(harness.registry.serials()).toEqual(['emulator-5554'])
+  })
+})
+
+// 부팅 직후 기기는 추적(특히 simctl 폴링)이 아직 못 봤을 수 있다. waitFor는 그 틈을 기다린다.
+describe('DeviceRegistry.waitFor', () => {
+  it('resolves immediately with a device that is already known', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = makeRegistry()
+      harness.registry.start()
+      harness.connect('UDID-1', 'ios')
+
+      await expect(harness.registry.waitFor('UDID-1', 5000)).resolves.toMatchObject({ serial: 'UDID-1' })
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('resolves once the serial connects later', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = makeRegistry()
+      harness.registry.start()
+
+      const waiting = harness.registry.waitFor('UDID-1', 5000)
+      harness.connect('OTHER', 'ios')
+      await vi.advanceTimersByTimeAsync(1000)
+      harness.connect('UDID-1', 'ios')
+
+      await expect(waiting).resolves.toMatchObject({ serial: 'UDID-1', platform: 'ios' })
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('rejects with device_unresponsive when the serial never connects in time', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = makeRegistry()
+      harness.registry.start()
+
+      const waiting = harness.registry.waitFor('UDID-1', 5000)
+      const settled = waiting.catch((error: unknown) => error)
+      await vi.advanceTimersByTimeAsync(5000)
+
+      const error = (await settled) as { toolError: { kind: string; details: unknown } }
+      expect(error.toolError.kind).toBe('device_unresponsive')
+      expect(error.toolError.details).toEqual({ serial: 'UDID-1', timeoutMs: 5000 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('removes its listener and timer on every path', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = makeRegistry()
+      harness.registry.start()
+      const unsubscribes: Array<ReturnType<typeof vi.fn>> = []
+      const originalOn = harness.registry.on.bind(harness.registry)
+      vi.spyOn(harness.registry, 'on').mockImplementation((listener) => {
+        const unsubscribe = vi.fn(originalOn(listener))
+        unsubscribes.push(unsubscribe)
+        return unsubscribe
+      })
+
+      // 나중에 연결
+      const connected = harness.registry.waitFor('UDID-1', 5000)
+      harness.connect('UDID-1', 'ios')
+      await connected
+      // 시간 초과
+      const timedOut = harness.registry.waitFor('UDID-2', 5000).catch(() => undefined)
+      await vi.advanceTimersByTimeAsync(5000)
+      await timedOut
+
+      expect(unsubscribes).toHaveLength(2)
+      for (const unsubscribe of unsubscribes) expect(unsubscribe).toHaveBeenCalledTimes(1)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

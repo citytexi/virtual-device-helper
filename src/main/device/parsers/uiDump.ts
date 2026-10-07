@@ -2,7 +2,7 @@ import { XMLParser } from 'fast-xml-parser'
 import type { DisplayFrame, NormalizedRect, UiDump, UiNode } from '../../../shared/types/device'
 import { deviceError } from '../../../shared/types/errors'
 
-interface Rect {
+export interface Rect {
   left: number
   top: number
   right: number
@@ -65,7 +65,7 @@ function screenRect(roots: RawNode | RawNode[] | undefined): Rect | null {
   return rect
 }
 
-function emptyToNull(value: string | undefined): string | null {
+export function emptyToNull(value: string | undefined): string | null {
   const trimmed = (value ?? '').trim()
   return trimmed === '' ? null : trimmed
 }
@@ -99,7 +99,7 @@ function round4(value: number): number {
  * 픽셀 사각형을 `frame`(디스플레이 전체 크기) 기준 0..1 사각형으로 바꾼다. 먼저
  * `[0, frame]`에 clamp해서 화면을 넘어가는 변이 1을 넘지 않게 한다.
  */
-function normalize(bounds: Rect, frame: DisplayFrame): NormalizedRect {
+export function normalize(bounds: Rect, frame: DisplayFrame): NormalizedRect {
   const left = clamp(bounds.left, 0, frame.width)
   const right = clamp(bounds.right, 0, frame.width)
   const top = clamp(bounds.top, 0, frame.height)
@@ -111,6 +111,19 @@ function normalize(bounds: Rect, frame: DisplayFrame): NormalizedRect {
     w: round4((right - left) / frame.width),
     h: round4((bottom - top) / frame.height)
   }
+}
+
+/** 사각형 중심이 화면 안인가. 중심이 밖이면 탭할 수 없다. 화면 기준이 없으면 판정을 건너뛴다. */
+export function centerOnScreen(bounds: Rect, screen: Rect | null): boolean {
+  if (!screen) return true
+  const cx = (bounds.left + bounds.right) / 2
+  const cy = (bounds.top + bounds.bottom) / 2
+  return cx >= screen.left && cx <= screen.right && cy >= screen.top && cy <= screen.bottom
+}
+
+/** 이름도 없고 누를 수도 스크롤할 수도 없는 노드는 레이아웃 컨테이너다. 에이전트가 쓸 일이 없다. */
+export function isMeaningful(named: unknown[], clickable: boolean, scrollable: boolean): boolean {
+  return named.some(Boolean) || clickable || scrollable
 }
 
 const ROTATION_HINT = '화면 전환이나 애니메이션이 끝난 뒤 다시 불러라'
@@ -155,21 +168,14 @@ function collect(
   const bounds = parseBounds(node.bounds)
 
   if (bounds && bounds.right - bounds.left > 0 && bounds.bottom - bounds.top > 0) {
-    const cx = (bounds.left + bounds.right) / 2
-    const cy = (bounds.top + bounds.bottom) / 2
-    // 중심이 화면 밖이면 탭할 수 없다.
-    const onScreen = !screen || (cx >= screen.left && cx <= screen.right && cy >= screen.top && cy <= screen.bottom)
-
-    if (onScreen) {
+    if (centerOnScreen(bounds, screen)) {
       const text = emptyToNull(node.text)
       const contentDesc = emptyToNull(node['content-desc'])
       const resourceId = resourceIdTail(node['resource-id'])
       const clickable = toBool(node.clickable)
       const scrollable = toBool(node.scrollable)
 
-      // 이름도 없고 누를 수도 스크롤할 수도 없는 노드는 레이아웃 컨테이너다.
-      // 에이전트가 쓸 일이 없다.
-      if (text || contentDesc || resourceId || clickable || scrollable) {
+      if (isMeaningful([text, contentDesc, resourceId], clickable, scrollable)) {
         keptIndex = into.length
         into.push({
           index: keptIndex,
@@ -182,7 +188,8 @@ function collect(
           clickable,
           enabled: toBool(node.enabled),
           focused: toBool(node.focused),
-          scrollable
+          scrollable,
+          editable: shortClassName(node.class).endsWith('EditText')
         })
       }
     }

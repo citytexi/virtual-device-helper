@@ -15,3 +15,6 @@ export const MAX_LOG_LIMIT = 200
  * 같은 값으로 오래된 항목부터 버린다.
  */
 export const TIMELINE_LIMIT = 1000
+
+/** 한 번에 보이는 화면 칸 수의 상한. 늘릴 때 함께 볼 곳은 M5 스펙 "화면 칸 조정자" 절에 있다. */
+export const MAX_SCREEN_SLOTS = 2

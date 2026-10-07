@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { isDeviceError } from '../../../shared/types/errors'
 import type { Device } from '../../../shared/types/device'
 import { runTool } from '../runTool'
 import type { ToolContext } from '../toolContext'
@@ -9,7 +10,7 @@ const serial = z
   .optional()
   .describe('대상 기기의 serial. 생략하면 활성 기기를 쓴다. 기기가 여럿인데 생략하면 에러가 난다.')
 
-const pkg = z.string().describe('안드로이드 패키지명. 예: com.example.app')
+const pkg = z.string().describe('패키지명 또는 bundle id. Android는 com.example.app, iOS는 com.example.App 형식의 bundle id')
 
 export const SETTLE_POLL_MS = 400
 export const SETTLE_DEFAULT_TIMEOUT_MS = 8_000
@@ -52,9 +53,9 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
     'app_install',
     {
       description:
-        'APK를 기기에 설치하고 설치된 패키지명을 돌려준다. 호스트의 절대 경로를 준다.',
+        '앱을 기기에 설치하고 패키지명(iOS는 bundle id)을 돌려준다. Android는 .apk 파일, iOS는 .app 디렉토리의 호스트 절대 경로를 준다.',
       inputSchema: {
-        apkPath: z.string().describe('호스트에 있는 .apk 파일의 절대 경로'),
+        appPath: z.string().describe('호스트에 있는 .apk 파일(Android) 또는 .app 디렉토리(iOS)의 절대 경로'),
         reinstall: z.boolean().optional().describe('이미 설치돼 있으면 데이터를 유지한 채 덮어쓴다'),
         serial
       }
@@ -69,7 +70,7 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
           const device = context.registry.resolve(args.serial)
           target = device
           const installed = await context.registry.run(device.serial, () =>
-            device.install(args.apkPath, { reinstall: args.reinstall })
+            device.install(args.appPath, { reinstall: args.reinstall })
           )
           return { pkg: installed }
         },
@@ -106,10 +107,10 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
     'app_launch',
     {
       description:
-        '앱을 실행한다. activity를 생략하면 런처 진입점을 찾아 실행한다. 설치 직후에는 보통 생략한다.',
+        '앱을 실행한다. activity를 생략하면 런처 진입점을 찾아 실행한다. 설치 직후에는 보통 생략한다. iOS는 activity 개념이 없어 넘기면 unsupported 에러가 난다.',
       inputSchema: {
         pkg,
-        activity: z.string().optional().describe('액티비티 이름. 예: .MainActivity'),
+        activity: z.string().optional().describe('액티비티 이름(Android 전용). 예: .MainActivity'),
         serial
       }
     },
@@ -181,10 +182,10 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
     'app_grant_permission',
     {
       description:
-        '런타임 권한을 부여한다. 권한 요청 다이얼로그를 눌러 넘기는 대신 미리 줄 때 쓴다.',
+        '런타임 권한을 부여한다. 권한 요청 다이얼로그를 눌러 넘기는 대신 미리 줄 때 쓴다. iOS는 simctl privacy 서비스 이름(photos, camera, location 등)을 쓴다.',
       inputSchema: {
         pkg,
-        permission: z.string().describe('권한 이름. 예: android.permission.CAMERA'),
+        permission: z.string().describe('권한 이름. Android는 android.permission.CAMERA, iOS는 camera 같은 simctl privacy 서비스 이름'),
         serial
       }
     },
@@ -232,14 +233,21 @@ export function registerAppTools(server: McpServer, context: ToolContext): void 
             await device.clearData(args.pkg)
             await device.launch(args.pkg)
 
-            const settle = await waitForSettle(
-              () => device.dumpUi().then((dump) => dump.nodes),
-              SETTLE_DEFAULT_TIMEOUT_MS,
-              (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-              () => Date.now()
-            )
-
-            return { pkg: args.pkg, ...settle }
+            try {
+              const settle = await waitForSettle(
+                () => device.dumpUi().then((dump) => dump.nodes),
+                SETTLE_DEFAULT_TIMEOUT_MS,
+                (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+                () => Date.now()
+              )
+              return { pkg: args.pkg, ...settle }
+            } catch (error) {
+              // 화면 안정 확인을 할 수 없는 기기는 실패로 보지 않는다. 플랫폼이 아니라 에러 kind로 판단한다.
+              if (isDeviceError(error) && error.toolError.kind === 'unsupported') {
+                return { pkg: args.pkg, settled: false, nodeCount: 0, settleSkipped: 'unsupported' }
+              }
+              throw error
+            }
           })
         },
         { serial: () => target?.serial }

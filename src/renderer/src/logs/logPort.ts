@@ -9,7 +9,7 @@ export interface MessageTarget {
 
 /**
  * preload가 window.postMessage로 넘긴 로그 포트를 받는다. MessagePort는 contextBridge를
- * 넘지 못해서 이 경로를 쓴다(ADR-0010, streamPort.ts#onStreamPort와 같다). 같은 창에서 온 것,
+ * 넘지 못해서 이 경로를 쓴다(ADR-0010, streamPort.ts의 `createStreamPortRouter`와 같다). 같은 창에서 온 것,
  * 채널이 맞는 것, 포트가 정확히 하나인 것만 받는다.
  */
 export function onLogPort(

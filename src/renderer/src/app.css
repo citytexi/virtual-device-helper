@@ -299,6 +299,8 @@ code {
 .pane-screen {
   grid-area: screen;
   display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   overflow: hidden;
 }
 
@@ -431,7 +433,7 @@ code {
 
 .device-row {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-1) var(--space-2);
   padding: var(--space-2) var(--space-3);
@@ -470,7 +472,7 @@ code {
   text-decoration: underline;
 }
 
-/* 1행: 점 · 이름 · 부팅/종료. 2행: 대상 배지 · 일련번호. */
+/* 1행: 점 · 이름 · 부팅/종료. 2행: 배지 묶음. 3행: 일련번호. */
 .device-row .device-action {
   grid-column: 3;
   grid-row: 1;
@@ -478,22 +480,21 @@ code {
   padding: 0 10px;
 }
 
-.device-row .badge,
-.device-row .device-serial {
+.device-badges {
   grid-row: 2;
-}
-
-.device-row .badge {
-  grid-column: 2;
-  justify-self: start;
-}
-
-.device-row .badge + .device-serial {
-  grid-column: 3;
+  grid-column: 2 / -1;
+  display: flex;
+  gap: var(--space-1);
+  min-width: 0;
 }
 
 .device-row .device-serial {
-  grid-column: 2 / 4;
+  grid-row: 3;
+  grid-column: 2 / -1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-muted);
 }
 
@@ -504,6 +505,7 @@ code {
 /* ── 기기 화면 ────────────────────────────────────────── */
 
 .device-screen {
+  border-radius: var(--radius-sm);
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -516,18 +518,98 @@ code {
   margin: auto;
 }
 
-.screen-toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
+/* 화면 묶음. 칸 수만큼 같은 폭의 열을 나눈다. 화면이 하나면 한 열이 전부다. */
+.screens {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--screen-count), minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+  gap: var(--space-2);
 }
 
-.screen-toolbar .device-serial {
+/* ScreenBoundary가 감싸는 칸. 그 안의 .device-screen이 칸을 채운다. */
+.screen-boundary {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.screen-error {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+}
+
+.screen-header {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  row-gap: var(--space-1);
+  padding-bottom: var(--space-2);
+  border-bottom: 2px solid transparent;
   color: var(--text-muted);
 }
 
-.screen-toolbar .btn {
+/* 이름·serial·뱃지. serial만 줄어들고 말줄임표로 잘린다. */
+.screen-ident {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 0;
+  min-width: 7rem;
+}
+
+.screen-ident > * {
+  flex: none;
+  white-space: nowrap;
+}
+
+.screen-ident > .screen-serial {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 좁으면 버튼 묶음이 통째로 다음 줄로 내려간다. */
+.screen-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex: none;
   margin-left: auto;
+}
+
+.screen-actions .btn {
+  height: 26px;
+  padding: 0 10px;
+}
+
+.screen-label {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.device-screen:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.device-screen:focus-within > .screen-header {
+  border-bottom-color: var(--focus);
+}
+
+.device-screen:focus-within .screen-label {
+  color: var(--accent);
 }
 
 .screen-frame {
@@ -606,8 +688,10 @@ code {
 
 .device-keys {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .device-key {

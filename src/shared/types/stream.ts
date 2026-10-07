@@ -67,14 +67,22 @@ export type SessionStatus =
 /** main → renderer 포트 메시지 */
 export type StreamDown =
   | { type: 'status'; status: SessionStatus }
-  | { type: 'session'; width: number; height: number }
+  | { type: 'session'; width: number; height: number; codec: 'h264' | 'jpeg'; keys: DeviceKey[] }
   | { type: 'packet'; config: boolean; key: boolean; ptsUs: number | null; data: Uint8Array }
+  /** jpeg 세션의 화면 한 장. 이미지 한 장이 메시지 하나다. */
+  | { type: 'frame'; data: Uint8Array }
 
-/** renderer → main 포트 메시지 */
-export type StreamUp = ControlIntent
+/** renderer → main 포트 메시지. `frame_ack`는 jpeg 프레임 한 장을 처리했다는 확인이다. */
+export type StreamUp = ControlIntent | { type: 'frame_ack' }
 
-/** 포트와 함께 오는 꼬리표. renderer는 자기 serial과 같은 포트만 쓴다. */
-export interface StreamPortMeta {
+/** 관리자가 내놓는 꼬리표. 관리자는 칸을 모른다. */
+export interface SessionPortMeta {
   serial: string
   sessionId: string
+}
+
+/** 포트와 함께 renderer로 가는 꼬리표. 칸과 세대는 화면 칸 조정자가 붙인다. */
+export interface StreamPortMeta extends SessionPortMeta {
+  slotId: string
+  epoch: number
 }

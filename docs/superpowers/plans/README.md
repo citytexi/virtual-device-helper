@@ -36,6 +36,12 @@
 | [m3-2a-log-core](archive/2026-09-28-m3-2a-log-core.md) | done — M3-2a 구현 완료. logcat tail·버퍼·pid 추적·시계 보정, 로그 포트, log_read의 package. PR #19로 develop에 머지. 앱 확인 일부 미검증(스펙 "M3-2a 검증 결과") |
 | [m3-2b-log-panel](archive/2026-09-28-m3-2b-log-panel.md) | done — M3-2b 구현 완료. useLogStream, 필터·가상 스크롤, 로그 탭 UI. PR #19로 develop에 머지. 앱 확인 일부 미검증(스펙 "M3-2b 검증 결과") |
 | [m3-3-event-timeline](archive/2026-09-28-m3-3-event-timeline.md) | done — M3-3 구현 완료. 툴 호출 상세·가림, 기기·스트림·로그 이벤트 타임라인, 활동 탭, 로그 점프. PR #20으로 develop에 머지. 앱 확인 완료 |
+| [m4-1-ios-foundation](archive/2026-09-29-m4-1-ios-foundation.md) | done — M4-1 구현 완료. simctl·IosDevice·시뮬레이터 목록과 추적·iOS 로그·플랫폼별 조립. PR #24로 develop에 머지. 앱 설치 성공 경로와 앱 창 확인 일부 미검증(스펙 "M4-1 검증 결과"). 단계 체크박스는 채우지 않았다 |
+| [m4-2-ios-input-nodes](archive/2026-09-30-m4-2-ios-input-nodes.md) | done — M4-2 구현 완료. axeClient·describe-ui 파서·IosDevice 입력과 노드·계약 테스트. PR #25로 develop에 머지. 앱 확인 일부 미검증(스펙 "M4-2 검증 결과") |
+| [m4-3-ios-streaming](archive/2026-09-30-m4-3-ios-streaming.md) | done — M4-3 구현 완료. StreamSession·MJPEG 분할·AxeStreamSession·axeControl·renderer JPEG 경로. PR #26으로 develop에 머지. 가로 회전은 따라가지 않고 터치를 막는다. 앱 창 사람 확인 일부 미검증(스펙 "M4-3 검증 결과")인 채로 닫는다 |
+| [m5-1-device-card-badges](archive/2026-10-06-m5-1-device-card-badges.md) | done — M5-1 구현 완료. 기기 카드의 배지를 한 묶음으로 놓고 일련번호를 버튼 열에서 뺀다. PR #27로 develop에 머지. 단계 체크박스는 채우지 않았다 |
+| [m5-2-jpeg-frame-ack](archive/2026-10-06-m5-2-jpeg-frame-ack.md) | done — M5-2 구현 완료. JPEG 프레임을 renderer 확인 뒤에 보내고 기다리는 동안 최신 한 장만 든다. PR #28로 develop에 머지. 검증 결과는 스펙 "M5-2 검증 결과" |
+| [m5-3-screen-slots](archive/2026-10-06-m5-3-screen-slots.md) | done — M5-3 구현 완료. 화면 칸 조정자, 칸·세대 IPC, renderer 포트 라우터, 여러 화면. PR #29로 develop에 머지. 사람 확인 일부 미검증(스펙 "M5-3 검증 결과") |
 <!-- archive:end -->
 
 ## 작성 가이드

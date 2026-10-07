@@ -29,7 +29,7 @@ describe('AndroidDevice.install', () => {
     const device = makeDevice(adb, () => false)
 
     await expect(device.install('/tmp/missing.apk')).rejects.toMatchObject({
-      toolError: { kind: 'apk_path_invalid' }
+      toolError: { kind: 'app_path_invalid' }
     })
   })
 
@@ -38,7 +38,7 @@ describe('AndroidDevice.install', () => {
     const device = makeDevice(adb)
 
     await expect(device.install('/tmp/app.zip')).rejects.toMatchObject({
-      toolError: { kind: 'apk_path_invalid' }
+      toolError: { kind: 'app_path_invalid' }
     })
   })
 
