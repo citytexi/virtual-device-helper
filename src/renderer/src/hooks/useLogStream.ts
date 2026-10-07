@@ -63,7 +63,7 @@ function appendRows(buf: RowBuffer, capacity: number, next: LogRow[]): void {
 
 /**
  * serial의 로그 포트를 받아 버퍼에 쌓는다. 포트는 main이 열고(openLogs), 실제 포트는
- * onLogPort로 따로 온다 — streamPort.ts#onStreamPort/useScrcpyStream.ts와 같은 얼개다.
+ * onLogPort로 따로 온다 — streamPort.ts의 `createStreamPortRouter`/useScrcpyStream.ts와 같은 얼개다.
  *
  * 활성 기기가 바뀌면(serial 변경) 옛 포트를 닫고 새로 연다. 기기에서 null로 바뀌면(기기 끊김으로
  * registry가 active를 비움) 포트만 닫고 버퍼는 남긴 채 status를 stopped로 둔다. 같은 serial이라도 새 포트가

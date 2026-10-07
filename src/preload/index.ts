@@ -23,8 +23,8 @@ const api: RendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.shutdownDevice, serial) as Promise<Outcome<void>>,
   captureScreenshot: (serial) =>
     ipcRenderer.invoke(IPC_CHANNELS.captureScreenshot, serial) as Promise<Outcome<ScreenshotResult>>,
-  startStream: (serial) => ipcRenderer.invoke(IPC_CHANNELS.startStream, serial) as Promise<Outcome<void>>,
-  stopStream: () => ipcRenderer.invoke(IPC_CHANNELS.stopStream) as Promise<Outcome<void>>,
+  startStream: (ref) => ipcRenderer.invoke(IPC_CHANNELS.startStream, ref) as Promise<Outcome<void>>,
+  stopStream: (ref) => ipcRenderer.invoke(IPC_CHANNELS.stopStream, ref) as Promise<Outcome<void>>,
   openLogs: (serial) => ipcRenderer.invoke(IPC_CHANNELS.openLogs, serial) as Promise<Outcome<void>>,
   closeLogs: () => ipcRenderer.invoke(IPC_CHANNELS.closeLogs) as Promise<Outcome<void>>,
   onEvent: (callback) => {
@@ -42,7 +42,17 @@ const api: RendererApi = {
  */
 ipcRenderer.on(IPC_CHANNELS.streamPort, (event: IpcRendererEvent, meta: StreamPortMeta) => {
   if (event.ports.length !== 1) return
-  window.postMessage({ channel: IPC_CHANNELS.streamPort, serial: meta.serial, sessionId: meta.sessionId }, '*', [...event.ports])
+  window.postMessage(
+    {
+      channel: IPC_CHANNELS.streamPort,
+      serial: meta.serial,
+      sessionId: meta.sessionId,
+      slotId: meta.slotId,
+      epoch: meta.epoch
+    },
+    '*',
+    [...event.ports]
+  )
 })
 
 /**

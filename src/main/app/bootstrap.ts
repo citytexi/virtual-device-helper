@@ -7,10 +7,13 @@ import type { McpServerHandle, StartMcpHttpServerOpts } from '../mcp/httpServer'
 import { AXE_HINT } from '../ios/axeClient'
 import type { IosToolsResult } from '../ios/locateIosTools'
 import type { LocateSdkResult, SdkPaths } from '../sdk/locateSdk'
+import { createScreenSlots, type PlaceFn, type ScreenSlots } from '../stream/screenSlots'
 import type { StreamLifecycle, StreamManager } from '../stream/streamManager'
+import type { Platform } from '../../shared/types/device'
 import { deviceError } from '../../shared/types/errors'
 import type { DeviceTimelineEvent, PlatformStatuses } from '../../shared/types/ipc'
-import { createAppState, type AppState } from './appState'
+import type { SessionPortMeta, StreamPortMeta } from '../../shared/types/stream'
+import { createAppState, PLATFORM_LABELS, type AppState } from './appState'
 import { registerIpcBridge, type BridgeActions, type SendToRenderer } from './ipcBridge'
 
 export interface DeviceStack {
@@ -21,6 +24,8 @@ export interface DeviceStack {
 /** 스트림 매니저가 상태 변화를 앱 상태로 알리는 통로. 팩토리가 매니저 deps로 그대로 넘긴다. */
 export interface StreamManagerHooks {
   onState(serial: string, state: StreamLifecycle): void
+  /** 관리자가 내놓는 포트. 칸과 세대는 조정자가 붙이므로 관리자는 칸을 모른다. */
+  postPort(meta: SessionPortMeta, remote: unknown): void
 }
 
 /** 로그 매니저가 tail 상태 변화를 앱 상태로 알리는 통로. 팩토리가 매니저 deps로 그대로 넘긴다. */
@@ -46,6 +51,8 @@ export interface BootstrapDeps {
   createStreamManager: (registry: DeviceRegistry, paths: SdkPaths | null, hooks: StreamManagerHooks) => StreamManager
   /** 기기별 로그 tail·버퍼·로그 포트를 관리한다. 실제 adb·simctl·Electron 포트에 닿으므로 테스트에서 가짜로 바꾼다. paths는 Android SDK가 없으면 null. */
   createLogManager: (registry: DeviceRegistry, paths: SdkPaths | null, hooks: LogManagerHooks) => LogManager
+  /** 칸과 세대가 붙은 스트림 포트를 renderer로 보낸다. meta가 null이면 그 칸에 더는 없는 기기의 포트이니 닫는다. */
+  postStreamPort: (meta: StreamPortMeta | null, remote: unknown) => void
   startServer: (opts: StartMcpHttpServerOpts) => Promise<McpServerHandle>
 }
 
@@ -77,6 +84,20 @@ const STREAM_EVENTS = {
   reconnecting: 'stream_reconnecting',
   stopped: 'stream_stopped'
 } as const satisfies Record<StreamLifecycle, DeviceTimelineEvent>
+
+/** 화면 칸 id. 순서가 곧 화면 순서다. */
+const SLOT_IDS = ['a', 'b']
+
+/** Android는 첫 칸, iOS는 둘째 칸. 칸 배정에서 플랫폼을 보는 유일한 곳이다(ADR-0015). */
+export function createPlaceByPlatform(platformOf: (serial: string) => Platform | null): PlaceFn {
+  return (serial, occupancy, reason) => {
+    const platform = platformOf(serial)
+    if (platform === null) return null
+    const slotId = platform === 'android' ? 'a' : 'b'
+    if (reason === 'connected' && occupancy.some((o) => o.slotId === slotId && o.serial !== null)) return null
+    return slotId
+  }
+}
 
 const XCODE_HINT = 'Xcode를 설치하고 xcode-select -s로 개발자 디렉토리를 정해라'
 
@@ -138,7 +159,7 @@ function assembleWithoutPlatforms(platforms: PlatformStatuses): { state: AppStat
     bootVirtualDevice: reject,
     shutdownDevice: reject,
     captureScreenshot: reject,
-    startStream: reject,
+    startStream: async () => {},
     stopStream: async () => {},
     openLogs: () => {
       throw sdkMissingError()
@@ -170,8 +191,26 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
   const { registry, catalog } = deps.createDeviceStack(androidPaths, iosTools.ok)
   const state = createAppState({ platforms, registry, catalog, server: null })
 
-  const stream = deps.createStreamManager(registry, androidPaths, {
-    onState: (serial, streamState) => state.recordDeviceEvent(serial, STREAM_EVENTS[streamState])
+  const platformOf = (serial: string): Platform | null => {
+    try {
+      return registry.resolve(serial).platform
+    } catch {
+      return null
+    }
+  }
+  const slots: ScreenSlots = createScreenSlots({
+    slotIds: SLOT_IDS,
+    place: createPlaceByPlatform(platformOf),
+    labelOf: (serial) => {
+      const platform = platformOf(serial)
+      return platform === null ? '' : PLATFORM_LABELS[platform]
+    },
+    createManager: (slotId) =>
+      deps.createStreamManager(registry, androidPaths, {
+        onState: (serial, streamState) => state.recordDeviceEvent(serial, STREAM_EVENTS[streamState]),
+        postPort: (meta, remote) => deps.postStreamPort(slots.tagPort(slotId, meta), remote)
+      }),
+    onChange: (screens) => state.setScreens(screens)
   })
   const logs = deps.createLogManager(registry, androidPaths, {
     onTailState: (serial, tailState) => {
@@ -179,16 +218,21 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
       if (tailState === 'stopped' && registry.serials().includes(serial)) state.recordDeviceEvent(serial, 'log_stopped')
     }
   })
-  // 기기가 사라지면 그 기기의 스트림은 재시도하지 않고 닫는다. 재시도 루프의 isConnected
-  // 확인만으로는 대기 시간만큼 늦게 닫힌다. 로그 tail·버퍼의 수명도 기기 연결을 그대로 따른다
-  // (logs.handleConnect·handleDisconnect) — 이 구독을 registry.start()보다 먼저 걸어야
-  // 처음부터 붙어 있던 기기도 tail을 받는다.
+  // 화면 칸과 로그 tail·버퍼의 수명은 기기 연결을 그대로 따른다. 기기가 사라지면 칸이 비거나
+  // 다른 기기로 넘어가고, 그 칸의 스트림은 재시도 없이 닫힌다. 이 구독을 registry.start()보다
+  // 먼저 걸어야 처음부터 붙어 있던 기기도 칸과 tail을 받는다. 대상이 정해지면 그 기기가 화면에
+  // 보이도록 칸을 맞춘다(active_changed 하나로 기기 카드·"대상으로"·MCP device_select가 모두 온다).
   registry.on((event) => {
-    if (event.type === 'device_connected') logs.handleConnect(event.serial)
+    if (event.type === 'device_connected') {
+      slots.handleConnect(event.serial)
+      if (registry.getActive() === event.serial) slots.select(event.serial)
+      logs.handleConnect(event.serial)
+    }
     if (event.type === 'device_disconnected') {
-      void stream.handleDisconnect(event.serial)
+      slots.handleDisconnect(event.serial)
       logs.handleDisconnect(event.serial)
     }
+    if (event.type === 'active_changed' && event.serial !== null) slots.select(event.serial)
   })
 
   // 상태가 registry를 구독한 뒤에 추적을 시작한다. 그래야 처음 붙어 있던 기기의
@@ -226,12 +270,9 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
         const device = registry.resolve(serial)
         return registry.run(device.serial, () => device.screenshot())
       },
-      startStream: async (serial) => {
-        // 모르는 serial이면 여기서 no_device로 끝낸다. 세션을 열어 adb가 실패하기를 기다리지 않는다.
-        registry.resolve(serial)
-        await stream.open(serial)
-      },
-      stopStream: () => stream.stop(),
+      // 낡은 세대의 요청은 칸 조정자가 성공으로 끝내고 아무것도 하지 않는다.
+      startStream: (ref) => slots.open(ref),
+      stopStream: (ref) => slots.stop(ref),
       openLogs: (serial) => {
         // 모르는 serial이면 여기서 no_device로 끝낸다. logs.open은 serial을 검증하지 않는다.
         registry.resolve(serial)
@@ -246,18 +287,16 @@ export async function bootstrapApp(deps: BootstrapDeps): Promise<BootstrappedApp
     state,
     server,
     async stop() {
-      // 스트림 정리가 던져도 로그 tail·기기 추적·MCP 서버는 멈춰야 한다. 에러는 호출자에게 그대로 넘긴다.
+      // 칸의 스트림 닫기 실패는 closeAll이 로그로만 남긴다. 로그 tail이나 기기 추적이 던져도
+      // 나머지는 멈춰야 하니 에러는 호출자에게 그대로 넘긴다.
+      await slots.closeAll()
       try {
-        await stream.stop()
+        logs.stopAll()
       } finally {
         try {
-          logs.stopAll()
+          registry.stop()
         } finally {
-          try {
-            registry.stop()
-          } finally {
-            await server?.close()
-          }
+          await server?.close()
         }
       }
     }

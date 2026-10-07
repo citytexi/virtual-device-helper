@@ -64,8 +64,8 @@ describe('preload API surface', () => {
     ['bootVirtualDevice', IPC_CHANNELS.bootVirtualDevice, ['Pixel_7_API_34']],
     ['shutdownDevice', IPC_CHANNELS.shutdownDevice, ['emulator-5554']],
     ['captureScreenshot', IPC_CHANNELS.captureScreenshot, ['emulator-5554']],
-    ['startStream', IPC_CHANNELS.startStream, ['emulator-5554']],
-    ['stopStream', IPC_CHANNELS.stopStream, []],
+    ['startStream', IPC_CHANNELS.startStream, [{ slotId: 'a', epoch: 2 }]],
+    ['stopStream', IPC_CHANNELS.stopStream, [{ slotId: 'a', epoch: 2 }]],
     ['openLogs', IPC_CHANNELS.openLogs, ['emulator-5554']],
     ['closeLogs', IPC_CHANNELS.closeLogs, []]
   ] as const)('routes %s to its own named channel with its argument', async (method, channel, args) => {
@@ -105,19 +105,19 @@ describe('stream port forwarding', () => {
     return call?.[1] as (event: { ports: unknown[] }, meta: unknown) => void
   }
 
-  it('hands a stream port to the main world with its meta', async () => {
+  it('hands a stream port to the main world with all four tag fields', async () => {
     const postMessage = vi.fn()
     vi.stubGlobal('window', { postMessage })
     await loadPreload()
     const port = { fake: 'port' }
 
-    portListener()({ ports: [port] }, { serial: 'emulator-5554', sessionId: 's1' })
+    portListener()({ ports: [port] }, { serial: 'emulator-5554', sessionId: 's1', slotId: 'a', epoch: 3 })
 
-    expect(postMessage).toHaveBeenCalledWith(
-      { channel: IPC_CHANNELS.streamPort, serial: 'emulator-5554', sessionId: 's1' },
-      '*',
-      [port]
-    )
+    // toEqual은 undefined 속성을 무시하므로 키 목록도 함께 본다.
+    const sent = postMessage.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(sent).toEqual({ channel: IPC_CHANNELS.streamPort, serial: 'emulator-5554', sessionId: 's1', slotId: 'a', epoch: 3 })
+    expect(Object.keys(sent).sort()).toEqual(['channel', 'epoch', 'serial', 'sessionId', 'slotId'])
+    expect(postMessage.mock.calls[0]?.slice(1)).toEqual(['*', [port]])
     vi.unstubAllGlobals()
   })
 

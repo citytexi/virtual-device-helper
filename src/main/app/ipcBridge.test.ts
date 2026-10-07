@@ -115,23 +115,19 @@ describe('registerIpcBridge', () => {
     })
   })
 
-  it('routes startStream with a serial and rejects a missing one', async () => {
+  it.each([
+    ['startStream', IPC_CHANNELS.startStream],
+    ['stopStream', IPC_CHANNELS.stopStream]
+  ] as const)('passes %s a fresh { slotId, epoch } object', async (action, channel) => {
     const h = harness()
-    const handler = h.handlers.get(IPC_CHANNELS.startStream)!
+    const sent = { slotId: 'a', epoch: 1, extra: 'drop me' }
 
-    await expect(handler({}, 'emulator-5554')).resolves.toEqual({ ok: true, value: undefined })
-    expect(h.actions.startStream).toHaveBeenCalledWith('emulator-5554')
+    await expect(h.handlers.get(channel)!({}, sent)).resolves.toEqual({ ok: true, value: undefined })
 
-    const rejected = (await handler({}, 42)) as { ok: boolean }
-    expect(rejected.ok).toBe(false)
-  })
-
-  it('routes stopStream without arguments', async () => {
-    const h = harness()
-
-    await h.handlers.get(IPC_CHANNELS.stopStream)!({})
-
-    expect(h.actions.stopStream).toHaveBeenCalledTimes(1)
+    const passed = vi.mocked(h.actions[action]).mock.calls[0]?.[0]
+    expect(passed).toEqual({ slotId: 'a', epoch: 1 })
+    expect(passed).not.toBe(sent)
+    expect(Object.keys(passed as object)).toEqual(['slotId', 'epoch'])
   })
 
   it('opens logs for a known serial', async () => {
@@ -198,5 +194,52 @@ describe('registerIpcBridge argument checks', () => {
         expect(h.actions[action]).not.toHaveBeenCalled()
       })
     }
+  }
+})
+
+describe('registerIpcBridge slot ref checks', () => {
+  const channels = [
+    ['startStream', IPC_CHANNELS.startStream],
+    ['stopStream', IPC_CHANNELS.stopStream]
+  ] as const
+  const bads: unknown[] = [
+    undefined,
+    null,
+    'A1',
+    'a',
+    { slotId: '', epoch: 1 },
+    { slotId: 'a', epoch: -1 },
+    { slotId: 'a', epoch: 1.5 },
+    { slotId: 'a', epoch: '1' },
+    { slotId: 7, epoch: 1 },
+    { slotId: 'a' }
+  ]
+
+  for (const [action, channel] of channels) {
+    for (const bad of bads) {
+      it(`rejects ${JSON.stringify(bad) ?? 'undefined'} for ${action} without calling the action`, async () => {
+        const h = harness()
+
+        const result = (await h.handlers.get(channel)?.({}, bad)) as {
+          ok: boolean
+          error?: { kind: string; message: string; hint: string }
+        }
+
+        expect(result.ok).toBe(false)
+        expect(result.error?.kind).toBe('command_failed')
+        expect(result.error?.message).toBe('칸 지정이 올바르지 않다')
+        expect(result.error?.hint).toEqual(expect.any(String))
+        expect(h.actions[action]).not.toHaveBeenCalled()
+      })
+    }
+
+    it(`accepts epoch 0 for ${action}`, async () => {
+      const h = harness()
+
+      const result = (await h.handlers.get(channel)?.({}, { slotId: 'b', epoch: 0 })) as { ok: boolean }
+
+      expect(result.ok).toBe(true)
+      expect(h.actions[action]).toHaveBeenCalledWith({ slotId: 'b', epoch: 0 })
+    })
   }
 })

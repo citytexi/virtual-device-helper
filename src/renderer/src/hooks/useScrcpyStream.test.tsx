@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { IPC_CHANNELS, type SlotRef } from '../../../shared/types/ipc'
 import type { StreamDown, StreamPortMeta } from '../../../shared/types/stream'
+import { createStreamPortRouter, type MessageTarget } from '../stream/streamPort'
 import type { JpegRenderer } from '../stream/jpegRenderer'
 import type { StreamDecoder } from '../stream/streamDecoder'
 import { FRAME_RESYNC_MS, useScrcpyStream, type ScrcpyStreamDeps, type StreamDecoderHandlers } from './useScrcpyStream'
+
+/** 임의의 칸 id. 훅은 칸 id를 해석하지 않는다. */
+const REF_X: SlotRef = { slotId: 'x', epoch: 1 }
 
 interface FakePort {
   onmessage: ((event: MessageEvent) => void) | null
@@ -18,6 +23,7 @@ function fakePort(): FakePort {
 
 function harness(startResult: Awaited<ReturnType<ScrcpyStreamDeps['startStream']>> = { ok: true, value: undefined }) {
   let portCallback: ((meta: StreamPortMeta, port: MessagePort) => void) | null = null
+  let subscribedRef: SlotRef = REF_X
   const decoders: Array<StreamDecoder & { push: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn>; handlers: StreamDecoderHandlers }> = []
   const jpegRenderers: Array<
     JpegRenderer & {
@@ -33,7 +39,8 @@ function harness(startResult: Awaited<ReturnType<ScrcpyStreamDeps['startStream']
   const deps: ScrcpyStreamDeps = {
     startStream: vi.fn(async () => startResult),
     stopStream: vi.fn(async () => ({ ok: true as const, value: undefined })),
-    onStreamPort: vi.fn((callback) => {
+    subscribePort: vi.fn((ref, callback) => {
+      subscribedRef = ref
       portCallback = callback
       return () => {
         portCallback = null
@@ -70,7 +77,7 @@ function harness(startResult: Awaited<ReturnType<ScrcpyStreamDeps['startStream']
     })
   const canvasRef: { current: HTMLCanvasElement | null } = { current: null }
   const deliverPort = (serial: string, port: FakePort) =>
-    act(() => portCallback?.({ serial, sessionId: 'x' }, port as unknown as MessagePort))
+    act(() => portCallback?.({ serial, sessionId: 'x', ...subscribedRef }, port as unknown as MessagePort))
   const deliver = (port: FakePort, message: StreamDown) => act(() => port.onmessage?.({ data: message } as MessageEvent))
   // 디코더는 첫 session에서 만들어진다. h264 세션으로 포트를 연다.
   const openH264 = (serial: string, port: FakePort = fakePort()) => {
@@ -85,15 +92,15 @@ describe('useScrcpyStream', () => {
   it('asks main for a stream and starts as connecting', async () => {
     const h = harness()
 
-    const { result } = renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    const { result } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
 
     expect(result.current.status).toEqual({ state: 'connecting' })
-    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledWith('emulator-5554'))
+    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledWith(REF_X))
   })
 
   it('adopts the port for its serial and follows status, session and packets', async () => {
     const h = harness()
-    const { result } = renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    const { result } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
     const port = fakePort()
 
     h.deliverPort('emulator-5554', port)
@@ -107,20 +114,23 @@ describe('useScrcpyStream', () => {
     expect(h.decoders[0]?.push).toHaveBeenCalledTimes(1)
   })
 
-  it('closes a port that belongs to another serial', () => {
+  it('closes no port other than the one it received', () => {
     const h = harness()
-    renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
-    const stale = fakePort()
+    renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
+    const first = fakePort()
+    const second = fakePort()
 
-    h.deliverPort('emulator-5556', stale)
+    h.openH264('emulator-5554', first)
+    h.openH264('emulator-5556', second)
 
-    expect(stale.close).toHaveBeenCalled()
-    expect(h.decoders).toHaveLength(0)
+    // 앞 포트는 새 포트로 갈아 끼울 때 훅이 놓는다. 훅이 닫을 수 있는 것은 받은 포트뿐이다.
+    expect(first.close).toHaveBeenCalledTimes(1)
+    expect(second.close).not.toHaveBeenCalled()
   })
 
   it('replaces an older port with a newer one for the same serial', () => {
     const h = harness()
-    renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
     const older = fakePort()
     const newer = fakePort()
 
@@ -136,14 +146,14 @@ describe('useScrcpyStream', () => {
     const error = { kind: 'no_device' as const, message: '그런 기기가 없다', hint: 'x' }
     const h = harness({ ok: false, error })
 
-    const { result } = renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    const { result } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
 
     await waitFor(() => expect(result.current.status).toEqual({ state: 'failed', error }))
   })
 
   it('sends input through the adopted port', () => {
     const h = harness()
-    const { result } = renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    const { result } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
     const port = fakePort()
     h.deliverPort('emulator-5554', port)
 
@@ -154,7 +164,7 @@ describe('useScrcpyStream', () => {
 
   it('restarts the stream when the decoder fails', async () => {
     const h = harness()
-    renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
     h.openH264('emulator-5554')
 
     act(() => h.decoders[0]?.handlers.onError(new Error('decode')))
@@ -165,7 +175,7 @@ describe('useScrcpyStream', () => {
 
   it('restarts the stream on reconnect', async () => {
     const h = harness()
-    const { result } = renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    const { result } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
 
     act(() => result.current.reconnect())
 
@@ -174,7 +184,7 @@ describe('useScrcpyStream', () => {
 
   it('stops the stream and closes the port on unmount', () => {
     const h = harness()
-    const { unmount } = renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    const { unmount } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
     const port = fakePort()
     h.openH264('emulator-5554', port)
 
@@ -187,7 +197,7 @@ describe('useScrcpyStream', () => {
 
   it('ignores messages from a port after it was replaced', () => {
     const h = harness()
-    const { result } = renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    const { result } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
     const older = fakePort()
     h.deliverPort('emulator-5554', older)
     const onmessage = older.onmessage
@@ -200,7 +210,7 @@ describe('useScrcpyStream', () => {
 
   it('demotes to failed after exceeding the decoder-restart limit, without restarting again', async () => {
     const h = harness()
-    const { result } = renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    const { result } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
     await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(1))
 
     // 한도(3)까지는 실패마다 재시작한다.
@@ -223,7 +233,7 @@ describe('useScrcpyStream', () => {
 
   it('releases the port and stops the stream when the decoder-restart limit is hit, so a late status cannot overwrite failed', async () => {
     const h = harness()
-    const { result } = renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    const { result } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
     await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(1))
 
     for (let i = 0; i < 3; i++) {
@@ -255,7 +265,7 @@ describe('useScrcpyStream', () => {
 
   it('a decoded frame resets the consecutive-failure count', async () => {
     const h = harness()
-    renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
     await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(1))
 
     // 한도까지 실패를 채운다.
@@ -278,7 +288,7 @@ describe('useScrcpyStream', () => {
 
   it('reconnect after a decoder-limit failure starts the stream again', async () => {
     const h = harness()
-    const { result } = renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    const { result } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
     await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(1))
 
     for (let i = 0; i < 3; i++) {
@@ -305,7 +315,7 @@ describe('useScrcpyStream', () => {
     vi.mocked(h.deps.createDecoder).mockImplementationOnce(() => {
       throw new Error('코덱을 못 만든다')
     })
-    const { result } = renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    const { result } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
     await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(1))
     const port = fakePort()
 
@@ -322,7 +332,7 @@ describe('useScrcpyStream', () => {
 
   it('closes the frame after drawing even when canvasRef is empty', () => {
     const h = harness()
-    renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
     h.openH264('emulator-5554')
     const frame = { close: vi.fn() } as unknown as VideoFrame
 
@@ -340,7 +350,7 @@ describe('useScrcpyStream', () => {
     const drawImage = vi.fn()
     const canvas = canvasWith(drawImage)
     h.canvasRef.current = canvas
-    renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
     const port = fakePort()
     h.deliverPort('emulator-5554', port)
     h.deliver(port, { type: 'session', width: 472, height: 1024, codec: 'h264', keys: [] })
@@ -360,7 +370,7 @@ describe('useScrcpyStream', () => {
     const drawImage = vi.fn()
     const canvas = canvasWith(drawImage)
     h.canvasRef.current = canvas
-    renderHook(() => useScrcpyStream('emulator-5554', h.canvasRef, h.deps))
+    renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
     // session 없이 packet이 먼저 와서 h264 경로가 만들어진 경우.
     const port = fakePort()
     h.deliverPort('emulator-5554', port)
@@ -373,25 +383,110 @@ describe('useScrcpyStream', () => {
     expect(drawImage).toHaveBeenCalledWith(frame, 0, 0, 472, 1024)
   })
 
-  it('closes a stale port for the previous serial after switching devices, and stops before starting the next stream', async () => {
+  it('subscribes to the port router with its ref before it asks for the stream', async () => {
     const h = harness()
-    const { rerender } = renderHook(({ serial }: { serial: string }) => useScrcpyStream(serial, h.canvasRef, h.deps), {
-      initialProps: { serial: 'emulator-5554' }
+
+    renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
+
+    expect(h.deps.subscribePort).toHaveBeenCalledWith(REF_X, expect.any(Function))
+    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledWith(REF_X))
+    const subscribed = vi.mocked(h.deps.subscribePort).mock.invocationCallOrder[0] as number
+    const started = vi.mocked(h.deps.startStream).mock.invocationCallOrder[0] as number
+    expect(subscribed).toBeLessThan(started)
+  })
+
+  it('stops the stream with its ref on unmount', () => {
+    const h = harness()
+    const { unmount } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
+
+    unmount()
+
+    expect(h.deps.stopStream).toHaveBeenCalledWith(REF_X)
+  })
+
+  it('does not start the stream again when it rerenders with a new ref object of the same content', async () => {
+    const h = harness()
+    const { rerender } = renderHook(({ ref }: { ref: SlotRef }) => useScrcpyStream(ref, h.canvasRef, h.deps), {
+      initialProps: { ref: { slotId: 'x', epoch: 1 } }
     })
-    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledWith('emulator-5554'))
+    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(1))
 
-    rerender({ serial: 'emulator-5556' })
-    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledWith('emulator-5556'))
+    rerender({ ref: { slotId: 'x', epoch: 1 } })
+    rerender({ ref: { slotId: 'x', epoch: 1 } })
 
-    const stalePort = fakePort()
-    h.deliverPort('emulator-5554', stalePort)
+    expect(h.deps.startStream).toHaveBeenCalledTimes(1)
+    expect(h.deps.stopStream).not.toHaveBeenCalled()
+    expect(h.deps.subscribePort).toHaveBeenCalledTimes(1)
+  })
 
-    expect(stalePort.close).toHaveBeenCalled()
-    expect(h.decoders).toHaveLength(0)
+  it('cleans up the old ref with stopStream and opens the new ref when the epoch changes', async () => {
+    const h = harness()
+    const { rerender } = renderHook(({ ref }: { ref: SlotRef }) => useScrcpyStream(ref, h.canvasRef, h.deps), {
+      initialProps: { ref: { slotId: 'x', epoch: 1 } }
+    })
+    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledWith({ slotId: 'x', epoch: 1 }))
 
-    const stopOrder = vi.mocked(h.deps.stopStream).mock.invocationCallOrder[0]
-    const startBOrder = vi.mocked(h.deps.startStream).mock.invocationCallOrder[1]
-    expect(stopOrder).toBeLessThan(startBOrder as number)
+    rerender({ ref: { slotId: 'x', epoch: 2 } })
+    await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledWith({ slotId: 'x', epoch: 2 }))
+
+    expect(h.deps.stopStream).toHaveBeenCalledWith({ slotId: 'x', epoch: 1 })
+    expect(h.deps.subscribePort).toHaveBeenLastCalledWith({ slotId: 'x', epoch: 2 }, expect.any(Function))
+    const stopOrder = vi.mocked(h.deps.stopStream).mock.invocationCallOrder[0] as number
+    const startNewOrder = vi.mocked(h.deps.startStream).mock.invocationCallOrder[1] as number
+    expect(stopOrder).toBeLessThan(startNewOrder)
+  })
+
+  describe('with a real port router', () => {
+    /** 창 대신 쓰는 가짜 target. 라우터가 건 리스너를 잡아 두고 메시지를 직접 쏜다. */
+    function fakeTarget() {
+      const listeners = new Set<(event: MessageEvent) => void>()
+      const target: MessageTarget = {
+        addEventListener: (_type, listener) => listeners.add(listener),
+        removeEventListener: (_type, listener) => listeners.delete(listener)
+      }
+      const post = (meta: { serial: string; sessionId: string; slotId: string; epoch: number }, port: FakePort) =>
+        act(() => {
+          for (const listener of listeners) {
+            listener({
+              source: target,
+              data: { channel: IPC_CHANNELS.streamPort, ...meta },
+              ports: [port]
+            } as unknown as MessageEvent)
+          }
+        })
+      return { target, post }
+    }
+
+    it('lets two hooks reach streaming on their own ports without closing each other', async () => {
+      const { target, post } = fakeTarget()
+      const router = createStreamPortRouter(target)
+      const hx = harness()
+      const hy = harness()
+      const deps = (h: ReturnType<typeof harness>): ScrcpyStreamDeps => ({
+        ...h.deps,
+        subscribePort: (ref, onPort) => router.subscribe(ref, onPort)
+      })
+      const x = renderHook(() => useScrcpyStream({ slotId: 'x', epoch: 1 }, hx.canvasRef, deps(hx)))
+      const y = renderHook(() => useScrcpyStream({ slotId: 'y', epoch: 1 }, hy.canvasRef, deps(hy)))
+      await waitFor(() => expect(hx.deps.startStream).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(hy.deps.startStream).toHaveBeenCalledTimes(1))
+      const portX = fakePort()
+      const portY = fakePort()
+
+      post({ serial: 's-x', sessionId: '1', slotId: 'x', epoch: 1 }, portX)
+      post({ serial: 's-y', sessionId: '1', slotId: 'y', epoch: 1 }, portY)
+      hx.deliver(portX, { type: 'status', status: { state: 'streaming' } })
+      hy.deliver(portY, { type: 'status', status: { state: 'streaming' } })
+
+      expect(x.result.current.status).toEqual({ state: 'streaming' })
+      expect(y.result.current.status).toEqual({ state: 'streaming' })
+      expect(portX.close).not.toHaveBeenCalled()
+      expect(portY.close).not.toHaveBeenCalled()
+
+      x.result.current.send({ type: 'key', key: 'home' })
+      expect(portX.postMessage).toHaveBeenCalledWith({ type: 'key', key: 'home' })
+      expect(portY.postMessage).not.toHaveBeenCalled()
+    })
   })
 
   describe('jpeg codec', () => {
@@ -401,7 +496,7 @@ describe('useScrcpyStream', () => {
 
     it('frame 메시지를 jpeg 경로로 보내고 VideoDecoder 쪽은 쓰지 않는다', () => {
       const h = harness()
-      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = fakePort()
       h.deliverPort('sim-1', port)
       h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: ['home'] })
@@ -417,7 +512,7 @@ describe('useScrcpyStream', () => {
 
     it('codec이 h264에서 jpeg로 바뀌면 이전 디코더를 닫는다', () => {
       const h = harness()
-      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = fakePort()
       h.deliverPort('sim-1', port)
       h.deliver(port, { type: 'session', width: 472, height: 1024, codec: 'h264', keys: [] })
@@ -431,7 +526,7 @@ describe('useScrcpyStream', () => {
 
     it('codec이 jpeg에서 h264로 바뀌면 jpeg 경로를 닫고 새 디코더를 만든다', () => {
       const h = harness()
-      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = fakePort()
       h.deliverPort('sim-1', port)
       h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: [] })
@@ -444,7 +539,7 @@ describe('useScrcpyStream', () => {
 
     it('같은 codec의 session이 다시 오면 경로를 새로 만들지 않는다', () => {
       const h = harness()
-      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = fakePort()
       h.deliverPort('sim-1', port)
       h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: [] })
@@ -457,7 +552,7 @@ describe('useScrcpyStream', () => {
       const h = harness()
       const canvas = canvasWith()
       h.canvasRef.current = canvas
-      const { result } = renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const { result } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = fakePort()
       h.deliverPort('sim-1', port)
       h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: [] })
@@ -474,7 +569,7 @@ describe('useScrcpyStream', () => {
       const drawImage = vi.fn()
       const canvas = canvasWith(drawImage)
       h.canvasRef.current = canvas
-      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = fakePort()
       h.deliverPort('sim-1', port)
       h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: [] })
@@ -491,7 +586,7 @@ describe('useScrcpyStream', () => {
       const drawImage = vi.fn()
       const canvas = canvasWith(drawImage)
       h.canvasRef.current = canvas
-      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = fakePort()
       h.deliverPort('sim-1', port)
       h.deliver(port, { type: 'frame', data: new Uint8Array([1]) })
@@ -505,7 +600,7 @@ describe('useScrcpyStream', () => {
 
     it('JPEG 렌더러의 onError는 h264 디코더 치명 에러와 같은 길로 간다 — 재시작하다 한도를 넘으면 failed', async () => {
       const h = harness()
-      const { result } = renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const { result } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       await waitFor(() => expect(h.deps.startStream).toHaveBeenCalledTimes(1))
       const jpegSession = (port: FakePort) =>
         h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: [] })
@@ -533,7 +628,7 @@ describe('useScrcpyStream', () => {
 
     it('이미 닫힌 jpeg 경로의 늦은 onError는 무시한다', async () => {
       const h = harness()
-      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = fakePort()
       h.deliverPort('sim-1', port)
       h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: [] })
@@ -546,7 +641,7 @@ describe('useScrcpyStream', () => {
 
     it('unmount하면 jpeg 경로도 닫는다', () => {
       const h = harness()
-      const { unmount } = renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const { unmount } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = fakePort()
       h.deliverPort('sim-1', port)
       h.deliver(port, { type: 'session', width: 590, height: 1278, codec: 'jpeg', keys: [] })
@@ -564,7 +659,7 @@ describe('useScrcpyStream', () => {
 
     it('renderer의 ack가 그 포트로 frame_ack를 보낸다', () => {
       const h = harness()
-      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = fakePort()
       h.deliverPort('sim-1', port)
       jpegSession(h, port)
@@ -576,7 +671,7 @@ describe('useScrcpyStream', () => {
 
     it('포트가 바뀐 뒤에는 옛 경로의 ack가 옛 포트에도 새 포트에도 가지 않는다', () => {
       const h = harness()
-      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const a = fakePort()
       const b = fakePort()
       h.deliverPort('sim-1', a)
@@ -592,7 +687,7 @@ describe('useScrcpyStream', () => {
 
     it('streaming 전에 frame이 오고 나중에 streaming이 된 뒤 프레임 없이 FRAME_RESYNC_MS가 지나면 확인이 한 번 간다', () => {
       const h = harness()
-      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = fakePort()
       h.deliverPort('sim-1', port)
       jpegSession(h, port)
@@ -610,7 +705,7 @@ describe('useScrcpyStream', () => {
 
     it('frame이 오면 재동기 타이머가 다시 걸린다', () => {
       const h = harness()
-      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = fakePort()
       h.deliverPort('sim-1', port)
       jpegSession(h, port)
@@ -625,7 +720,7 @@ describe('useScrcpyStream', () => {
 
     it('reconnecting이나 failed 중 만료에는 확인이 가지 않고 다시 streaming이 된 뒤의 만료에는 간다', () => {
       const h = harness()
-      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = fakePort()
       h.deliverPort('sim-1', port)
       jpegSession(h, port)
@@ -649,7 +744,7 @@ describe('useScrcpyStream', () => {
 
     it('h264 세션에서는 타이머를 걸지 않고 frame_ack도 보내지 않는다', () => {
       const h = harness()
-      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = h.openH264('sim-1')
       h.deliver(port, { type: 'status', status: { state: 'streaming' } })
       h.deliver(port, { type: 'packet', config: false, key: true, ptsUs: null, data: new Uint8Array([1]) })
@@ -660,7 +755,7 @@ describe('useScrcpyStream', () => {
 
     it('jpeg에서 h264로 바뀌면 타이머를 지운다', () => {
       const h = harness()
-      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = fakePort()
       h.deliverPort('sim-1', port)
       jpegSession(h, port)
@@ -673,7 +768,7 @@ describe('useScrcpyStream', () => {
 
     it('포트가 교체되면 옛 타이머를 지우고 옛 타이머가 새 포트로 보내지 않는다', () => {
       const h = harness()
-      renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const a = fakePort()
       const b = fakePort()
       h.deliverPort('sim-1', a)
@@ -692,7 +787,7 @@ describe('useScrcpyStream', () => {
 
     it('unmount하면 타이머를 지운다', () => {
       const h = harness()
-      const { unmount } = renderHook(() => useScrcpyStream('sim-1', h.canvasRef, h.deps))
+      const { unmount } = renderHook(() => useScrcpyStream(REF_X, h.canvasRef, h.deps))
       const port = fakePort()
       h.deliverPort('sim-1', port)
       jpegSession(h, port)

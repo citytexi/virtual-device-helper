@@ -29,6 +29,8 @@ function reduce(snapshot: AppSnapshot, event: MainEvent): AppSnapshot {
       const timeline = appendEntry(snapshot.timeline, event.entry)
       return timeline === snapshot.timeline ? snapshot : { ...snapshot, timeline }
     }
+    case 'screens_changed':
+      return { ...snapshot, screens: event.screens }
     case 'server_changed':
       return { ...snapshot, server: event.server }
     case 'tracking_failed':

@@ -124,12 +124,28 @@ export interface TrackingFailure {
   exitCode: number | null
 }
 
+/** 화면 한 칸. epoch는 칸의 기기가 바뀔 때마다 오른다. */
+export interface ScreenSlot {
+  id: string
+  epoch: number
+  serial: string | null
+  label: string
+}
+
+/** 칸과 세대로 가리키는 스트림 요청 대상. */
+export interface SlotRef {
+  slotId: string
+  epoch: number
+}
+
 export interface AppSnapshot {
   platforms: PlatformStatuses
   server: ServerStatus | null
   virtualDevices: VirtualDeviceEntry[]
   devices: string[]
   activeSerial: string | null
+  /** 화면 칸. 칸의 진실은 main에 있다. */
+  screens: ScreenSlot[]
   timeline: TimelineEntry[]
   /** 플랫폼별 추적 실패. 추적이 살아 있으면(또는 그 플랫폼을 조립하지 않았으면) null이다. */
   trackingFailures: Record<Platform, TrackingFailure | null>
@@ -141,6 +157,7 @@ export type MainEvent =
   | { type: 'active_changed'; serial: string | null }
   | { type: 'virtual_devices_changed'; virtualDevices: VirtualDeviceEntry[] }
   | { type: 'timeline'; entry: TimelineEntry }
+  | { type: 'screens_changed'; screens: ScreenSlot[] }
   | { type: 'server_changed'; server: ServerStatus | null }
   | { type: 'tracking_failed'; failure: TrackingFailure }
 
@@ -151,9 +168,13 @@ export interface RendererApi {
   bootVirtualDevice(id: string): Promise<Outcome<void>>
   shutdownDevice(serial: string): Promise<Outcome<void>>
   captureScreenshot(serial: string): Promise<Outcome<ScreenshotResult>>
-  /** 이 기기로 스트림을 연다. 이전 스트림은 main이 닫는다. 포트는 IPC_CHANNELS.streamPort로 따로 온다. */
-  startStream(serial: string): Promise<Outcome<void>>
-  stopStream(): Promise<Outcome<void>>
+  /**
+   * 이 칸·세대(`ref`)의 스트림을 연다. 세대가 지금 것과 다르거나 칸이 비었으면 성공으로 끝내고 아무것도 하지 않는다.
+   * 포트는 IPC_CHANNELS.streamPort로 따로 오며 `slotId`와 `epoch` 꼬리표가 붙는다.
+   */
+  startStream(ref: SlotRef): Promise<Outcome<void>>
+  /** 이 칸·세대의 스트림을 닫는다. 낡은 세대의 요청은 지금 세션을 건드리지 않고 성공으로 끝난다. */
+  stopStream(ref: SlotRef): Promise<Outcome<void>>
   /** 이 기기의 로그를 연다. 이전 로그 포트는 main이 닫는다. 포트는 IPC_CHANNELS.logPort로 따로 온다. */
   openLogs(serial: string): Promise<Outcome<void>>
   closeLogs(): Promise<Outcome<void>>

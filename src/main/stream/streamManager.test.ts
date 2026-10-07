@@ -237,17 +237,6 @@ describe('createStreamManager', () => {
     expect(h.sessions.map((s) => s.serial)).toEqual(['A', 'B'])
   })
 
-  it('closes on disconnect of the streaming device only', async () => {
-    const h = harness()
-    await h.manager.open('emulator-5554')
-
-    await h.manager.handleDisconnect('emulator-5556')
-    expect(h.ports[0]?.close).not.toHaveBeenCalled()
-
-    await h.manager.handleDisconnect('emulator-5554')
-    expect(h.ports[0]?.close).toHaveBeenCalled()
-  })
-
   it('forwards valid input and drops malformed input', async () => {
     const h = harness()
     await h.manager.open('emulator-5554')
@@ -387,11 +376,11 @@ describe('createStreamManager onState', () => {
     expect(h.states.map(([, state]) => state)).toEqual(['started', 'reconnecting', 'reconnecting', 'reconnecting', 'stopped'])
   })
 
-  it('reports stopped for the previous device when another opens, and on disconnect', async () => {
+  it('reports stopped for the previous device when another opens, and on stop', async () => {
     const h = harness()
     await h.manager.open('emulator-5554')
     await h.manager.open('emulator-5556')
-    await h.manager.handleDisconnect('emulator-5556')
+    await h.manager.stop()
 
     expect(h.states).toEqual([
       ['emulator-5554', 'started'],

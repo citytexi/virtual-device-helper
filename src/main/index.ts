@@ -85,8 +85,13 @@ function postPortToRenderer(channel: string, meta: unknown, remote: unknown): vo
   } catch (thrown) {
     console.error(`포트를 renderer에 건네지 못했다 (${channel})`, thrown)
   }
+  closePort(remote)
+}
+
+/** 건네지 않을 포트를 닫는다. 이미 닫혔으면 조용히 넘어간다. */
+function closePort(remote: unknown): void {
   try {
-    port.close()
+    ;(remote as MessagePortMain).close()
   } catch {
     // 이미 닫힌 포트다.
   }
@@ -167,7 +172,7 @@ app
               : null
           }),
           createChannel: () => createPortChannel<StreamDown>(),
-          postPort: (meta, remote) => postPortToRenderer(IPC_CHANNELS.streamPort, meta, remote),
+          postPort: hooks.postPort,
           isConnected: (serial) => registry.serials().includes(serial),
           onState: hooks.onState
         })
@@ -200,6 +205,9 @@ app
           onTailState: hooks.onTailState
         })
       },
+      // 칸에 더는 없는 기기의 포트(meta가 null)는 건네지 않고 닫는다.
+      postStreamPort: (meta, remote) =>
+        meta ? postPortToRenderer(IPC_CHANNELS.streamPort, meta, remote) : closePort(remote),
       startServer: (opts) => startMcpHttpServer({ ...opts, version: app.getVersion() })
     })
 

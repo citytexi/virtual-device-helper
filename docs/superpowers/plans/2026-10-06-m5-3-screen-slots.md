@@ -13,7 +13,7 @@ related_adr: [ADR-0017, ADR-0018, ADR-0015, ADR-0010]
 related_spec: m5-multi-screen
 related_architecture: main-layers
 related_plan: [m5-1-device-card-badges, m5-2-jpeg-frame-ack]
-related_code: [streamManager.ts#createStreamManager, bootstrap.ts#bootstrapApp, appState.ts#createAppState, ipcBridge.ts#BridgeActions, registry.ts#createDeviceRegistry, ipc.ts#AppSnapshot, stream.ts#StreamPortMeta, streamPort.ts#onStreamPort, App.tsx#App, DeviceScreen.tsx#DeviceScreen, useScrcpyStream.ts#useScrcpyStream, useAppState.ts#targetSerial]
+related_code: [streamManager.ts#createStreamManager, bootstrap.ts#bootstrapApp, appState.ts#createAppState, ipcBridge.ts#BridgeActions, registry.ts#createDeviceRegistry, ipc.ts#AppSnapshot, stream.ts#StreamPortMeta, streamPort.ts#createStreamPortRouter, App.tsx#App, DeviceScreen.tsx#DeviceScreen, useScrcpyStream.ts#useScrcpyStream, useAppState.ts#targetSerial]
 tags: [plan, streaming, multi-screen]
 ---
 
@@ -114,7 +114,7 @@ task는 여덟이다. Task 4까지는 IPC 모양을 그대로 둔 채 main만 �
   - `slotIds.length > MAX_SCREEN_SLOTS`거나 id가 겹치면 생성에서 던진다.
   - 변화가 없으면 `onChange`를 부르지 않는다.
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다** — 가짜 관리자(`open`·`stop`이 `vi.fn`)와 배정 함수(serial이 `'A'`로 시작하면 `'a'`, `'I'`로
+- [x] **Step 1: 실패하는 테스트를 쓴다** — 가짜 관리자(`open`·`stop`이 `vi.fn`)와 배정 함수(serial이 `'A'`로 시작하면 `'a'`, `'I'`로
   시작하면 `'b'`, 그 밖은 null. 단 `connected`일 때 그 칸이 차 있으면 null)로:
   - `handleConnect('A1')` → `a` 칸 `{ serial: 'A1', epoch: 1 }`, `b` 칸 `{ serial: null, epoch: 0, label: '' }`.
   - `handleConnect('A2')` → 칸 그대로, `onChange` 추가 호출 없음.
@@ -132,10 +132,10 @@ task는 여덟이다. Task 4까지는 IPC 모양을 그대로 둔 채 main만 �
   - `place`가 null을 주는 serial과 모르는 칸 id를 주는 경우 → 어느 칸에도 없다. 붙어 있지 않은 serial의 `select`는 무시.
     모르는 serial의 `handleDisconnect`는 무시. 중복 `handleConnect`는 무시.
   - `slotIds`가 셋이거나 겹치면 던진다.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/stream/screenSlots.test.ts` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(stream): 화면 칸 조정자를 더한다"`
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/stream/screenSlots.test.ts` / Expected: FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "feat(stream): 화면 칸 조정자를 더한다"`
 
 ---
 
@@ -159,15 +159,15 @@ task는 여덟이다. Task 4까지는 IPC 모양을 그대로 둔 채 main만 �
   - 창 하나에 라우터 하나다. 주석으로 못 박는다.
   - 기존 `onStreamPort`는 이 task에서 지우지 않는다(Task 5에서 지운다).
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다** — 구독자 둘(`{x,1}`, `{y,1}`)이 있을 때 `slotId: 'x', epoch: 1` 포트는 첫 구독자에게만
+- [x] **Step 1: 실패하는 테스트를 쓴다** — 구독자 둘(`{x,1}`, `{y,1}`)이 있을 때 `slotId: 'x', epoch: 1` 포트는 첫 구독자에게만
   가고 `close`되지 않는다 / `slotId: 'y'` 포트는 둘째에게만 / `epoch: 2` 포트는 아무에게도 가지 않고 `close`가 한 번 불린다 /
   구독을 해제한 뒤 온 포트는 닫힌다 / 같은 `SlotRef`로 다시 구독한 뒤 앞 구독의 해제 함수를 불러도 뒤 구독이 포트를 받는다 /
   `slotId`가 없거나 `epoch`가 문자열인 메시지는 무시하고 포트를 닫지도 않는다 / 다른 창에서 온 메시지는 무시 / 넘어간 `meta`에
   `serial`·`sessionId`·`slotId`·`epoch`가 모두 있다 / `target` 없이 `createStreamPortRouter()`를 만들기만 하면(구독 없이) 던지지 않는다.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/renderer/src/stream/streamPort.test.ts` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(renderer): 스트림 포트를 칸과 세대로 가려 넘기는 라우터를 더한다"`
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/renderer/src/stream/streamPort.test.ts` / Expected: FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "feat(renderer): 스트림 포트를 칸과 세대로 가려 넘기는 라우터를 더한다"`
 
 ---
 
@@ -189,13 +189,13 @@ task는 여덟이다. Task 4까지는 IPC 모양을 그대로 둔 채 main만 �
 - `bootstrap.ts`: `assembleWithoutPlatforms`의 스냅샷에 `screens: []`.
 - `useAppState.ts`: `reduce`가 `screens_changed`를 `snapshot.screens`에 반영한다. 스냅샷이 오기 전에 쌓였다 재생되는 경로도 같다.
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다** — `appState.test.ts`: 처음 `snapshot().screens`가 `[]` / `setScreens` 뒤 그 값이고
+- [x] **Step 1: 실패하는 테스트를 쓴다** — `appState.test.ts`: 처음 `snapshot().screens`가 `[]` / `setScreens` 뒤 그 값이고
   `screens_changed`가 한 번 나간다. `useAppState.test.tsx`: `screens_changed`가 반영된다 / 스냅샷보다 먼저 온 `screens_changed`가
   재생 뒤에 반영된다. `bootstrap.test.ts`: 플랫폼이 없는 조립의 `screens`가 `[]`.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/app src/renderer/src/state` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.** fixture를 든 테스트 파일에 `screens: []`를 더한다.
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(shared): 스냅샷과 이벤트에 화면 칸을 싣는다"`
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/app src/renderer/src/state` / Expected: FAIL.
+- [x] **Step 3: 구현한다.** fixture를 든 테스트 파일에 `screens: []`를 더한다.
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "feat(shared): 스냅샷과 이벤트에 화면 칸을 싣는다"`
 
 ---
 
@@ -231,7 +231,7 @@ IPC 모양은 바꾸지 않는다. 이 task가 끝나면 main은 칸으로 돌�
 - `index.ts`: `createStreamManager` 구현이 `hooks.postPort`를 관리자의 `postPort`로 넘긴다. `postStreamPort` 구현은 meta가 있으면
   지금의 창 전송 경로로, null이면 그 포트를 닫는다.
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다**
+- [x] **Step 1: 실패하는 테스트를 쓴다**
   - 새 harness: 실제 `createDeviceRegistry`를 쓴다(`track`은 테스트가 손으로 쏘고, `createDevice`는 `{ serial, platform }`만 가진
     가짜를 준다). `createStreamManager`는 호출마다 **다른** 가짜 관리자를 돌려주고 받은 `hooks`를 잡아 둔다.
   - `registry.start()` 때 이미 붙어 있던 Android 기기가 `snapshot.screens`의 `a` 칸에 있다 / Android와 iOS가 붙으면 `a`·`b` 칸이 모두
@@ -244,12 +244,13 @@ IPC 모양은 바꾸지 않는다. 이 task가 끝나면 main은 칸으로 돌�
   - 뜻이 바뀌는 기존 테스트를 고친다: 기기 끊김에 `stream.handleDisconnect`를 기대하던 것(→ 그 칸 관리자의 `stop`), 스트림
     닫기가 던지면 `app.stop()`이 reject하기를 기대하던 둘(→ resolve하고 나머지 정리가 계속된다).
   - `index.test.ts`: `postStreamPort(null, port)`가 포트를 닫는다.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main` / Expected: FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
 - [ ] **Step 5: 앱에서 화면 하나의 회귀를 본다** — `npm run dev`로 띄워 기기 하나의 화면이 지금처럼 뜨고, 다른 기기를 고르면
   바뀌는지 앱 창 캡처로 본다. 볼 수 없으면 "사람 확인 필요"로 보고한다. dev 프로세스를 끝낸다.
-- [ ] **Step 6: 커밋** — `git commit -m "feat(main): 스트림 세션을 화면 칸 조정자로 연다"`
+  (Task 4 때는 보지 못했고 Task 8에서도 칸의 기기가 바뀌는 경우는 보지 못했다 — 스펙 "M5-3 검증 결과"에 있다.)
+- [x] **Step 6: 커밋** — `git commit -m "feat(main): 스트림 세션을 화면 칸 조정자로 연다"`
 
 ---
 
@@ -287,7 +288,7 @@ main, preload, renderer의 계약이 함께 바뀌므로 한 task다. 끝나면 
   안에 빈 상태 문구. (여러 화면은 Task 7.)
 - `streamPort.ts`의 옛 `onStreamPort`와 그 테스트를 지운다. 그것을 가리키는 주석(`logPort.ts`, `useLogStream.ts`)을 고친다.
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다**
+- [x] **Step 1: 실패하는 테스트를 쓴다**
   - `ipcBridge.test.ts`: `startStream`에 `{ slotId: 'a', epoch: 1 }` → 액션이 같은 값의 **새 객체**로 불린다 / `'A1'`,
     `{ slotId: '', epoch: 1 }`, `{ slotId: 'a', epoch: -1 }`, `{ slotId: 'a', epoch: 1.5 }`, `null` → 실패 `Outcome`이고 액션은 불리지
     않는다. `stopStream`도 같다. 인자 없이 `stopStream`을 부르던 기존 테스트를 고친다.
@@ -306,10 +307,10 @@ main, preload, renderer의 계약이 함께 바뀌므로 한 task다. 끝나면 
   - `App.test.tsx`: `screens`의 첫 찬 칸이 그려진다 / 그 칸의 세대가 오르면 화면이 다시 마운트된다(`startStream`이 새 `ref`로 한 번
     더) / 찬 칸이 없으면 빈 상태 문구 / 타임라인 이벤트로 다시 그려져도 `startStream`이 다시 불리지 않는다. `mockApi`의 `onEvent`가
     리스너를 잡아 두게 harness를 고친다.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/app src/preload src/renderer/src` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(main): 스트림 요청과 포트를 칸과 세대로 주고받는다"`
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/main/app src/preload src/renderer/src` / Expected: FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "feat(main): 스트림 요청과 포트를 칸과 세대로 주고받는다"`
 
 ---
 
@@ -328,14 +329,14 @@ main, preload, renderer의 계약이 함께 바뀌므로 한 task다. 끝나면 
   - `ScreenBoundary({ children }: { children: ReactNode })` — 클래스 컴포넌트 error boundary. 던지면 `이 화면을 그리지 못했다`와
     `다시 시도` 버튼을 보인다. 다시 시도는 내부 카운터를 올려 `children`을 새 key로 다시 마운트한다. 잡은 에러는 `console.error`로 남긴다.
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다** — `ScreenHeader`: `label`과 `serial`이 보이고 serial의 `title`이 전체 값이다 / 대상이 아니면
+- [x] **Step 1: 실패하는 테스트를 쓴다** — `ScreenHeader`: `label`과 `serial`이 보이고 serial의 `title`이 전체 값이다 / 대상이 아니면
   `대상으로`가 켜져 있고 누르면 `onMakeTarget` / 대상이면 `(대상)` 배지가 있고 버튼이 꺼져 있다 / `canReconnect`가 true일 때만
   `다시 연결`이 있고 누르면 `onReconnect`. `ScreenBoundary`: 자식이 던지면 `이 화면을 그리지 못했다`가 보이고 형제 요소는 그대로
   있다 / `다시 시도`를 누르면 자식이 다시 마운트된다(이번에는 던지지 않는 자식이 보인다). `console.error`는 spy로 받는다.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/renderer/src/components/ScreenHeader.test.tsx src/renderer/src/components/ScreenBoundary.test.tsx` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(renderer): 화면 머리와 화면별 error boundary를 더한다"`
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/renderer/src/components/ScreenHeader.test.tsx src/renderer/src/components/ScreenBoundary.test.tsx` / Expected: FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "feat(renderer): 화면 머리와 화면별 error boundary를 더한다"`
 
 ---
 
@@ -372,7 +373,7 @@ main, preload, renderer의 계약이 함께 바뀌므로 한 task다. 끝나면 
   - `.device-screen:focus-within`이면 머리와 테두리를 강조한다(기존 색 토큰).
   - 화면이 하나일 때 캔버스의 크기와 자리는 지금과 같아야 한다.
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다**
+- [x] **Step 1: 실패하는 테스트를 쓴다**
   - `App.test.tsx`: `screens`가 임의 id(`'x'`, `'y'`)의 찬 칸 둘이면 이름이 `기기 화면`으로 시작하는 region이 둘이고 이름이 서로
     다르다 / 찬 칸 하나면 region 하나 / 화면이 하나든 둘이든 대상이 없으면 안내가 보이고, 대상이 있으면 없다 / 한 화면의
     `DeviceScreen`이 던져도 다른 화면의 region이 남는다(`vi.mock`과 `importActual`로 한 serial에서만 던지는 `DeviceScreen`을 쓴다.
@@ -382,10 +383,10 @@ main, preload, renderer의 계약이 함께 바뀌므로 한 task다. 끝나면 
     찾던 기존 단언을 고친다) / 툴바 키 버튼을 누른 뒤 `document.activeElement`가 그 화면의 캔버스다 / 머리의 버튼에 포커스가
     있을 때 `F6`을 눌러도 `onFocusNext`가 불린다 / 캔버스를 클릭하고 타이핑해도 `window.api.selectDevice`가 불리지 않는다 /
     스크린샷으로 강등된 화면에서는 `section`이 `data-screen-focus`를 가진다.
-- [ ] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/renderer/src` / Expected: FAIL.
-- [ ] **Step 3: 구현한다.**
-- [ ] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(renderer): 칸마다 화면을 그리고 포커스를 표시한다"`
+- [x] **Step 2: 실패를 확인한다** — Run: `npx vitest run src/renderer/src` / Expected: FAIL.
+- [x] **Step 3: 구현한다.**
+- [x] **Step 4: 통과를 확인한다** — Run: `npm test && npm run typecheck` / Expected: PASS.
+- [x] **Step 5: 커밋** — `git commit -m "feat(renderer): 칸마다 화면을 그리고 포커스를 표시한다"`
 
 ---
 
@@ -396,7 +397,7 @@ main, preload, renderer의 계약이 함께 바뀌므로 한 task다. 끝나면 
 - Modify: `docs/superpowers/specs/2026-10-06-m5-multi-screen.md`, `docs/architecture/main-layers.md`,
   `docs/adr/0017-screen-slots-separate-from-target.md`·`0018-jpeg-frame-ack-flow-control.md`, 이 계획 문서
 
-- [ ] **Step 1: 통합 테스트를 쓴다**
+- [x] **Step 1: 통합 테스트를 쓴다**
 
 실제 `createStreamManager`와 `createScreenSlots`를 최소 `PortLike` 가짜로 조립한다(`scrcpySession.integration.test.ts`의 Android 조립과
 `axeStreamSession.ios.integration.test.ts`의 iOS 조립을 따른다). 두 묶음으로 나눈다. (가) 기기가 **하나라도** 있으면: 그 칸을 열어
@@ -407,7 +408,7 @@ promise다.
 
 Run: `npm run test:integration -- src/main/stream/screenSlots.integration.test.ts` / Expected: PASS(또는 skip).
 
-- [ ] **Step 2: 실제 앱에서 본다**
+- [x] **Step 2: 실제 앱에서 본다**
 
 macOS 호스트에서 `npm run dev`로 띄운다. Android 기기와 iOS 시뮬레이터가 함께 붙어 있어야 한다(iOS가 없으면 `xcrun simctl boot`로
 하나 부팅하고 끝나면 그것만 끈다. Android가 없으면 두 화면 항목은 "미검증 — Android 기기 없음"으로 적는다). 앱 창만 캡처해서 본다
@@ -419,7 +420,7 @@ macOS 호스트에서 `npm run dev`로 띄운다. Android 기기와 iOS 시뮬�
 "사람 확인 필요"로 남긴다: `대상으로` 버튼 클릭, 화면 클릭·타이핑, 포커스 강조와 `F6`, 창을 좁혔을 때의 배치, `Cmd+R` 뒤 두 화면이
 다시 뜨는지, 창을 닫았다 다시 열었을 때, Windows 호스트의 회귀.
 
-- [ ] **Step 3: 문서를 고치고 커밋한다**
+- [x] **Step 3: 문서를 고치고 커밋한다**
 
 스펙 끝에 "M5-3 검증 결과" 절(본 것 / 부분적으로 본 것 / 못 본 것, 잰 fps·CPU)을 쓴다. 잰 부하에 비추어 "열린 질문"의
 `MAX_SCREEN_SLOTS` 항목을 갱신한다. `main-layers.md`에 화면 칸 층(조정자, 칸마다 관리자, renderer 라우터)을 더하고 `verified`를

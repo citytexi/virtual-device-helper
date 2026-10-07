@@ -169,3 +169,19 @@ describe('main/index MCP 서버 버전', () => {
     expect(startMcpHttpServer).toHaveBeenCalledWith({ context, version: '0.1.0' })
   })
 })
+
+describe('main/index 스트림 포트', () => {
+  it('postStreamPort(null, port)는 그 포트를 닫는다', async () => {
+    whenReady.mockResolvedValue(undefined)
+    bootstrapApp.mockResolvedValue({ state: {}, server: null, stop: vi.fn() })
+
+    await import('./index')
+    await vi.waitFor(() => expect(bootstrapApp).toHaveBeenCalled())
+
+    const deps = bootstrapApp.mock.calls[0]![0] as { postStreamPort: (meta: unknown, remote: unknown) => void }
+    const port = { close: vi.fn() }
+    deps.postStreamPort(null, port)
+
+    expect(port.close).toHaveBeenCalledTimes(1)
+  })
+})

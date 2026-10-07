@@ -75,8 +75,14 @@ export type StreamDown =
 /** renderer → main 포트 메시지. `frame_ack`는 jpeg 프레임 한 장을 처리했다는 확인이다. */
 export type StreamUp = ControlIntent | { type: 'frame_ack' }
 
-/** 포트와 함께 오는 꼬리표. renderer는 자기 serial과 같은 포트만 쓴다. */
-export interface StreamPortMeta {
+/** 관리자가 내놓는 꼬리표. 관리자는 칸을 모른다. */
+export interface SessionPortMeta {
   serial: string
   sessionId: string
+}
+
+/** 포트와 함께 renderer로 가는 꼬리표. 칸과 세대는 화면 칸 조정자가 붙인다. */
+export interface StreamPortMeta extends SessionPortMeta {
+  slotId: string
+  epoch: number
 }

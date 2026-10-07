@@ -11,8 +11,8 @@ superseded_by:
 related_adr: [ADR-0015, ADR-0016, ADR-0010, ADR-0018]
 related_spec: m5-multi-screen
 related_architecture: main-layers
-related_plan:
-related_code: [streamManager.ts#createStreamManager, registry.ts#createDeviceRegistry, ipc.ts#AppSnapshot, useAppState.ts#targetSerial, App.tsx#App, streamPort.ts#onStreamPort, ipcBridge.ts#BridgeActions]
+related_plan: [m5-3-screen-slots]
+related_code: [streamManager.ts#createStreamManager, registry.ts#createDeviceRegistry, ipc.ts#AppSnapshot, useAppState.ts#targetSerial, App.tsx#App, streamPort.ts#createStreamPortRouter, ipcBridge.ts#BridgeActions]
 tags: [adr, streaming, multi-screen]
 ---
 

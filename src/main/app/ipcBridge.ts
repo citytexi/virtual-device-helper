@@ -1,7 +1,7 @@
 import type { IpcMain } from 'electron'
 import { isDeviceError, type ToolError } from '../../shared/types/errors'
 import type { ScreenshotResult } from '../../shared/types/device'
-import { IPC_CHANNELS, type MainEvent, type Outcome } from '../../shared/types/ipc'
+import { IPC_CHANNELS, type MainEvent, type Outcome, type SlotRef } from '../../shared/types/ipc'
 import type { AppState } from './appState'
 
 export interface BridgeActions {
@@ -9,8 +9,8 @@ export interface BridgeActions {
   bootVirtualDevice(id: string): Promise<void>
   shutdownDevice(serial: string): Promise<void>
   captureScreenshot(serial: string): Promise<ScreenshotResult>
-  startStream(serial: string): Promise<void>
-  stopStream(): Promise<void>
+  startStream(ref: SlotRef): Promise<void>
+  stopStream(ref: SlotRef): Promise<void>
   openLogs(serial: string): void
   closeLogs(): void
 }
@@ -57,6 +57,29 @@ function withText<T>(name: string, run: (text: string) => Promise<T> | T) {
   }
 }
 
+function invalidSlotRef(): Outcome<never> {
+  const error: ToolError = {
+    kind: 'command_failed',
+    message: '칸 지정이 올바르지 않다',
+    hint: '화면을 다시 열어라'
+  }
+  return { ok: false, error }
+}
+
+/**
+ * 칸 지정은 `{ slotId, epoch }`여야 한다. 검사를 통과하면 필드 둘만 옮긴 새 객체를 넘긴다 —
+ * renderer가 얹은 다른 필드나 같은 객체 참조가 액션까지 가지 않게 한다.
+ */
+function withSlotRef<T>(run: (ref: SlotRef) => Promise<T> | T) {
+  return (_event: unknown, value: unknown): Promise<Outcome<T>> => {
+    if (typeof value !== 'object' || value === null) return Promise.resolve(invalidSlotRef())
+    const { slotId, epoch } = value as Record<string, unknown>
+    if (typeof slotId !== 'string' || slotId.length === 0) return Promise.resolve(invalidSlotRef())
+    if (typeof epoch !== 'number' || !Number.isInteger(epoch) || epoch < 0) return Promise.resolve(invalidSlotRef())
+    return outcome(() => run({ slotId, epoch }))
+  }
+}
+
 export function registerIpcBridge(
   ipcMain: IpcMain,
   state: AppState,
@@ -68,8 +91,8 @@ export function registerIpcBridge(
   ipcMain.handle(IPC_CHANNELS.bootVirtualDevice, withText('가상 기기 id', (id) => actions.bootVirtualDevice(id)))
   ipcMain.handle(IPC_CHANNELS.shutdownDevice, withText('serial', (serial) => actions.shutdownDevice(serial)))
   ipcMain.handle(IPC_CHANNELS.captureScreenshot, withText('serial', (serial) => actions.captureScreenshot(serial)))
-  ipcMain.handle(IPC_CHANNELS.startStream, withText('serial', (serial) => actions.startStream(serial)))
-  ipcMain.handle(IPC_CHANNELS.stopStream, () => outcome(() => actions.stopStream()))
+  ipcMain.handle(IPC_CHANNELS.startStream, withSlotRef((ref) => actions.startStream(ref)))
+  ipcMain.handle(IPC_CHANNELS.stopStream, withSlotRef((ref) => actions.stopStream(ref)))
   ipcMain.handle(IPC_CHANNELS.openLogs, withText('serial', (serial) => actions.openLogs(serial)))
   ipcMain.handle(IPC_CHANNELS.closeLogs, () => outcome(() => actions.closeLogs()))
 
