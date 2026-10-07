@@ -1,7 +1,7 @@
 ---
 id: m4-ios-simulator
 title: M4 — iOS 시뮬레이터 지원
-status: in-progress
+status: implemented
 verified: 2026-10-06
 scope: [main, renderer, preload, mcp, shared, ios, streaming]
 hosts: [macos]
@@ -26,7 +26,7 @@ iOS 시뮬레이터를 Android 에뮬레이터와 거의 같은 수준으로 다
 화면을 실시간으로 보고 마우스로 조작한다.
 
 로드맵은 M4를 "`simctl` 기반 `Device` 구현체"로 적었다. 그러나 `simctl`에는 입력 주입, 접근성
-트리, 실시간 스트림이 없다. 이 세 가지는 AXe로 채운다([ADR-0014](../../adr/0014-ios-control-via-axe.md)).
+트리, 실시간 스트림이 없다. 이 세 가지는 AXe로 채운다([ADR-0014](../../../adr/0014-ios-control-via-axe.md)).
 
 ## 범위
 
@@ -34,7 +34,7 @@ M4는 세 단계로 나눠 계획하고 구현한다. 스펙은 하나, 계획�
 
 **M4-1 — 기반.** iOS 시뮬레이터가 기기 목록에 뜨고 앱 수명주기와 관찰이 된다.
 
-- `Device` 인터페이스를 넓힌다([ADR-0015](../../adr/0015-platform-difference-surface.md)).
+- `Device` 인터페이스를 넓힌다([ADR-0015](../../../adr/0015-platform-difference-surface.md)).
 - `simctlClient`, `IosDevice`(입력·`dumpUi` 제외), simctl 추적 폴링, 시뮬레이터 목록·부팅·종료.
 - MCP `log_read`와 앱 로그 패널에 iOS 로그.
 - AXe 스파이크. 결과를 이 스펙의 "스파이크 결과"에 남기고 M4-2·M4-3 설계를 고친다.
@@ -44,13 +44,13 @@ M4는 세 단계로 나눠 계획하고 구현한다. 스펙은 하나, 계획�
 **M4-2 — 입력과 노드.**
 
 - `axeClient`, `IosDevice`의 `tap`/`swipe`/`inputText`/`pressKey`/`dumpUi`.
-- `ui_find`, ref 탭, [ADR-0011](../../adr/0011-node-ref-revalidation.md) 재검증이 iOS에서 돈다.
+- `ui_find`, ref 탭, [ADR-0011](../../../adr/0011-node-ref-revalidation.md) 재검증이 iOS에서 돈다.
 - 완료 기준: 에이전트가 `ui_find` → `ui_tap` → `ui_text`로 iOS 앱의 입력 흐름을 끝낸다.
 
 **M4-3 — 스트리밍과 화면 입력.**
 
 - `StreamSession` 인터페이스, `AxeStreamSession`, renderer JPEG 경로
-  ([ADR-0016](../../adr/0016-stream-codec-per-session.md)).
+  ([ADR-0016](../../../adr/0016-stream-codec-per-session.md)).
 - 화면 `ControlIntent`를 AXe로 보낸다.
 - 완료 기준: 앱 창에 iOS 화면이 실시간으로 보이고 마우스로 조작된다.
 
@@ -64,7 +64,7 @@ M4는 세 단계로 나눠 계획하고 구현한다. 스펙은 하나, 계획�
 
 ## 외부 도구
 
-사용자가 설치한 도구를 쓴다. 번들하지 않는다. [ADR-0003](../../adr/0003-no-bundled-android-sdk.md)의
+사용자가 설치한 도구를 쓴다. 번들하지 않는다. [ADR-0003](../../../adr/0003-no-bundled-android-sdk.md)의
 Android SDK 방침과 같다.
 
 | 도구 | 쓰는 곳 | 없을 때 |
@@ -76,7 +76,7 @@ Android SDK 방침과 같다.
 
 ### `Device` 변경 (M4-1)
 
-`src/shared/types/device.ts`를 고친다. 원칙은 [ADR-0005](../../adr/0005-device-interface-abstraction.md)
+`src/shared/types/device.ts`를 고친다. 원칙은 [ADR-0005](../../../adr/0005-device-interface-abstraction.md)
 그대로다. 위층은 타깃 이름으로 분기하지 않는다.
 
 ```ts
@@ -218,7 +218,7 @@ axeClient ───→ IosDevice     ┘
   `device_unresponsive`로 끝낸다.
 - `clearLogs`는 iOS 통합 로그를 지울 수 없어서 워터마크 시각만 기록한다. 에이전트가 보는 의미는
   Android와 같다.
-- 압축 형식과 예산([ADR-0008](../../adr/0008-log-read-response-shape.md))은 mcp 층에 있어 그대로다.
+- 압축 형식과 예산([ADR-0008](../../../adr/0008-log-read-response-shape.md))은 mcp 층에 있어 그대로다.
 
 **`LogLine` 매핑**
 
@@ -246,14 +246,14 @@ ndjson에는 `eventType`이 `activityCreateEvent`인 줄도 섞여 나온다. �
   없다. 그래서 iOS는 연결 시 seed와 `log_read`의 `pidof`(지금 떠 있는 앱)로만 pid를 안다.
   연결 뒤 실행했다가 이미 죽은 앱의 로그는 `package`로 찾지 못한다. 알려진 한계로 두고 M4-1 완료
   검증에서 실제로 문제가 되는지 본다.
-- iOS 로그는 양이 많다([ADR-0013](../../adr/0013-log-transport-dedicated-port.md)). 링 버퍼 용량은
+- iOS 로그는 양이 많다([ADR-0013](../../../adr/0013-log-transport-dedicated-port.md)). 링 버퍼 용량은
   그대로 두고, M4-1 완료 검증 때 초당 줄 수를 재어 넘치면 그때 조정한다.
 
 ### 입력과 노드 (M4-2)
 
 **좌표.** AXe는 point 좌표를 쓴다. `IosDevice.displayFrame()`이 point 크기를 주므로 mcp 층의
 `toPixel`은 고치지 않아도 point를 낸다. 스크린샷은 실제 픽셀이지만 툴 좌표가 0..1이라
-([ADR-0012](../../adr/0012-normalized-tool-coordinates.md)) 상관없다.
+([ADR-0012](../../../adr/0012-normalized-tool-coordinates.md)) 상관없다.
 
 **입력 매핑**
 
@@ -604,8 +604,8 @@ SwiftUI와 UIKit의 차이를 가를 서드파티 앱은 이번에 쓰지 못했
 
 **첫 확인에서 M4-3의 완료 기준 둘이 충족되지 않았다(영문 한 글자씩 입력, 가로 회전).** 영문 입력은 글자를 모아
 붙이도록 고쳐 같은 기기에서 다시 확인했다. 가로 회전은 따라가지 않고, 좌표가 틀리는 터치 입력을 막는 것으로
-정했다. 아래 표의 6번과 8번에 처음 관찰과 그 뒤를 함께 적었다. 스펙을 `implemented`로 닫는 것은 사람이 앱 창을
-확인한 뒤 정한다.
+정했다. 아래 표의 6번과 8번에 처음 관찰과 그 뒤를 함께 적었다. 앱 창에서 사람이 볼 항목은 표에
+"사람 확인 필요"로 남긴 채 2026-10-07에 `implemented`로 닫았다.
 
 **통합 테스트** (`axeStreamSession.ios.integration.test.ts`, 부팅된 시뮬레이터에서): 통과했다. 세션이 `codec: 'jpeg'`로
 열리고 프레임이 오며, 화면 가운데 탭이 `axe tap`까지 가고 실패가 없다. 첫 프레임까지 0.27~0.35초였고, 그 뒤 2초

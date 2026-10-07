@@ -4,11 +4,11 @@ title: M4-1 — iOS 기반: simctl, 기기 목록, 앱, 스크린샷, 로그
 status: done
 type: work-order
 created: 2026-09-29
-updated: 2026-10-06
+updated: 2026-10-07
 owner: virtual-device-helper 팀
 scope: [main, renderer, preload, mcp, shared, ios, android]
 hosts: [macos]
-archived_reason:
+archived_reason: done — M4-1 구현 완료. simctl·IosDevice·시뮬레이터 목록과 추적·iOS 로그·플랫폼별 조립. PR #24로 develop에 머지. 앱 설치 성공 경로와 앱 창 확인 일부 미검증(스펙 "M4-1 검증 결과"). 단계 체크박스는 채우지 않았다
 related_adr: [ADR-0015, ADR-0014, ADR-0005, ADR-0003, ADR-0008, ADR-0011, ADR-0013]
 related_spec: m4-ios-simulator
 related_architecture: main-layers
@@ -32,10 +32,10 @@ tags: [plan, ios, simctl]
 
 **Tech Stack:** TypeScript, Electron, `xcrun simctl`, `plutil`, zod 4, `@modelcontextprotocol/sdk`, React, Vitest
 
-**Spec:** [`../specs/2026-09-29-m4-ios-simulator.md`](../specs/2026-09-29-m4-ios-simulator.md) —
+**Spec:** [`../specs/2026-09-29-m4-ios-simulator.md`](../../specs/archive/2026-09-29-m4-ios-simulator.md) —
 "범위"의 M4-1, "인터페이스", "동작"의 층 구조·기기 추적·조립·로그 절, "실패 처리", "테스트", "스파이크".
-결정 근거는 [ADR-0015](../../adr/0015-platform-difference-surface.md),
-[ADR-0014](../../adr/0014-ios-control-via-axe.md).
+결정 근거는 [ADR-0015](../../../adr/0015-platform-difference-surface.md),
+[ADR-0014](../../../adr/0014-ios-control-via-axe.md).
 
 **선행 조건:** macOS 호스트, Xcode(`xcrun simctl`), 부팅 가능한 iOS 런타임이 하나 이상. AXe는 Task 1
 스파이크에만 쓴다(`brew install cameroncooke/axe/axe`).

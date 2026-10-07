@@ -1,14 +1,14 @@
 ---
 id: m5-2-jpeg-frame-ack
 title: M5-2 — JPEG 프레임 흐름 제어
-status: draft
+status: done
 type: work-order
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-07
 owner: virtual-device-helper 팀
 scope: [main, renderer, shared, streaming]
 hosts: [macos]
-archived_reason:
+archived_reason: done — M5-2 구현 완료. JPEG 프레임을 renderer 확인 뒤에 보내고 기다리는 동안 최신 한 장만 든다. PR #28로 develop에 머지. 검증 결과는 스펙 "M5-2 검증 결과"
 related_adr: [ADR-0018, ADR-0016, ADR-0010]
 related_spec: m5-multi-screen
 related_architecture: main-layers
@@ -33,8 +33,8 @@ renderer를 먼저 한다. 지금 main은 모르는 포트 메시지를 `toContr
 
 **Tech Stack:** TypeScript, Electron MessagePort, React, Vitest
 
-**Spec:** [`../specs/2026-10-06-m5-multi-screen.md`](../specs/2026-10-06-m5-multi-screen.md) — "JPEG 흐름 제어" 절.
-결정 근거는 [ADR-0018](../../adr/0018-jpeg-frame-ack-flow-control.md).
+**Spec:** [`../specs/2026-10-06-m5-multi-screen.md`](../../specs/archive/2026-10-06-m5-multi-screen.md) — "JPEG 흐름 제어" 절.
+결정 근거는 [ADR-0018](../../../adr/0018-jpeg-frame-ack-flow-control.md).
 
 **선행 조건:** 없다. 화면 하나에서 검증한다. [M5-3](2026-10-06-m5-3-screen-slots.md)보다 먼저 한다.
 

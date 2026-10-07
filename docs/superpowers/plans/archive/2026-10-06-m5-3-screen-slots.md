@@ -1,14 +1,14 @@
 ---
 id: m5-3-screen-slots
 title: M5-3 — 화면 칸과 여러 화면
-status: draft
+status: done
 type: work-order
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-07
 owner: virtual-device-helper 팀
 scope: [main, renderer, preload, shared, streaming, android, ios]
 hosts: [windows, macos]
-archived_reason:
+archived_reason: done — M5-3 구현 완료. 화면 칸 조정자, 칸·세대 IPC, renderer 포트 라우터, 여러 화면. PR #29로 develop에 머지. 사람 확인 일부 미검증(스펙 "M5-3 검증 결과")
 related_adr: [ADR-0017, ADR-0018, ADR-0015, ADR-0010]
 related_spec: m5-multi-screen
 related_architecture: main-layers
@@ -34,8 +34,8 @@ task는 여덟이다. Task 4까지는 IPC 모양을 그대로 둔 채 main만 �
 
 **Tech Stack:** TypeScript, Electron IPC·MessagePort, React, Vitest + Testing Library
 
-**Spec:** [`../specs/2026-10-06-m5-multi-screen.md`](../specs/2026-10-06-m5-multi-screen.md) — "인터페이스", "동작 / 상태", "실패 처리".
-결정 근거는 [ADR-0017](../../adr/0017-screen-slots-separate-from-target.md).
+**Spec:** [`../specs/2026-10-06-m5-multi-screen.md`](../../specs/archive/2026-10-06-m5-multi-screen.md) — "인터페이스", "동작 / 상태", "실패 처리".
+결정 근거는 [ADR-0017](../../../adr/0017-screen-slots-separate-from-target.md).
 
 **선행 조건:** [M5-2](2026-10-06-m5-2-jpeg-frame-ack.md) 완료(`frame_ack`가 프레임이 온 포트로 간다).
 [M5-1](2026-10-06-m5-1-device-card-badges.md)은 독립이다.

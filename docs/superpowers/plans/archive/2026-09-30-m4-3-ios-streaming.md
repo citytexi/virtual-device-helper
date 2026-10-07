@@ -1,14 +1,14 @@
 ---
 id: m4-3-ios-streaming
 title: M4-3 — iOS 스트리밍과 화면 입력
-status: in-progress
+status: done
 type: work-order
 created: 2026-09-30
-updated: 2026-10-06
+updated: 2026-10-07
 owner: virtual-device-helper 팀
 scope: [main, renderer, shared, streaming, ios]
 hosts: [macos]
-archived_reason:
+archived_reason: done — M4-3 구현 완료. StreamSession·MJPEG 분할·AxeStreamSession·axeControl·renderer JPEG 경로. PR #26으로 develop에 머지. 가로 회전은 따라가지 않고 터치를 막는다. 앱 창 사람 확인 일부 미검증(스펙 "M4-3 검증 결과")인 채로 닫는다
 related_adr: [ADR-0016, ADR-0014, ADR-0015, ADR-0010, ADR-0002]
 related_spec: m4-ios-simulator
 related_architecture: main-layers
@@ -31,9 +31,9 @@ WebCodecs 경로와 새 `jpegRenderer`를 고른다. 화면 입력은 `axeContro
 
 **Tech Stack:** TypeScript, Electron MessagePort, AXe CLI, WebCodecs, `createImageBitmap`, React, Vitest
 
-**Spec:** [`../specs/2026-09-29-m4-ios-simulator.md`](../specs/2026-09-29-m4-ios-simulator.md) —
+**Spec:** [`../specs/2026-09-29-m4-ios-simulator.md`](../../specs/archive/2026-09-29-m4-ios-simulator.md) —
 "스트리밍과 화면 입력 (M4-3)" 절, "스파이크 결과" 4·5번. 결정 근거는
-[ADR-0016](../../adr/0016-stream-codec-per-session.md).
+[ADR-0016](../../../adr/0016-stream-codec-per-session.md).
 
 **선행 조건:** [M4-2](2026-09-30-m4-2-ios-input-nodes.md) 완료(`axeClient`, `locateAxe`, `IosDevice.displayFrame`).
 M4-1 Task 1의 fixture `stream-video-jpeg.bin`(JPEG 파트). `stream-video.bin`은 기본 인자(scale 1.0, quality 80)로 받은 것이라 파트가 PNG다 — 분할기 입력으로 쓰지 않는다.
@@ -271,7 +271,7 @@ Run: `npm run test:integration -- src/main/stream/axeStreamSession.ios.integrati
 관찰한 fps·입력 지연을 스펙 끝 "M4-3 검증 결과" 절에 적는다. 드래그 반영 지연이 쓰기 어려운 수준이면
 스파이크 5번(`batch --stdin`) 결과와 함께 후속 과제로 적는다.
 
-- [ ] **Step 4: 문서를 마무리하고 커밋한다** — 문서는 맞췄다. 스펙 `implemented`와 이 계획 `done`으로 닫는 것은 사람이 앱 창을 확인한 뒤 정한다(R13).
+- [ ] **Step 4: 문서를 마무리하고 커밋한다** — 문서는 맞췄다. 앱 창 사람 확인이 남은 채 2026-10-07에 스펙 `implemented`와 이 계획 `done`으로 닫았다(R13).
 
 `main-layers.md`에 스트림 세션 두 갈래를 더하고 `verified`를 갱신한다. 스펙 `status`를 `implemented`로,
 세 계획의 `status`를 `done`으로 바꾼다(아카이브 이동은 머지 뒤 따로 한다).
