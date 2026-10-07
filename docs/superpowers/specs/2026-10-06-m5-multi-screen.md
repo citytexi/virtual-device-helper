@@ -462,7 +462,7 @@ Windows 호스트는 보지 않았고 단위 테스트로만 덮는다. 안드�
 | MCP `device_select`로 대상 이동 | 봤다 | 앱 머리의 `토큰 보기`가 보여 주는 토큰으로 `POST /mcp`에 `tools/call`을 보냈다. iOS serial을 넘기자 `{"active":"641E0D82-…"}`가 오고 iPhone 카드에 `aria-current`와 `(대상)` 뱃지가, iOS 화면 머리에 `(대상)`이 붙었으며 안내는 사라졌다. Android serial을 넘기자 같은 표시가 Android 카드와 Android 화면 머리로 옮겨 갔다. |
 | 오른쪽 탭이 대상 기기를 따른다 | 못 봤다 | 활동 탭이 선택된 채였고(`aria-selected`) 로그·에이전트 탭은 열어 보지 않았다. |
 | `대상으로` 버튼 | 봤다 | Android가 대상인 상태에서 iOS 화면 머리의 `대상으로`를 CDP로 클릭하자 대상 뱃지와 카드의 `aria-current`가 iPhone으로 옮겨 갔다. 대상인 화면의 그 버튼은 `disabled`였다. 이것은 CDP가 건 클릭이지 사람의 마우스가 아니다. |
-| `F6` | 부분적으로 봤다 | Android 캔버스에 포커스를 둔 채 `F6` keydown을 보내자 `document.activeElement`가 iOS 캔버스로, iOS 캔버스에서 다시 보내자 Android 캔버스로 갔다. 합성한 `KeyboardEvent`이고 실제 키 입력은 아니다. 포커스 강조는 이 표에서는 보지 않았고, 2026-10-07에 아래 소절에서 한 화면으로 봤다. |
+| `F6` | 부분적으로 봤다 | Android 캔버스에 포커스를 둔 채 `F6` keydown을 보내자 `document.activeElement`가 iOS 캔버스로, iOS 캔버스에서 다시 보내자 Android 캔버스로 갔다. 합성한 `KeyboardEvent`이고 실제 키 입력은 아니다. 포커스 강조는 이 표에서는 보지 않았고, 2026-10-07에 controller가 실제 두 화면으로 봤다(아래 소절). |
 | 기기를 끄면 그 화면만 사라진다 | 봤다 | `adb emu kill` 뒤 `adb devices`가 비었고 캔버스는 1개, `.screens`는 `708px` 한 열이 됐다. 남은 iOS 화면은 5초 동안 29장(초당 5.8)을 계속 그렸다. |
 | 기기 하나일 때 캔버스의 크기와 자리 | 부분적으로 봤다 | iOS 하나만 남았을 때 캔버스 요소의 rect는 x 276, y 116, 708x694였다. M5 이전과 같은지는 이전 값을 재지 않았으므로 사람 확인 필요. |
 
@@ -471,31 +471,30 @@ Windows 호스트는 보지 않았고 단위 테스트로만 덮는다. 안드�
 플랫폼의 기기를 하나 더 고르는 것)는 기기를 더 부팅해야 해서 하지 않았다. 그 동작은 `screenSlots.test.ts`와 renderer 테스트로만
 덮는다.
 
-### 두 열일 때 화면 머리 (고침, 일부는 사람 확인 필요)
+### 두 열일 때 화면 머리 (고침)
 
 처음 확인(2026-10-06)에서 검토자(controller)가 캡처를 보고, `.screens`가 두 열일 때 iOS 화면 머리의 serial `641E0D82-…`가 두 줄로
 꺾이고 `(대상)` 뱃지와 `대상으로` 버튼 글자도 두 줄로 갈라진다고 관찰했다. `ScreenHeader.tsx`의 `ScreenHeader`와 `app.css`의
 `.screen-header` 규칙을 고쳤다. 이름·serial·뱃지는 `.screen-ident`, 버튼은 `.screen-actions`로 묶고, serial만 한 줄로 줄여
 말줄임표로 자르며(`title`에 전체 값), 좁으면 버튼 묶음이 통째로 다음 줄로 내려간다. 버튼은 앱의 다른 버튼과 같은 `.btn`이다.
 
-2026-10-07에 다시 봤지만 **두 화면을 실제로 띄워서 본 것은 아니다.** 이 호스트에는 부팅된 iOS 시뮬레이터가 없었고, 이번 확인에서는
-시뮬레이터를 새로 부팅하지 않기로 했다. 칸은 플랫폼마다 하나씩 배정되므로(`bootstrap.ts`의 `createPlaceByPlatform`) 물려 있던
-실제 Android 기기와 띄운 Android 에뮬레이터는 둘이 한 화면에 나란히 놓이지 않고 칸 하나만 찼다. 그래서 화면 하나를 연 채
-CDP로 `.screens`의 폭을 350px, 180px로 고정하고 serial 글자를 `641E0D82-2F10-4EEC-8153-A2197CB6F75C`로 바꿔 넣어 읽었다.
-`(대상)` 뱃지는 `selectDevice`로 붙였다. 이 값은 두 열의 폭과 같은 폭의 한 화면에서 읽은 것이다.
+2026-10-07에 controller가 실제 화면 둘(iOS 시뮬레이터 iPhone 16 Pro Max와 Android 에뮬레이터 `Pixel_7_API_36`)로 다시 봤다.
+강제한 폭이나 끼워 넣은 DOM은 없다.
 
-| 열 폭 | 화면 머리 높이 | serial | `(대상)` 뱃지 | `대상으로` 버튼 |
-|---|---|---|---|---|
-| 350px | 36px (한 줄) | 높이 18.8px, `line-height` 18.75px, `scrollWidth` 271 > `clientWidth` 161로 말줄임표 | 높이 18.5px | 높이 26px, 같은 줄(y 72) |
-| 180px | 61px | 높이 18.8px, `scrollWidth` 271 > `clientWidth` 66로 말줄임표 | 높이 18.5px | 높이 26px, 다음 줄(y 97)로 내려감 |
-
-두 폭 모두 머리가 열 밖으로 넘치지 않았고(`scrollWidth`가 `clientWidth`를 넘지 않음) 캡처에서 겹침도 없었다. 창을 실제 최소 폭
-1100으로 줄인 두 열은 보지 못했다. CDP의 `Emulation.setDeviceMetricsOverride`는 호출을 끝내면 풀려 값 읽기와 이어 쓸 수 없었다.
-
-포커스 강조(머리 밑줄, 이름 색에 더해 칸 둘레의 2px 테두리)는 같은 화면의 캔버스에 `focus()`를 준 뒤 읽었다. `.device-screen`의
-`outline-style`이 `solid`, `outline-width`가 `2px`, 색이 `rgb(96, 165, 250)`, `outline-offset`이 `2px`였고 캡처에서 칸 둘레에 잘림 없이
-보였다. 폭 180px로 줄인 채에서도 같았다. 다만 이 좁은 폭에서는 화면 아래 조작 버튼 줄이 열 밖으로 삐져나왔다(이번에 건드리지 않은 부분이다).
-iOS 화면 머리의 실제 모양과 두 화면이 동시에 있을 때 옆 칸과 테두리가 겹치는지는 사람 확인 필요.
+- **기본 창 폭(안쪽 폭 1440, 열 `350px 350px`):** 두 머리 모두 높이 36px이었다. Android의 serial `emulator-5554`는 한 줄이고 잘리지 않았다.
+  iOS의 serial은 한 줄이고 말줄임표로 잘렸으며(`scrollWidth > clientWidth`) `title`에 UDID 전체가 있었다. `(대상)` 뱃지는 한 줄(높이 19px),
+  `대상으로` 버튼은 높이 26px이었고 대상인 iOS 쪽은 `disabled`였다. 넘치는 머리는 없었다.
+- **폭 1100(`Emulation.setDeviceMetricsOverride`로 흉내 낸 값, 열 `180px 180px`):** 두 머리 모두 높이 61px이었다. 이름·serial(·뱃지)이 첫 줄에,
+  `대상으로`가 둘째 줄에 있었고 넘침은 없었다. 실제 창을 최소 폭까지 줄인 것이 아니다.
+- **같은 확인에서 찾은 결함:** 폭 1100에서 Android 화면 아래 기기 버튼 줄(`.device-keys`)이 열보다 넓었다(`scrollWidth` 218, `clientWidth` 180).
+  첫 버튼은 창 왼쪽 가장자리에서 잘렸고 뒤쪽 버튼은 iOS 화면 밑으로 들어갔다. iOS 쪽 줄(버튼 둘)은 맞았다(180/180).
+  `app.css`의 `.device-keys`에 `flex-wrap: wrap`과 `min-width: 0`을 더해 고쳤다.
+  고친 뒤 같은 방식으로 읽은 값은 두 줄 모두 `scrollWidth` 180, `clientWidth` 180이었고 캡처에서 Android 버튼은 자기 열 안에서 두 줄(넷과 둘)로
+  나뉘어 가운데에 놓였으며 다른 화면과 겹치지 않았다. 기본 폭에서는 두 줄 모두 한 줄(`scrollWidth` 350, `clientWidth` 350)이었다.
+- **포커스 강조:** iOS 캔버스에 `focus()`를 준 뒤 `.device-screen`의 `outline`이 `solid`, 두께 `2px`, `outline-offset` `2px`, 색 `rgb(96, 165, 250)`이었고
+  캡처에서 iOS 화면 둘레에 잘림 없이 보였다.
+- **기기가 끊길 때:** controller가 확인하는 동안 물리 폰 `RFCXC00V8AZ`가 끊기자 그 화면이 사라지고 `.screens`가 `708px` 한 열이 됐으며 iOS 화면은 남았다.
+  활동 목록에 `RFCXC00V8AZ 화면 스트림 종료`와 `RFCXC00V8AZ 연결 끊김`이 올랐다.
 
 ### 부하
 
@@ -509,6 +508,6 @@ main 1.3%, GPU helper 1.0%, renderer 2.2%였다. 이 마지막 값을 `ps`와 `t
 
 ### 사람 확인 필요
 
-iOS와 Android 두 화면이 실제로 나란히 있을 때의 화면 머리와 포커스 테두리(위 소절은 폭을 흉내 낸 값이다), 화면을 실제 마우스로 누르거나 글자를 치는 것, 창을 실제로 1100으로 좁혔을 때의 배치, `Cmd+R` 뒤 두 화면이 다시 뜨는지,
+화면을 실제 마우스로 누르거나 글자를 치는 것, `F6`을 실제 키로 누르는 것, 창을 실제로 최소 폭(1100)까지 끌어 줄였을 때의 배치(위 1100 값은 폭 흉내이지 실제 창이 아니다), `Cmd+R` 뒤 두 화면이 다시 뜨는지,
 창을 닫았다 다시 열었을 때, 기기 하나일 때 M5 이전과 같은 크기·자리인지, Windows 호스트의 회귀. 앞의 네 가지 가운데 CDP로
 대신 건 것은 위 표에 적었고 사람이 직접 한 것이 아니다.
